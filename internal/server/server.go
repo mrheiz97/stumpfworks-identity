@@ -21,6 +21,7 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/badge"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
 	userpin "github.com/TheRealHZL/stumpfworks-identity/internal/pin"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/version"
 	"github.com/skip2/go-qrcode"
@@ -89,6 +90,7 @@ func (s *Server) ConfigureClientTargetVersion(target string) error {
 	s.clientTargetVersion = target
 	return nil
 }
+func (s *Server) ConfigureOIDC(provider *oidcprovider.Provider) { provider.Register(s.mux) }
 func NewProtected(st *database.Store, l *slog.Logger, d directory.Directory, sessions *adminauth.Sessions) *Server {
 	s := New(st, l)
 	s.dir = d
@@ -136,7 +138,7 @@ func (s *Server) routes() {
 }
 func (s *Server) adminGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.protect || r.URL.Path == "/login" || r.URL.Path == "/api/v1/health" || r.URL.Path == "/api/v1/client/status" || r.URL.Path == "/api/v1/auth/badge" || r.URL.Path == "/api/v1/auth/pkinit" || strings.HasPrefix(r.URL.Path, "/self-service") || strings.HasPrefix(r.URL.Path, "/static/") {
+		if !s.protect || r.URL.Path == "/login" || r.URL.Path == "/api/v1/health" || r.URL.Path == "/api/v1/client/status" || r.URL.Path == "/api/v1/auth/badge" || r.URL.Path == "/api/v1/auth/pkinit" || r.URL.Path == "/.well-known/openid-configuration" || strings.HasPrefix(r.URL.Path, "/oauth2/") || strings.HasPrefix(r.URL.Path, "/self-service") || strings.HasPrefix(r.URL.Path, "/static/") {
 			next.ServeHTTP(w, r)
 			return
 		}

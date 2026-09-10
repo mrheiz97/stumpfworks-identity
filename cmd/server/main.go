@@ -10,6 +10,7 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
 	app "github.com/TheRealHZL/stumpfworks-identity/internal/server"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/version"
 	"log/slog"
@@ -122,14 +123,15 @@ func main() {
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	var srv *app.Server
+	var sessions *adminauth.Sessions
 	if cfg.DirectoryEnabled {
 		if !strings.HasPrefix(cfg.DirectoryURL, "ldaps://") {
 			slog.Error("directory URL must use ldaps:// when enabled")
 			os.Exit(1)
 		}
-		sessions, err := adminauth.NewSessions(cfg.SessionSecret, time.Hour)
-		if err != nil {
-			slog.Error("session configuration failed", "error", err)
+		sessions, e = adminauth.NewSessions(cfg.SessionSecret, time.Hour)
+		if e != nil {
+			slog.Error("session configuration failed", "error", e)
 			os.Exit(1)
 		}
 		srv = app.NewProtected(st, log, configuredDirectory, sessions)
@@ -147,6 +149,18 @@ func main() {
 			os.Exit(1)
 		}
 		srv.ConfigurePKINIT(issuer)
+	}
+	if cfg.OIDCEnabled {
+		if !cfg.DirectoryEnabled {
+			slog.Error("OIDC requires the protected directory authentication mode")
+			os.Exit(1)
+		}
+		provider, err := oidcprovider.New(cfg.OIDCIssuer, strings.Split(cfg.OIDCSigningKeyFiles, ","), st, configuredDirectory, sessions)
+		if err != nil {
+			slog.Error("OIDC configuration failed", "error", err)
+			os.Exit(1)
+		}
+		srv.ConfigureOIDC(provider)
 	}
 	log.Info("server starting", "component", "server", "listen", cfg.Listen, "version", version.Version)
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {

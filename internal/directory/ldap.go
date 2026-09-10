@@ -84,7 +84,7 @@ func (d LDAP) serviceConn(ctx context.Context) (*ldap.Conn, error) {
 	return c, nil
 }
 func (d LDAP) userFilter(u string) string {
-	return fmt.Sprintf("(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))", ldap.EscapeFilter(u))
+	return fmt.Sprintf("(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(sAMAccountName=%s))", ldap.EscapeFilter(u))
 }
 func userFromEntry(e *ldap.Entry) User {
 	display := e.GetAttributeValue("displayName")

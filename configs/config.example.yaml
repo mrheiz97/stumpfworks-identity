@@ -17,3 +17,10 @@ directory:
 auth:
   # Prefer SWBADGE_SESSION_SECRET; use at least 32 random bytes.
   session_secret: ""
+
+oidc:
+  # Disabled by default. The issuer must exactly match the externally visible HTTPS URL.
+  enabled: false
+  issuer: "https://login01.example.test:8080"
+  # First key signs; subsequent comma-separated keys remain published during rotation.
+  signing_key_files: "/etc/stumpfworks-badge/oidc/signing-current.pem"

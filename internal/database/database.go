@@ -2,7 +2,10 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	_ "modernc.org/sqlite"
 	"os"
@@ -10,11 +13,13 @@ import (
 	"time"
 )
 
-const migration = `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, directory_dn TEXT NOT NULL DEFAULT '', pin_hash TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+const migration = `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, directory_dn TEXT NOT NULL DEFAULT '', pin_hash TEXT NOT NULL DEFAULT '', oidc_subject TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS badges (id INTEGER PRIMARY KEY AUTOINCREMENT, badge_code TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users(id), token_hash TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT 1, description TEXT NOT NULL DEFAULT '', issued_by TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_used_at DATETIME, revoked_at DATETIME);
 CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, badge_id TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', client_id TEXT NOT NULL DEFAULT '', success BOOLEAN NOT NULL, ip_address TEXT NOT NULL DEFAULT '', timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, details TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id TEXT NOT NULL UNIQUE, token_hash TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT 1, version TEXT NOT NULL DEFAULT '', network_status TEXT NOT NULL DEFAULT 'unknown', ad_status TEXT NOT NULL DEFAULT 'unknown', camera_status TEXT NOT NULL DEFAULT 'unknown', kerberos_status TEXT NOT NULL DEFAULT 'unknown', last_update_version TEXT NOT NULL DEFAULT '', last_update_status TEXT NOT NULL DEFAULT 'unknown', last_update_at DATETIME, rollback_available BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at DATETIME);
 CREATE TABLE IF NOT EXISTS self_service_sessions (id TEXT PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, revoked_at DATETIME);
+CREATE TABLE IF NOT EXISTS oidc_clients (client_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, redirect_uris TEXT NOT NULL, scopes TEXT NOT NULL DEFAULT 'openid', enabled BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS oidc_codes (code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), redirect_uri TEXT NOT NULL, scope TEXT NOT NULL, nonce TEXT NOT NULL, code_challenge TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
 CREATE INDEX IF NOT EXISTS idx_badges_code ON badges(badge_code); CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp); CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients(last_seen_at);`
 
 type Store struct{ DB *sql.DB }
@@ -25,7 +30,17 @@ type User struct {
 	DirectoryDN string    `json:"directory_dn"`
 	PINHash     string    `json:"-"`
 	PINEnabled  bool      `json:"pin_enabled"`
+	OIDCSubject string    `json:"-"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+type OIDCClient struct {
+	ClientID, SecretHash, RedirectURIs, Scopes string
+	Enabled                                    bool
+}
+type OIDCCode struct {
+	CodeHash, ClientID, RedirectURI, Scope, Nonce, CodeChallenge string
+	UserID                                                       int64
+	ExpiresAt                                                    time.Time
 }
 type Badge struct {
 	ID                int64        `json:"id"`
@@ -131,6 +146,21 @@ func Open(path string) (*Store, error) {
 			return nil, err
 		}
 	}
+	var subjectColumns int
+	if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('users') WHERE name='oidc_subject'`).Scan(&subjectColumns); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if subjectColumns == 0 {
+		if _, err = db.Exec(`ALTER TABLE users ADD COLUMN oidc_subject TEXT NOT NULL DEFAULT ''`); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_subject ON users(oidc_subject) WHERE oidc_subject<>''; CREATE INDEX IF NOT EXISTS idx_oidc_codes_expiry ON oidc_codes(expires_at)`); err != nil {
+		db.Close()
+		return nil, err
+	}
 	for _, column := range []struct{ name, definition string }{{"enabled", "BOOLEAN NOT NULL DEFAULT 1"}, {"updated_at", "DATETIME"}, {"last_update_version", "TEXT NOT NULL DEFAULT ''"}, {"last_update_status", "TEXT NOT NULL DEFAULT 'unknown'"}, {"last_update_at", "DATETIME"}, {"rollback_available", "BOOLEAN NOT NULL DEFAULT 0"}} {
 		var count int
 		if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('clients') WHERE name=?`, column.name).Scan(&count); err != nil {
@@ -156,15 +186,15 @@ func (s *Store) CreateUser(ctx context.Context, u, d, dn string) (User, error) {
 	return s.GetUser(ctx, id)
 }
 func (s *Store) GetUser(ctx context.Context, id int64) (u User, err error) {
-	err = s.DB.QueryRowContext(ctx, `SELECT id,username,display_name,directory_dn,pin_hash,pin_hash!='',created_at FROM users WHERE id=?`, id).Scan(&u.ID, &u.Username, &u.DisplayName, &u.DirectoryDN, &u.PINHash, &u.PINEnabled, &u.CreatedAt)
+	err = s.DB.QueryRowContext(ctx, `SELECT id,username,display_name,directory_dn,pin_hash,pin_hash!='',oidc_subject,created_at FROM users WHERE id=?`, id).Scan(&u.ID, &u.Username, &u.DisplayName, &u.DirectoryDN, &u.PINHash, &u.PINEnabled, &u.OIDCSubject, &u.CreatedAt)
 	return
 }
 func (s *Store) UserByUsername(ctx context.Context, username string) (u User, err error) {
-	err = s.DB.QueryRowContext(ctx, `SELECT id,username,display_name,directory_dn,pin_hash,pin_hash!='',created_at FROM users WHERE lower(username)=lower(?)`, username).Scan(&u.ID, &u.Username, &u.DisplayName, &u.DirectoryDN, &u.PINHash, &u.PINEnabled, &u.CreatedAt)
+	err = s.DB.QueryRowContext(ctx, `SELECT id,username,display_name,directory_dn,pin_hash,pin_hash!='',oidc_subject,created_at FROM users WHERE lower(username)=lower(?)`, username).Scan(&u.ID, &u.Username, &u.DisplayName, &u.DirectoryDN, &u.PINHash, &u.PINEnabled, &u.OIDCSubject, &u.CreatedAt)
 	return
 }
 func (s *Store) Users(ctx context.Context) ([]User, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT id,username,display_name,directory_dn,pin_hash,pin_hash!='',created_at FROM users ORDER BY username`)
+	rows, e := s.DB.QueryContext(ctx, `SELECT id,username,display_name,directory_dn,pin_hash,pin_hash!='',oidc_subject,created_at FROM users ORDER BY username`)
 	if e != nil {
 		return nil, e
 	}
@@ -172,7 +202,7 @@ func (s *Store) Users(ctx context.Context) ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if e = rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.DirectoryDN, &u.PINHash, &u.PINEnabled, &u.CreatedAt); e != nil {
+		if e = rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.DirectoryDN, &u.PINHash, &u.PINEnabled, &u.OIDCSubject, &u.CreatedAt); e != nil {
 			return nil, e
 		}
 		out = append(out, u)
@@ -491,4 +521,97 @@ func (s *Store) Clients(ctx context.Context) ([]Client, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) EnsureOIDCSubject(ctx context.Context, userID int64) (string, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	var subject string
+	if err = tx.QueryRowContext(ctx, `SELECT oidc_subject FROM users WHERE id=?`, userID).Scan(&subject); err != nil {
+		return "", err
+	}
+	if subject == "" {
+		raw := make([]byte, 32)
+		if _, err = rand.Read(raw); err != nil {
+			return "", err
+		}
+		subject = base64.RawURLEncoding.EncodeToString(raw)
+		result, updateErr := tx.ExecContext(ctx, `UPDATE users SET oidc_subject=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND oidc_subject=''`, subject, userID)
+		if updateErr != nil {
+			return "", updateErr
+		}
+		if changed, _ := result.RowsAffected(); changed != 1 {
+			return "", errors.New("OIDC subject update raced")
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return "", err
+	}
+	return subject, nil
+}
+
+func (s *Store) UpsertOIDCClient(ctx context.Context, clientID, secretHash, redirectURIs, scopes string) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO oidc_clients(client_id,secret_hash,redirect_uris,scopes) VALUES(?,?,?,?) ON CONFLICT(client_id) DO UPDATE SET secret_hash=excluded.secret_hash,redirect_uris=excluded.redirect_uris,scopes=excluded.scopes,enabled=1,updated_at=CURRENT_TIMESTAMP`, clientID, secretHash, redirectURIs, scopes)
+	return err
+}
+func (s *Store) CreateOIDCClient(ctx context.Context, clientID, secretHash, redirectURIs, scopes string) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO oidc_clients(client_id,secret_hash,redirect_uris,scopes) VALUES(?,?,?,?)`, clientID, secretHash, redirectURIs, scopes)
+	return err
+}
+func (s *Store) RotateOIDCClientSecret(ctx context.Context, clientID, secretHash string) error {
+	r, err := s.DB.ExecContext(ctx, `UPDATE oidc_clients SET secret_hash=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, secretHash, clientID)
+	if err != nil {
+		return err
+	}
+	if n, _ := r.RowsAffected(); n != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+func (s *Store) OIDCClientByID(ctx context.Context, clientID string) (c OIDCClient, err error) {
+	err = s.DB.QueryRowContext(ctx, `SELECT client_id,secret_hash,redirect_uris,scopes,enabled FROM oidc_clients WHERE client_id=?`, clientID).Scan(&c.ClientID, &c.SecretHash, &c.RedirectURIs, &c.Scopes, &c.Enabled)
+	return
+}
+func (s *Store) SetOIDCClientEnabled(ctx context.Context, clientID string, enabled bool) error {
+	r, err := s.DB.ExecContext(ctx, `UPDATE oidc_clients SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, enabled, clientID)
+	if err != nil {
+		return err
+	}
+	if n, _ := r.RowsAffected(); n != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+func (s *Store) CreateOIDCCode(ctx context.Context, c OIDCCode) error {
+	if _, err := s.DB.ExecContext(ctx, `DELETE FROM oidc_codes WHERE code_hash IN (SELECT code_hash FROM oidc_codes WHERE expires_at<CURRENT_TIMESTAMP LIMIT 100)`); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO oidc_codes(code_hash,client_id,user_id,redirect_uri,scope,nonce,code_challenge,expires_at) VALUES(?,?,?,?,?,?,?,?)`, c.CodeHash, c.ClientID, c.UserID, c.RedirectURI, c.Scope, c.Nonce, c.CodeChallenge, c.ExpiresAt.UTC())
+	return err
+}
+func (s *Store) ConsumeOIDCCode(ctx context.Context, codeHash, clientID, redirectURI string, now time.Time) (OIDCCode, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return OIDCCode{}, err
+	}
+	defer tx.Rollback()
+	var c OIDCCode
+	err = tx.QueryRowContext(ctx, `SELECT code_hash,client_id,user_id,redirect_uri,scope,nonce,code_challenge,expires_at FROM oidc_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND consumed_at IS NULL AND expires_at>=?`, codeHash, clientID, redirectURI, now.UTC()).Scan(&c.CodeHash, &c.ClientID, &c.UserID, &c.RedirectURI, &c.Scope, &c.Nonce, &c.CodeChallenge, &c.ExpiresAt)
+	if err != nil {
+		return OIDCCode{}, err
+	}
+	r, err := tx.ExecContext(ctx, `UPDATE oidc_codes SET consumed_at=? WHERE code_hash=? AND consumed_at IS NULL`, now.UTC(), codeHash)
+	if err != nil {
+		return OIDCCode{}, err
+	}
+	if n, _ := r.RowsAffected(); n != 1 {
+		return OIDCCode{}, sql.ErrNoRows
+	}
+	if err = tx.Commit(); err != nil {
+		return OIDCCode{}, err
+	}
+	return c, nil
 }

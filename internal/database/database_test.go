@@ -35,6 +35,39 @@ func TestOpenUpgradesExistingClientTable(t *testing.T) {
 	}
 }
 
+func TestOIDCSubjectAndClientSafety(t *testing.T) {
+	s, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	u, err := s.CreateUser(t.Context(), "alice", "Alice", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.EnsureOIDCSubject(t.Context(), u.ID)
+	if err != nil || first == "" || first == "alice" {
+		t.Fatalf("bad subject %q: %v", first, err)
+	}
+	if _, err = s.DB.Exec(`UPDATE users SET username='alice-renamed' WHERE id=?`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.EnsureOIDCSubject(t.Context(), u.ID)
+	if err != nil || second != first {
+		t.Fatalf("subject changed: %q %q %v", first, second, err)
+	}
+	if err = s.CreateOIDCClient(t.Context(), "access", "first-hash", "https://access.test/callback", "openid"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.CreateOIDCClient(t.Context(), "access", "second-hash", "https://evil.test/callback", "openid"); err == nil {
+		t.Fatal("duplicate client silently overwritten")
+	}
+	c, err := s.OIDCClientByID(t.Context(), "access")
+	if err != nil || c.SecretHash != "first-hash" || c.RedirectURIs != "https://access.test/callback" {
+		t.Fatalf("client changed: %+v %v", c, err)
+	}
+}
+
 func TestClientUpdateMetadata(t *testing.T) {
 	store, err := Open(":memory:")
 	if err != nil {

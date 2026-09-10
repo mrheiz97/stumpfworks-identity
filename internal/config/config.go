@@ -14,7 +14,8 @@ type Config struct {
 	SessionSecretFile                                                                         string
 	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                            string
 	ClientTargetVersion                                                                       string
-	DirectoryEnabled, PKINITEnabled, Demo                                                     bool
+	OIDCIssuer, OIDCSigningKeyFiles                                                           string
+	DirectoryEnabled, PKINITEnabled, OIDCEnabled, Demo                                        bool
 }
 
 func Default() Config { return Config{Listen: "0.0.0.0:8080", DatabasePath: "./data/badges.db"} }
@@ -87,6 +88,12 @@ func Load(path string) (Config, error) {
 				c.PKINITRealm = val
 			case "updates.client_target_version":
 				c.ClientTargetVersion = val
+			case "oidc.enabled":
+				c.OIDCEnabled = val == "true"
+			case "oidc.issuer":
+				c.OIDCIssuer = val
+			case "oidc.signing_key_files":
+				c.OIDCSigningKeyFiles = val
 			}
 		}
 		if err := s.Err(); err != nil {
@@ -117,11 +124,16 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_PKINIT_CA_KEY_FILE", &c.PKINITCAKeyFile)
 	set("SWBADGE_PKINIT_REALM", &c.PKINITRealm)
 	set("SWBADGE_CLIENT_TARGET_VERSION", &c.ClientTargetVersion)
+	set("SWBADGE_OIDC_ISSUER", &c.OIDCIssuer)
+	set("SWBADGE_OIDC_SIGNING_KEY_FILES", &c.OIDCSigningKeyFiles)
 	if v, ok := os.LookupEnv("SWBADGE_DIRECTORY_ENABLED"); ok {
 		c.DirectoryEnabled = v == "true"
 	}
 	if v, ok := os.LookupEnv("SWBADGE_PKINIT_ENABLED"); ok {
 		c.PKINITEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_OIDC_ENABLED"); ok {
+		c.OIDCEnabled = v == "true"
 	}
 	c.Demo = os.Getenv("SWBADGE_DEMO") == "true"
 	readSecret := func(path string, dst *string) error {
