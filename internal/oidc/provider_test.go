@@ -89,6 +89,20 @@ func authValues(verifier string) url.Values {
 	sum := sha256.Sum256([]byte(verifier))
 	return url.Values{"response_type": {"code"}, "client_id": {"stumpfworks-access"}, "redirect_uri": {"https://access.example.test/api/v1/auth/oidc/callback"}, "scope": {"openid profile email"}, "state": {"state-1"}, "nonce": {"nonce-1"}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"}}
 }
+
+func TestAuthorizationFormAllowsOnlyRegisteredCallbackOrigin(t *testing.T) {
+	p, _, _, _ := testProvider(t)
+	v := authValues(strings.Repeat("v", 43))
+	w := serve(p, httptest.NewRequest(http.MethodGet, "/oauth2/authorize?"+v.Encode(), nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Header().Get("Content-Security-Policy"), "form-action 'self' https://access.example.test;") {
+		t.Fatalf("registered callback not allowed: status=%d CSP=%q", w.Code, w.Header().Get("Content-Security-Policy"))
+	}
+	v.Set("redirect_uri", "https://attacker.example/callback")
+	w = serve(p, httptest.NewRequest(http.MethodGet, "/oauth2/authorize?"+v.Encode(), nil))
+	if w.Code != http.StatusBadRequest || strings.Contains(w.Header().Get("Content-Security-Policy"), "attacker.example") {
+		t.Fatal("unregistered callback affected form policy")
+	}
+}
 func issueCode(t *testing.T, p *Provider, verifier string) string {
 	t.Helper()
 	v := authValues(verifier)

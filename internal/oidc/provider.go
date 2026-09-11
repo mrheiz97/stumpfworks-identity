@@ -152,6 +152,14 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
+		// Chromium also applies form-action to redirects after form submission.
+		// Only the origin of the already validated, registered callback is allowed.
+		callback, _ := url.Parse(a.RedirectURI)
+		if strings.ContainsAny(callback.Host, " \t\r\n;'*") {
+			http.Error(w, "invalid callback origin", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; img-src 'self' data:; form-action 'self' "+callback.Scheme+"://"+callback.Host+"; frame-ancestors 'none'; base-uri 'none'")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = authTemplate.Execute(w, map[string]string{"ClientID": a.ClientID, "RedirectURI": a.RedirectURI, "Scope": a.Scope, "State": a.State, "Nonce": a.Nonce, "Challenge": a.Challenge})
