@@ -33,7 +33,7 @@ import (
 
 type Provider struct {
 	issuer   string
-	store    *database.Store
+	store    providerStore
 	dir      directory.Directory
 	sessions *adminauth.Sessions
 	keys     []jose.JSONWebKey

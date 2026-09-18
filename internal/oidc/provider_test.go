@@ -124,8 +124,14 @@ func exchange(p *Provider, code, verifier string) *httptest.ResponseRecorder {
 	return exchangeSecret(p, code, verifier, "client-secret")
 }
 func exchangeSecret(p *Provider, code, verifier, secret string) *httptest.ResponseRecorder {
+	return exchangeFrom(p, code, verifier, secret, "")
+}
+func exchangeFrom(p *Provider, code, verifier, secret, remoteAddress string) *httptest.ResponseRecorder {
 	v := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {"https://access.example.test/api/v1/auth/oidc/callback"}, "code_verifier": {verifier}}
 	r := httptest.NewRequest(http.MethodPost, "/oauth2/token", strings.NewReader(v.Encode()))
+	if remoteAddress != "" {
+		r.RemoteAddr = remoteAddress
+	}
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.SetBasicAuth("stumpfworks-access", secret)
 	return serve(p, r)
@@ -146,6 +152,24 @@ func TestAuthorizationAndTokenFailures(t *testing.T) {
 	code := issueCode(t, p, strings.Repeat("v", 43))
 	if w := exchangeSecret(p, code, strings.Repeat("v", 43), "wrong"); w.Code != 401 {
 		t.Fatalf("wrong client secret accepted: %d", w.Code)
+	}
+}
+
+func TestTokenRateLimit(t *testing.T) {
+	p, _, _, _ := testProvider(t)
+	testTokenRateLimit(t, p)
+}
+
+func testTokenRateLimit(t *testing.T, p *Provider) {
+	t.Helper()
+	const remoteAddress = "192.0.2.99:1234"
+	for i := 0; i < 10; i++ {
+		if response := exchangeFrom(p, "synthetic-unused", strings.Repeat("v", 43), "wrong", remoteAddress); response.Code != 401 {
+			t.Fatal("client rejected before rate threshold")
+		}
+	}
+	if response := exchangeFrom(p, "synthetic-unused", strings.Repeat("v", 43), "wrong", remoteAddress); response.Code != 429 {
+		t.Fatal("token rate threshold not enforced")
 	}
 }
 

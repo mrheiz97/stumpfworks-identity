@@ -12,14 +12,41 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: identity-ci-fixture
+          POSTGRES_DB: postgres
+        ports:
+          - 127.0.0.1:55441:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      - name: PostgreSQL 17 backup tools
+        run: |
+          if [ ! -x /usr/lib/postgresql/17/bin/pg_dump ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client-17
+          fi
+          test -x /usr/lib/postgresql/17/bin/pg_dump
+          test -x /usr/lib/postgresql/17/bin/pg_restore
       - name: Go tests
-        run: go test ./...
+        env:
+          # Synthetic service credentials, never production credentials.
+          IDENTITY_TEST_POSTGRES_URL: postgres://postgres:identity-ci-fixture@127.0.0.1:55441/postgres?sslmode=disable
+          IDENTITY_TEST_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          IDENTITY_TEST_PG_RESTORE: /usr/lib/postgresql/17/bin/pg_restore
+        run: go test -race ./...
       - name: Python syntax
         run: |
           python3 -m py_compile cmd/native-greeter/sw-badge-native-greeter.py
