@@ -6,6 +6,8 @@ updates:
   client_target_version: "1.2.1"
 directory:
   enabled: false
+  # Read-only framework adapter. Requires a CA-trusted hostname-valid LDAPS certificate.
+  framework_read_enabled: false
   url: "ldaps://dc01.example.test:636"
   base_dn: "DC=example,DC=test"
   bind_dn: ""

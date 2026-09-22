@@ -22,6 +22,18 @@ directory. No silent certificate bypass or
 automatic insecure fallback. Do not point read and auth adapters at different
 directories.
 
+The server now has a separate, default-off `directory.framework_read_enabled`
+switch (environment: `SWBADGE_DIRECTORY_FRAMEWORK_READ_ENABLED`). When enabled,
+only user reads use the framework adapter; password/admin authentication and
+listing remain on the exact same LDAP configuration. Startup fails if the
+legacy certificate-pin/SAN bypass is still configured. DC01 currently has no
+DNS SAN, so this switch must remain disabled until its certificate is replaced.
+The runtime-selection tests verify default-off behavior, reject selection while
+the directory itself is disabled, reject the legacy pin, and accept a normal
+CA/hostname-verifying configuration. On 2026-09-22 the complete local suite,
+including disposable PostgreSQL import/restore and OIDC contracts, plus vet and
+module verification passed. No production configuration was changed.
+
 On 2026-09-18 the full local Go 1.26.8 test suite, vet and module verification
 passed, including synthetic PostgreSQL import/restore and OIDC contracts. The
 Windows PKINIT certificate test requires OpenSSL on PATH; the installed Git

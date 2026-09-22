@@ -4,6 +4,8 @@ github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260914115057-8fccddb06c5e h
 github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260914115057-8fccddb06c5e/go.mod h1:nQPcndVwvHEkdtSci/vHwCvE7yLPwFC4KBdbQC5Izs0=
 github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260918165735-b4faec548844 h1:yfY5q0Lu/FlNktu4Sk5nOdzk1rOz2RZ9YgRx/i8Mt1w=
 github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260918165735-b4faec548844/go.mod h1:DcKzdQD86qCR3RS8ay7Fyn2EWMXmS4ngO9RjChq4ujw=
+github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922191745-d17257edddf5 h1:G/tEOyOWclqm6u6JrR1YjBkoCoy3m+/pkEhRMQjzdnE=
+github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922191745-d17257edddf5/go.mod h1:DcKzdQD86qCR3RS8ay7Fyn2EWMXmS4ngO9RjChq4ujw=
 github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e h1:4dAU9FXIyQktpoUAgOJK3OTFc/xug0PCXYCqU0FgDKI=
 github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e/go.mod h1:cEWa1LVoE5KvSD9ONXsZrj0z6KqySlCCNKHlLzbqAt4=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

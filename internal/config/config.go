@@ -15,7 +15,7 @@ type Config struct {
 	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                            string
 	ClientTargetVersion                                                                       string
 	OIDCIssuer, OIDCSigningKeyFiles                                                           string
-	DirectoryEnabled, PKINITEnabled, OIDCEnabled, Demo                                        bool
+	DirectoryEnabled, DirectoryFrameworkReadEnabled, PKINITEnabled, OIDCEnabled, Demo         bool
 }
 
 func Default() Config { return Config{Listen: "0.0.0.0:8080", DatabasePath: "./data/badges.db"} }
@@ -56,6 +56,8 @@ func Load(path string) (Config, error) {
 				c.DatabasePath = val
 			case "directory.enabled":
 				c.DirectoryEnabled = val == "true"
+			case "directory.framework_read_enabled":
+				c.DirectoryFrameworkReadEnabled = val == "true"
 			case "directory.url":
 				c.DirectoryURL = val
 			case "directory.base_dn":
@@ -128,6 +130,9 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_OIDC_SIGNING_KEY_FILES", &c.OIDCSigningKeyFiles)
 	if v, ok := os.LookupEnv("SWBADGE_DIRECTORY_ENABLED"); ok {
 		c.DirectoryEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_DIRECTORY_FRAMEWORK_READ_ENABLED"); ok {
+		c.DirectoryFrameworkReadEnabled = v == "true"
 	}
 	if v, ok := os.LookupEnv("SWBADGE_PKINIT_ENABLED"); ok {
 		c.PKINITEnabled = v == "true"

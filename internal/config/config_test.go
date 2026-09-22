@@ -38,3 +38,19 @@ func TestOIDCConfigIsOptInAndEnvironmentOverrides(t *testing.T) {
 		t.Fatalf("environment override failed: %+v %v", loaded, err)
 	}
 }
+
+func TestFrameworkDirectoryReadsAreSeparatelyOptIn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("directory:\n  enabled: true\n  framework_read_enabled: false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || !loaded.DirectoryEnabled || loaded.DirectoryFrameworkReadEnabled {
+		t.Fatalf("unexpected opt-in defaults: %+v %v", loaded, err)
+	}
+	t.Setenv("SWBADGE_DIRECTORY_FRAMEWORK_READ_ENABLED", "true")
+	loaded, err = Load(path)
+	if err != nil || !loaded.DirectoryFrameworkReadEnabled {
+		t.Fatalf("framework read environment opt-in failed: %+v %v", loaded, err)
+	}
+}

@@ -39,6 +39,11 @@ func main() {
 		os.Exit(1)
 	}
 	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
+	runtimeDirectory, e := runtimeDirectoryForConfig(cfg, configuredDirectory)
+	if e != nil {
+		slog.Error("framework directory read configuration failed", "error", e)
+		os.Exit(1)
+	}
 	if *checkDirectory {
 		if !cfg.DirectoryEnabled {
 			slog.Error("directory is disabled")
@@ -134,7 +139,7 @@ func main() {
 			slog.Error("session configuration failed", "error", e)
 			os.Exit(1)
 		}
-		srv = app.NewProtected(st, log, configuredDirectory, sessions)
+		srv = app.NewProtected(st, log, runtimeDirectory, sessions)
 	} else {
 		srv = app.New(st, log)
 	}
@@ -155,7 +160,7 @@ func main() {
 			slog.Error("OIDC requires the protected directory authentication mode")
 			os.Exit(1)
 		}
-		provider, err := oidcprovider.New(cfg.OIDCIssuer, strings.Split(cfg.OIDCSigningKeyFiles, ","), st, configuredDirectory, sessions)
+		provider, err := oidcprovider.New(cfg.OIDCIssuer, strings.Split(cfg.OIDCSigningKeyFiles, ","), st, runtimeDirectory, sessions)
 		if err != nil {
 			slog.Error("OIDC configuration failed", "error", err)
 			os.Exit(1)
@@ -177,6 +182,17 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+func runtimeDirectoryForConfig(cfg config.Config, existing directory.LDAP) (directory.Directory, error) {
+	if !cfg.DirectoryFrameworkReadEnabled {
+		return existing, nil
+	}
+	if !cfg.DirectoryEnabled {
+		return nil, fmt.Errorf("framework directory reads require directory.enabled")
+	}
+	return existing.WithFrameworkLookups()
+}
+
 func seed(s *database.Store) {
 	for _, u := range []struct{ n, d string }{{"alice", "Alice Example"}, {"bob", "Bob Example"}} {
 		_, _ = s.CreateUser(context.Background(), u.n, u.d, "")
