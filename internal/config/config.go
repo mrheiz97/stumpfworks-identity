@@ -179,8 +179,10 @@ func Load(path string) (Config, error) {
 	if err := readSecret(c.SessionSecretFile, &c.SessionSecret); err != nil {
 		return c, err
 	}
-	if err := readSecret(c.MetricsTokenFile, &c.MetricsToken); err != nil {
-		return c, err
+	if c.MetricsEnabled {
+		if err := readSecret(c.MetricsTokenFile, &c.MetricsToken); err != nil {
+			return c, err
+		}
 	}
 	return c, nil
 }

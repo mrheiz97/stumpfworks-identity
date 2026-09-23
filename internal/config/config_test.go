@@ -90,3 +90,14 @@ func TestSecretFilesAreBounded(t *testing.T) {
 		t.Fatal("oversized secret file accepted or exposed")
 	}
 }
+
+func TestDisabledMetricsDoNotRequireSecretFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("metrics:\n  enabled: false\n  token_file: /missing/metrics-token\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || loaded.MetricsEnabled || loaded.MetricsToken != "" {
+		t.Fatalf("disabled metrics loaded secret: %+v %v", loaded, err)
+	}
+}

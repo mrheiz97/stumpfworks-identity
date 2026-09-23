@@ -42,6 +42,25 @@ available immediately, and framework LDAP observations join them when that
 separate adapter switch is later enabled. Direct tests cover unauthorized and
 authorized scraping plus unchanged application routing. It is not deployed.
 
+Prometheus should read the same token from a protected file rather than embed it
+in its configuration. Example (replace target and paths locally):
+
+```yaml
+scrape_configs:
+  - job_name: stumpfworks-identity
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/identity-metrics-token
+    static_configs:
+      - targets: ["login01.example.test:8080"]
+```
+
+Validate the complete configuration with `promtool check config` before reload.
+The syntax follows Prometheus' documented `authorization.credentials_file` HTTP
+client setting; the example contains no real hostname, token, or CA path.
+
 On 2026-09-18 the full local Go 1.26.8 test suite, vet and module verification
 passed, including synthetic PostgreSQL import/restore and OIDC contracts. The
 Windows PKINIT certificate test requires OpenSSL on PATH; the installed Git
