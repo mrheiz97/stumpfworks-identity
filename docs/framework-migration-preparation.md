@@ -60,6 +60,8 @@ scrape_configs:
 Validate the complete configuration with `promtool check config` before reload.
 The syntax follows Prometheus' documented `authorization.credentials_file` HTTP
 client setting; the example contains no real hostname, token, or CA path.
+An undeployed Linux/amd64 server build confirms Go 1.26.8 and the pinned
+framework revision `84cdaec`; it is only a local build artifact.
 
 On 2026-09-18 the full local Go 1.26.8 test suite, vet and module verification
 passed, including synthetic PostgreSQL import/restore and OIDC contracts. The
