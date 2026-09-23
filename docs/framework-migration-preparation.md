@@ -34,6 +34,14 @@ CA/hostname-verifying configuration. On 2026-09-22 the complete local suite,
 including disposable PostgreSQL import/restore and OIDC contracts, plus vet and
 module verification passed. No production configuration was changed.
 
+Identity now also has a default-off, bearer-protected `/metrics` endpoint using
+the framework registry. Configuration uses `metrics.enabled` plus a runtime
+`SWBADGE_METRICS_TOKEN` or root-readable `metrics.token_file`; tokens are not
+accepted as command-line arguments or committed examples. HTTP metrics are
+available immediately, and framework LDAP observations join them when that
+separate adapter switch is later enabled. Direct tests cover unauthorized and
+authorized scraping plus unchanged application routing. It is not deployed.
+
 On 2026-09-18 the full local Go 1.26.8 test suite, vet and module verification
 passed, including synthetic PostgreSQL import/restore and OIDC contracts. The
 Windows PKINIT certificate test requires OpenSSL on PATH; the installed Git

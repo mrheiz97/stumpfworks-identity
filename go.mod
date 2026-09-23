@@ -3,7 +3,7 @@ module github.com/TheRealHZL/stumpfworks-identity
 go 1.26.8
 
 require (
-	github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922191745-d17257edddf5
+	github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922194723-84cdaece5506
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/jackc/pgx/v5 v5.11.0

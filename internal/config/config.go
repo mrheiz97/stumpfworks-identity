@@ -7,15 +7,16 @@ import (
 )
 
 type Config struct {
-	Listen, TLSCertFile, TLSKeyFile, DatabasePath, DirectoryURL, BaseDN, BindDN, BindPassword string
-	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                     string
-	DirectoryBindPasswordFile, DirectoryCertSHA256                                            string
-	SessionSecret                                                                             string
-	SessionSecretFile                                                                         string
-	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                            string
-	ClientTargetVersion                                                                       string
-	OIDCIssuer, OIDCSigningKeyFiles                                                           string
-	DirectoryEnabled, DirectoryFrameworkReadEnabled, PKINITEnabled, OIDCEnabled, Demo         bool
+	Listen, TLSCertFile, TLSKeyFile, DatabasePath, DirectoryURL, BaseDN, BindDN, BindPassword         string
+	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                             string
+	DirectoryBindPasswordFile, DirectoryCertSHA256                                                    string
+	SessionSecret                                                                                     string
+	SessionSecretFile                                                                                 string
+	MetricsToken, MetricsTokenFile                                                                    string
+	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                                    string
+	ClientTargetVersion                                                                               string
+	OIDCIssuer, OIDCSigningKeyFiles                                                                   string
+	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled, Demo bool
 }
 
 func Default() Config { return Config{Listen: "0.0.0.0:8080", DatabasePath: "./data/badges.db"} }
@@ -80,6 +81,10 @@ func Load(path string) (Config, error) {
 				c.SessionSecret = val
 			case "auth.session_secret_file":
 				c.SessionSecretFile = val
+			case "metrics.enabled":
+				c.MetricsEnabled = val == "true"
+			case "metrics.token_file":
+				c.MetricsTokenFile = val
 			case "pkinit.enabled":
 				c.PKINITEnabled = val == "true"
 			case "pkinit.ca_cert_file":
@@ -122,6 +127,8 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_DIRECTORY_CERT_SHA256", &c.DirectoryCertSHA256)
 	set("SWBADGE_SESSION_SECRET", &c.SessionSecret)
 	set("SWBADGE_SESSION_SECRET_FILE", &c.SessionSecretFile)
+	set("SWBADGE_METRICS_TOKEN", &c.MetricsToken)
+	set("SWBADGE_METRICS_TOKEN_FILE", &c.MetricsTokenFile)
 	set("SWBADGE_PKINIT_CA_CERT_FILE", &c.PKINITCACertFile)
 	set("SWBADGE_PKINIT_CA_KEY_FILE", &c.PKINITCAKeyFile)
 	set("SWBADGE_PKINIT_REALM", &c.PKINITRealm)
@@ -136,6 +143,9 @@ func Load(path string) (Config, error) {
 	}
 	if v, ok := os.LookupEnv("SWBADGE_PKINIT_ENABLED"); ok {
 		c.PKINITEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_METRICS_ENABLED"); ok {
+		c.MetricsEnabled = v == "true"
 	}
 	if v, ok := os.LookupEnv("SWBADGE_OIDC_ENABLED"); ok {
 		c.OIDCEnabled = v == "true"
@@ -156,6 +166,9 @@ func Load(path string) (Config, error) {
 		return c, err
 	}
 	if err := readSecret(c.SessionSecretFile, &c.SessionSecret); err != nil {
+		return c, err
+	}
+	if err := readSecret(c.MetricsTokenFile, &c.MetricsToken); err != nil {
 		return c, err
 	}
 	return c, nil

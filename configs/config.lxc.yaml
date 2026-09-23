@@ -27,6 +27,10 @@ auth:
   session_secret: ""
   session_secret_file: "/etc/stumpfworks-badge/session-secret"
 
+metrics:
+  enabled: false
+  token_file: "/etc/stumpfworks-badge/metrics-token"
+
 pkinit:
   enabled: true
   ca_cert_file: "/etc/stumpfworks-badge/pkinit-ca/ca.crt"

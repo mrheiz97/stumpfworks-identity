@@ -14,10 +14,16 @@ import (
 // this LDAP instance for authentication/listing. Legacy SAN-bypass pinning must
 // be removed only after the directory has a CA-trusted, hostname-valid cert.
 func (d LDAP) WithFrameworkLookups() (Directory, error) {
+	return d.WithFrameworkLookupsObserved(nil)
+}
+
+// WithFrameworkLookupsObserved additionally emits privacy-bounded framework
+// observations. Authentication and listing remain on this exact LDAP adapter.
+func (d LDAP) WithFrameworkLookupsObserved(observer frameworkldap.Observer) (Directory, error) {
 	if d.CertSHA256 != "" {
 		return nil, errors.New("framework directory requires CA and hostname verification, not legacy certificate pinning")
 	}
-	config := frameworkldap.Config{URL: d.URL, BaseDN: d.BaseDN, BindDN: d.BindDN, BindPassword: d.BindPassword}
+	config := frameworkldap.Config{URL: d.URL, BaseDN: d.BaseDN, BindDN: d.BindDN, BindPassword: d.BindPassword, Observer: observer}
 	if d.CAFile != "" {
 		f, err := os.Open(d.CAFile)
 		if err != nil {

@@ -54,3 +54,24 @@ func TestFrameworkDirectoryReadsAreSeparatelyOptIn(t *testing.T) {
 		t.Fatalf("framework read environment opt-in failed: %+v %v", loaded, err)
 	}
 }
+
+func TestMetricsAreOptInAndTokenComesFromProtectedInputs(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "metrics-token")
+	if err := os.WriteFile(secretFile, []byte("synthetic-metrics-token-at-least-32-bytes\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "metrics:\n  enabled: true\n  token_file: \"" + secretFile + "\"\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || !loaded.MetricsEnabled || loaded.MetricsToken != "synthetic-metrics-token-at-least-32-bytes" {
+		t.Fatalf("metrics secret file was not loaded: enabled=%t token_length=%d err=%v", loaded.MetricsEnabled, len(loaded.MetricsToken), err)
+	}
+	t.Setenv("SWBADGE_METRICS_TOKEN", "environment-metrics-token-at-least-32-bytes")
+	loaded, err = Load(path)
+	if err != nil || loaded.MetricsToken != "environment-metrics-token-at-least-32-bytes" {
+		t.Fatal("environment token did not override token file")
+	}
+}

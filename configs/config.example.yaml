@@ -20,6 +20,11 @@ auth:
   # Prefer SWBADGE_SESSION_SECRET; use at least 32 random bytes.
   session_secret: ""
 
+metrics:
+  enabled: false
+  # Prefer SWBADGE_METRICS_TOKEN or a root-readable token file.
+  token_file: ""
+
 oidc:
   # Disabled by default. The issuer must exactly match the externally visible HTTPS URL.
   enabled: false
