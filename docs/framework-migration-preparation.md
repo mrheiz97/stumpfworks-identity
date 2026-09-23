@@ -67,8 +67,9 @@ On 2026-09-18 the full local Go 1.26.8 test suite, vet and module verification
 passed, including synthetic PostgreSQL import/restore and OIDC contracts. The
 Windows PKINIT certificate test requires OpenSSL on PATH; the installed Git
 OpenSSL was used. No runtime adapter was enabled and no production data changed.
-The prepared CI workflow runs race tests against a synthetic PostgreSQL 17
-service and explicitly requires matching dump/restore tools. This workflow
+The prepared CI workflow runs race tests against a synthetic PostgreSQL 16
+service and explicitly requires matching dump/restore tools from the runner.
+Disposable local PostgreSQL 17 tests cover the next major version. This workflow
 change has not yet run on GitHub; local Windows checks do not establish race-test
 acceptance. Ten shuffled repetitions of directory/database/OIDC tests passed.
 
