@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	frameworkldap "github.com/TheRealHZL/stumpfworks-framework/directory/ldap"
+	frameworkmetrics "github.com/TheRealHZL/stumpfworks-framework/web/metrics"
 	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
@@ -39,6 +41,16 @@ func main() {
 		os.Exit(1)
 	}
 	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
+	metricsRegistry := frameworkmetrics.New()
+	var directoryObserver frameworkldap.Observer
+	if cfg.MetricsEnabled {
+		directoryObserver = metricsRegistry.LDAPObserver()
+	}
+	runtimeDirectory, e := runtimeDirectoryForConfig(cfg, configuredDirectory, directoryObserver)
+	if e != nil {
+		slog.Error("framework directory read configuration failed", "error", e)
+		os.Exit(1)
+	}
 	if *checkDirectory {
 		if !cfg.DirectoryEnabled {
 			slog.Error("directory is disabled")
@@ -134,7 +146,7 @@ func main() {
 			slog.Error("session configuration failed", "error", e)
 			os.Exit(1)
 		}
-		srv = app.NewProtected(st, log, configuredDirectory, sessions)
+		srv = app.NewProtected(st, log, runtimeDirectory, sessions)
 	} else {
 		srv = app.New(st, log)
 	}
@@ -155,28 +167,65 @@ func main() {
 			slog.Error("OIDC requires the protected directory authentication mode")
 			os.Exit(1)
 		}
-		provider, err := oidcprovider.New(cfg.OIDCIssuer, strings.Split(cfg.OIDCSigningKeyFiles, ","), st, configuredDirectory, sessions)
+		provider, err := oidcprovider.New(cfg.OIDCIssuer, strings.Split(cfg.OIDCSigningKeyFiles, ","), st, runtimeDirectory, sessions)
 		if err != nil {
 			slog.Error("OIDC configuration failed", "error", err)
 			os.Exit(1)
 		}
 		srv.ConfigureOIDC(provider)
 	}
-	log.Info("server starting", "component", "server", "listen", cfg.Listen, "version", version.Version)
+	applicationHandler := srv.Handler()
+	if cfg.MetricsEnabled {
+		applicationHandler, e = applicationHandlerWithMetrics(applicationHandler, cfg.MetricsToken, metricsRegistry)
+		if e != nil {
+			slog.Error("metrics configuration failed", "error", e)
+			os.Exit(1)
+		}
+	}
+	log.Info("server starting", "component", "server", "listen", cfg.Listen, "version", version.Version, "metrics_enabled", cfg.MetricsEnabled)
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
 		if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
 			slog.Error("both TLS certificate and key are required")
 			os.Exit(1)
 		}
-		e = http.ListenAndServeTLS(cfg.Listen, cfg.TLSCertFile, cfg.TLSKeyFile, srv.Handler())
+		e = http.ListenAndServeTLS(cfg.Listen, cfg.TLSCertFile, cfg.TLSKeyFile, applicationHandler)
 	} else {
-		e = http.ListenAndServe(cfg.Listen, srv.Handler())
+		e = http.ListenAndServe(cfg.Listen, applicationHandler)
 	}
 	if e != nil {
 		slog.Error("server stopped", "error", e)
 		os.Exit(1)
 	}
 }
+
+func applicationHandlerWithMetrics(application http.Handler, token string, registry *frameworkmetrics.Registry) (http.Handler, error) {
+	if application == nil || registry == nil {
+		return nil, fmt.Errorf("metrics requires application handler and registry")
+	}
+	metricsHandler, err := frameworkmetrics.ProtectBearer(registry.Handler(), token)
+	if err != nil {
+		return nil, err
+	}
+	root := http.NewServeMux()
+	root.Handle("GET /metrics", metricsHandler)
+	root.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+	root.Handle("/", registry.Middleware(application))
+	return root, nil
+}
+
+func runtimeDirectoryForConfig(cfg config.Config, existing directory.LDAP, observer frameworkldap.Observer) (directory.Directory, error) {
+	if !cfg.DirectoryFrameworkReadEnabled {
+		return existing, nil
+	}
+	if !cfg.DirectoryEnabled {
+		return nil, fmt.Errorf("framework directory reads require directory.enabled")
+	}
+	return existing.WithFrameworkLookupsObserved(observer)
+}
+
 func seed(s *database.Store) {
 	for _, u := range []struct{ n, d string }{{"alice", "Alice Example"}, {"bob", "Bob Example"}} {
 		_, _ = s.CreateUser(context.Background(), u.n, u.d, "")

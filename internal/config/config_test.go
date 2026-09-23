@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,5 +37,67 @@ func TestOIDCConfigIsOptInAndEnvironmentOverrides(t *testing.T) {
 	loaded, err = Load(path)
 	if err != nil || !loaded.OIDCEnabled || loaded.OIDCIssuer != "https://override.example.test" {
 		t.Fatalf("environment override failed: %+v %v", loaded, err)
+	}
+}
+
+func TestFrameworkDirectoryReadsAreSeparatelyOptIn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("directory:\n  enabled: true\n  framework_read_enabled: false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || !loaded.DirectoryEnabled || loaded.DirectoryFrameworkReadEnabled {
+		t.Fatalf("unexpected opt-in defaults: %+v %v", loaded, err)
+	}
+	t.Setenv("SWBADGE_DIRECTORY_FRAMEWORK_READ_ENABLED", "true")
+	loaded, err = Load(path)
+	if err != nil || !loaded.DirectoryFrameworkReadEnabled {
+		t.Fatalf("framework read environment opt-in failed: %+v %v", loaded, err)
+	}
+}
+
+func TestMetricsAreOptInAndTokenComesFromProtectedInputs(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "metrics-token")
+	if err := os.WriteFile(secretFile, []byte("synthetic-metrics-token-at-least-32-bytes\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "metrics:\n  enabled: true\n  token_file: \"" + secretFile + "\"\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || !loaded.MetricsEnabled || loaded.MetricsToken != "synthetic-metrics-token-at-least-32-bytes" {
+		t.Fatalf("metrics secret file was not loaded: enabled=%t token_length=%d err=%v", loaded.MetricsEnabled, len(loaded.MetricsToken), err)
+	}
+	t.Setenv("SWBADGE_METRICS_TOKEN", "environment-metrics-token-at-least-32-bytes")
+	loaded, err = Load(path)
+	if err != nil || loaded.MetricsToken != "environment-metrics-token-at-least-32-bytes" {
+		t.Fatal("environment token did not override token file")
+	}
+}
+
+func TestSecretFilesAreBounded(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "oversized-secret")
+	if err := os.WriteFile(secretFile, []byte(strings.Repeat("x", (64<<10)+1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("metrics:\n  enabled: true\n  token_file: \""+secretFile+"\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || strings.Contains(err.Error(), strings.Repeat("x", 32)) {
+		t.Fatal("oversized secret file accepted or exposed")
+	}
+}
+
+func TestDisabledMetricsDoNotRequireSecretFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("metrics:\n  enabled: false\n  token_file: /missing/metrics-token\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || loaded.MetricsEnabled || loaded.MetricsToken != "" {
+		t.Fatalf("disabled metrics loaded secret: %+v %v", loaded, err)
 	}
 }

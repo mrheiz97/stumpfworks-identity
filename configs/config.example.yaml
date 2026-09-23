@@ -6,6 +6,8 @@ updates:
   client_target_version: "1.2.1"
 directory:
   enabled: false
+  # Read-only framework adapter. Requires a CA-trusted hostname-valid LDAPS certificate.
+  framework_read_enabled: false
   url: "ldaps://dc01.example.test:636"
   base_dn: "DC=example,DC=test"
   bind_dn: ""
@@ -17,6 +19,11 @@ directory:
 auth:
   # Prefer SWBADGE_SESSION_SECRET; use at least 32 random bytes.
   session_secret: ""
+
+metrics:
+  enabled: false
+  # Prefer SWBADGE_METRICS_TOKEN or a root-readable token file.
+  token_file: ""
 
 oidc:
   # Disabled by default. The issuer must exactly match the externally visible HTTPS URL.
