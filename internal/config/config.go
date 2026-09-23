@@ -2,6 +2,8 @@ package config
 
 import (
 	"bufio"
+	"errors"
+	"io"
 	"os"
 	"strings"
 )
@@ -155,9 +157,18 @@ func Load(path string) (Config, error) {
 		if path == "" || *dst != "" {
 			return nil
 		}
-		b, err := os.ReadFile(path)
+		file, err := os.Open(path)
 		if err != nil {
 			return err
+		}
+		defer file.Close()
+		const maxSecretBytes = 64 << 10
+		b, err := io.ReadAll(io.LimitReader(file, maxSecretBytes+1))
+		if err != nil {
+			return err
+		}
+		if len(b) > maxSecretBytes {
+			return errors.New("secret file exceeds 64 KiB limit")
 		}
 		*dst = strings.TrimSpace(string(b))
 		return nil

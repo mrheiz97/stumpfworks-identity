@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,19 @@ func TestMetricsAreOptInAndTokenComesFromProtectedInputs(t *testing.T) {
 	loaded, err = Load(path)
 	if err != nil || loaded.MetricsToken != "environment-metrics-token-at-least-32-bytes" {
 		t.Fatal("environment token did not override token file")
+	}
+}
+
+func TestSecretFilesAreBounded(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "oversized-secret")
+	if err := os.WriteFile(secretFile, []byte(strings.Repeat("x", (64<<10)+1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("metrics:\n  enabled: true\n  token_file: \""+secretFile+"\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || strings.Contains(err.Error(), strings.Repeat("x", 32)) {
+		t.Fatal("oversized secret file accepted or exposed")
 	}
 }
