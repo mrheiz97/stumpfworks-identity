@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -78,6 +79,15 @@ func New(st *database.Store, l *slog.Logger) *Server {
 	s := &Server{store: st, log: l, started: time.Now(), mux: http.NewServeMux(), loginAttempts: map[string][]time.Time{}, pinAttempts: map[string][]time.Time{}, grants: map[string]loginGrant{}, clientTargetVersion: version.Version}
 	s.routes()
 	return s
+}
+
+// audit records a security-relevant event without exposing database details to
+// the request or logs. Existing handlers retain their current best-effort
+// behaviour until mutations and their success events can be made atomic.
+func (s *Server) audit(ctx context.Context, event, badge, user, client string, success bool, ip, details string) {
+	if err := s.store.WriteAudit(ctx, database.Audit{EventType: event, BadgeID: badge, Username: user, ClientID: client, Success: success, IPAddress: ip, Details: details}); err != nil {
+		s.log.Error("security audit write failed", "component", "audit", "event_type", event)
+	}
 }
 func (s *Server) ConfigureClientTargetVersion(target string) error {
 	if target == "" {
@@ -245,7 +255,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	token := s.sessions.Issue(u.Username, time.Now())
 	http.SetCookie(w, &http.Cookie{Name: "swbadge_admin", Value: token, Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 	s.log.Info("admin login accepted", "event", "admin_login_success", "username", u.Username, "ip_address", remoteIP(r))
-	s.store.Audit(r.Context(), "admin_login", "", u.Username, "", true, ip, "")
+	s.audit(r.Context(), "admin_login", "", u.Username, "", true, ip, "")
 	http.Redirect(w, r, "/", 303)
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +290,7 @@ func (s *Server) importDirectoryUser(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/users?status=already_imported", 303)
 		return
 	}
-	s.store.Audit(r.Context(), "directory_user_imported", "", created.Username, "", true, remoteIP(r), "")
+	s.audit(r.Context(), "directory_user_imported", "", created.Username, "", true, remoteIP(r), "")
 	http.Redirect(w, r, "/users?status=imported", 303)
 }
 func (s *Server) setUserPIN(w http.ResponseWriter, r *http.Request) {
@@ -309,7 +319,7 @@ func (s *Server) setUserPIN(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 500, "database_error")
 		return
 	}
-	s.store.Audit(r.Context(), event, "", u.Username, "", true, remoteIP(r), "")
+	s.audit(r.Context(), event, "", u.Username, "", true, remoteIP(r), "")
 	http.Redirect(w, r, "/users", 303)
 }
 func (s *Server) pinPage(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +419,7 @@ func (s *Server) selfServiceLogin(w http.ResponseWriter, r *http.Request) {
 	if e != nil {
 		s.loginFailed("self-service:" + ip)
 		s.log.Warn("self-service login denied", "event", "self_service_login_failed", "username", username, "ip_address", ip)
-		s.store.Audit(r.Context(), "self_service_login", "", username, "", false, ip, "")
+		s.audit(r.Context(), "self_service_login", "", username, "", false, ip, "")
 		http.Redirect(w, r, "/self-service?error=invalid_credentials", http.StatusSeeOther)
 		return
 	}
@@ -435,7 +445,7 @@ func (s *Server) selfServiceLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	token := s.sessions.IssueForDuration("self-service", local.Username+"\x1f"+sessionID, time.Now(), 15*time.Minute)
 	http.SetCookie(w, &http.Cookie{Name: "swbadge_selfservice", Value: token, Path: "/self-service", MaxAge: 900, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
-	s.store.Audit(r.Context(), "self_service_login", "", local.Username, "", true, ip, "")
+	s.audit(r.Context(), "self_service_login", "", local.Username, "", true, ip, "")
 	http.Redirect(w, r, "/self-service", http.StatusSeeOther)
 }
 func (s *Server) selfServiceSetPIN(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +475,7 @@ func (s *Server) selfServiceSetPIN(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/self-service?error=unavailable", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "pin_self_service_changed", "", u.Username, "", true, remoteIP(r), "")
+	s.audit(r.Context(), "pin_self_service_changed", "", u.Username, "", true, remoteIP(r), "")
 	http.Redirect(w, r, "/self-service?status=pin_updated", http.StatusSeeOther)
 }
 func validSelfServicePIN(value string) bool {
@@ -506,7 +516,7 @@ func (s *Server) selfServiceRevokeBadge(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/self-service?error=badge_unavailable", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "badge_self_service_revoked", b.BadgeCode, u.Username, "", true, remoteIP(r), "lost_badge")
+	s.audit(r.Context(), "badge_self_service_revoked", b.BadgeCode, u.Username, "", true, remoteIP(r), "lost_badge")
 	http.Redirect(w, r, "/self-service?status=badge_revoked", http.StatusSeeOther)
 }
 func (s *Server) selfServiceActivateBadge(w http.ResponseWriter, r *http.Request) {
@@ -532,7 +542,7 @@ func (s *Server) selfServiceActivateBadge(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/self-service?error=activation_invalid", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "badge_self_service_activated", b.BadgeCode, u.Username, "", true, remoteIP(r), "replacement_badge")
+	s.audit(r.Context(), "badge_self_service_activated", b.BadgeCode, u.Username, "", true, remoteIP(r), "replacement_badge")
 	http.Redirect(w, r, "/self-service?status=badge_activated", http.StatusSeeOther)
 }
 func (s *Server) selfServiceLogoutOthers(w http.ResponseWriter, r *http.Request) {
@@ -552,7 +562,7 @@ func (s *Server) selfServiceLogoutOthers(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, "/self-service?error=unavailable", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "self_service_sessions_revoked", "", username, "", true, remoteIP(r), fmt.Sprintf("count=%d", count))
+	s.audit(r.Context(), "self_service_sessions_revoked", "", username, "", true, remoteIP(r), fmt.Sprintf("count=%d", count))
 	http.Redirect(w, r, "/self-service?status=sessions_revoked", http.StatusSeeOther)
 }
 func (s *Server) selfServiceLogout(w http.ResponseWriter, r *http.Request) {
@@ -608,7 +618,7 @@ func (s *Server) users(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 409, "user_exists")
 		return
 	}
-	s.store.Audit(r.Context(), "user_created", "", u.Username, "", true, remoteIP(r), "")
+	s.audit(r.Context(), "user_created", "", u.Username, "", true, remoteIP(r), "")
 	s.json(w, 201, u)
 }
 func (s *Server) user(w http.ResponseWriter, r *http.Request) {
@@ -670,7 +680,7 @@ func (s *Server) createBadge(r *http.Request, user int64, desc string) (database
 	}
 	b, e := s.store.CreateBadge(r.Context(), user, badge.HashToken(t), desc)
 	if e == nil {
-		s.store.Audit(r.Context(), "badge_created", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
+		s.audit(r.Context(), "badge_created", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
 	}
 	return b, t, e
 }
@@ -706,7 +716,7 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 500, "database_error")
 		return
 	}
-	s.store.Audit(r.Context(), "badge_revoked", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
+	s.audit(r.Context(), "badge_revoked", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
 	w.WriteHeader(204)
 }
 func (s *Server) replace(w http.ResponseWriter, r *http.Request) {
@@ -730,7 +740,7 @@ func (s *Server) replace(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 500, "database_error")
 		return
 	}
-	s.store.Audit(r.Context(), "badge_replaced", old.BadgeCode, old.Username, "", true, remoteIP(r), "new_badge="+b.BadgeCode)
+	s.audit(r.Context(), "badge_replaced", old.BadgeCode, old.Username, "", true, remoteIP(r), "new_badge="+b.BadgeCode)
 	s.json(w, 201, map[string]any{"badge": b, "payload": badge.Payload(b.BadgeCode, t), "activation_notice": "The replacement remains disabled until its owner activates this one-time payload in self-service.", "token_notice": "This secret is shown once and is not stored."})
 }
 func (s *Server) qr(w http.ResponseWriter, r *http.Request) {
@@ -782,14 +792,14 @@ func (s *Server) auth(w http.ResponseWriter, r *http.Request) {
 		s.pinFailed(pinKey)
 	}
 	if reason != "" {
-		s.store.Audit(r.Context(), "auth_failed", in.BadgeID, "", in.ClientID, false, ip, reason)
+		s.audit(r.Context(), "auth_failed", in.BadgeID, "", in.ClientID, false, ip, reason)
 		s.log.Warn("badge authentication denied", "event", "auth_failed", "badge_id", in.BadgeID, "client_id", in.ClientID, "reason", reason)
 		s.json(w, 200, AuthResponse{Valid: false, Reason: reason})
 		return
 	}
 	_ = s.store.Used(r.Context(), b.ID)
 	s.pinSucceeded(pinKey)
-	s.store.Audit(r.Context(), "auth_success", b.BadgeCode, b.Username, in.ClientID, true, ip, "")
+	s.audit(r.Context(), "auth_success", b.BadgeCode, b.Username, in.ClientID, true, ip, "")
 	s.log.Info("badge authentication accepted", "event", "auth_success", "badge_id", b.BadgeCode, "client_id", in.ClientID, "username", b.Username)
 	grant, e := s.newLoginGrant(b.Username, in.ClientID)
 	if e != nil {
@@ -884,7 +894,7 @@ func (s *Server) webCreateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		if u != "" {
 			if x, e := s.store.CreateUser(r.Context(), u, d, ""); e == nil {
-				s.store.Audit(r.Context(), "user_created", "", x.Username, "", true, remoteIP(r), "")
+				s.audit(r.Context(), "user_created", "", x.Username, "", true, remoteIP(r), "")
 			}
 		}
 	}
@@ -904,7 +914,7 @@ func (s *Server) webRevoke(w http.ResponseWriter, r *http.Request) {
 	n, _ := id(r)
 	if b, e := s.store.GetBadge(r.Context(), n); e == nil {
 		_ = s.store.Revoke(r.Context(), n)
-		s.store.Audit(r.Context(), "badge_revoked", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
+		s.audit(r.Context(), "badge_revoked", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
 	}
 	http.Redirect(w, r, "/badges", 303)
 }
@@ -925,7 +935,7 @@ func (s *Server) webReplace(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/badges", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "badge_replaced", old.BadgeCode, old.Username, "", true, remoteIP(r), "new_badge="+replacement.BadgeCode)
+	s.audit(r.Context(), "badge_replaced", old.BadgeCode, old.Username, "", true, remoteIP(r), "new_badge="+replacement.BadgeCode)
 	http.Redirect(w, r, "/badges?payload="+badge.Payload(replacement.BadgeCode, token), http.StatusSeeOther)
 }
 func style(w http.ResponseWriter, r *http.Request) {

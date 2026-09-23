@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,6 +21,28 @@ import (
 )
 
 type fakeDirectory struct{}
+
+func TestAuditFailureIsLoggedWithoutSensitiveFields(t *testing.T) {
+	st, err := database.Open(filepath.Join(t.TempDir(), "audit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	s := New(st, slog.New(slog.NewJSONHandler(&output, nil)))
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s.audit(t.Context(), "auth_success", "private-badge", "private-user", "private-client", true, "192.0.2.1", "private-details")
+	logged := output.String()
+	if !strings.Contains(logged, "security audit write failed") || !strings.Contains(logged, `"event_type":"auth_success"`) {
+		t.Fatalf("bounded audit failure was not logged: %s", logged)
+	}
+	for _, secret := range []string{"private-badge", "private-user", "private-client", "192.0.2.1", "private-details"} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("audit failure log exposed %q", secret)
+		}
+	}
+}
 
 func (fakeDirectory) UserExists(context.Context, string) (bool, error) { return true, nil }
 func (fakeDirectory) GetUser(_ context.Context, u string) (*directory.User, error) {

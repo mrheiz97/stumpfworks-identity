@@ -90,7 +90,7 @@ func (s *Server) issuePKINIT(w http.ResponseWriter, r *http.Request) {
 	}
 	g, ok := s.redeemLoginGrant(in.Grant, in.ClientID)
 	if !ok || !loginUsername.MatchString(g.Username) {
-		s.store.Audit(r.Context(), "pkinit_denied", "", "", in.ClientID, false, remoteIP(r), "invalid_grant")
+		s.audit(r.Context(), "pkinit_denied", "", "", in.ClientID, false, remoteIP(r), "invalid_grant")
 		s.problem(w, 403, "invalid_grant")
 		return
 	}
@@ -110,7 +110,7 @@ func (s *Server) issuePKINIT(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 500, "pkinit_error")
 		return
 	}
-	s.store.Audit(r.Context(), "pkinit_issued", "", g.Username, in.ClientID, true, remoteIP(r), "expires="+expires.UTC().Format(time.RFC3339))
+	s.audit(r.Context(), "pkinit_issued", "", g.Username, in.ClientID, true, remoteIP(r), "expires="+expires.UTC().Format(time.RFC3339))
 	s.json(w, 200, PKINITResponse{Username: g.Username, Certificate: certPEM, CA: s.pkinit.caPEM, ExpiresAt: expires.UTC().Format(time.RFC3339)})
 }
 
