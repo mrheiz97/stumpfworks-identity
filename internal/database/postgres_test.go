@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -377,7 +379,14 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 	t.Run("runtime role cannot migrate", func(t *testing.T) {
 		role := fmt.Sprintf("identity_runtime_%d", time.Now().UnixNano())
 		quotedRole := pgx.Identifier{role}.Sanitize()
-		if _, err := admin.Exec(ctx, "CREATE ROLE "+quotedRole+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT"); err != nil {
+		passwordBytes := make([]byte, 24)
+		if _, err := rand.Read(passwordBytes); err != nil {
+			t.Fatal(err)
+		}
+		password := hex.EncodeToString(passwordBytes)
+		// password contains only lowercase hexadecimal generated for this
+		// disposable role, so quoting cannot change SQL structure.
+		if _, err := admin.Exec(ctx, "CREATE ROLE "+quotedRole+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '"+password+"'"); err != nil {
 			t.Fatal(err)
 		}
 		defer func() {
@@ -399,9 +408,9 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 			t.Fatal(err)
 		}
 		runtimeURL := *u
-		// The disposable loopback cluster uses trust authentication. Connect as
-		// the restricted role itself, never as an administrator with SET ROLE.
-		runtimeURL.User = url.User(role)
+		// Connect as the restricted role itself, never as an administrator with
+		// SET ROLE. A temporary random password supports both trust and SCRAM CI.
+		runtimeURL.User = url.UserPassword(role, password)
 		runtimePool, err := frameworkpg.Open(ctx, frameworkpg.Options{URL: runtimeURL.String(), MaxConnections: 2, ConnectTimeout: 5 * time.Second, MaxMessageBytes: 1 << 20, AllowInsecure: true})
 		if err != nil {
 			var failure *pgconn.PgError
