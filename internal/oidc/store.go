@@ -18,7 +18,8 @@ type providerStore interface {
 	EnsureOIDCSubject(context.Context, int64) (string, error)
 	CreateOIDCCode(context.Context, database.OIDCCode) error
 	ConsumeOIDCCode(context.Context, string, string, string, time.Time) (database.OIDCCode, error)
-	Audit(context.Context, string, string, string, string, bool, string, string)
+	WriteAudit(context.Context, database.Audit) error
 }
 
 var _ providerStore = (*database.Store)(nil)
+var _ providerStore = (*database.PostgresStore)(nil)

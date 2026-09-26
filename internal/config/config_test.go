@@ -101,3 +101,27 @@ func TestDisabledMetricsDoNotRequireSecretFile(t *testing.T) {
 		t.Fatalf("disabled metrics loaded secret: %+v %v", loaded, err)
 	}
 }
+
+func TestPostgresRuntimeIsExplicitAndLoadsBoundedURLFile(t *testing.T) {
+	if got := Default(); got.DatabaseBackend != "sqlite" || got.DatabaseURL != "" || got.DatabaseAllowInsecure {
+		t.Fatalf("unsafe database defaults: %+v", got)
+	}
+	secretFile := filepath.Join(t.TempDir(), "postgres-url")
+	if err := os.WriteFile(secretFile, []byte("postgres://runtime:secret@database.example.test/identity?sslmode=verify-full\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "database:\n  backend: postgres\n  url_file: \"" + secretFile + "\"\n  allow_insecure: false\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || loaded.DatabaseBackend != "postgres" || loaded.DatabaseURL == "" || loaded.DatabaseAllowInsecure {
+		t.Fatalf("PostgreSQL configuration failed: backend=%q url_set=%t insecure=%t err=%v", loaded.DatabaseBackend, loaded.DatabaseURL != "", loaded.DatabaseAllowInsecure, err)
+	}
+	t.Setenv("SWBADGE_POSTGRES_URL", "postgres://runtime:override@database.example.test/identity?sslmode=verify-full")
+	loaded, err = Load(path)
+	if err != nil || !strings.Contains(loaded.DatabaseURL, "override") {
+		t.Fatal("PostgreSQL environment URL did not override file")
+	}
+}

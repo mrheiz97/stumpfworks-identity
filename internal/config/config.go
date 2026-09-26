@@ -9,19 +9,23 @@ import (
 )
 
 type Config struct {
-	Listen, TLSCertFile, TLSKeyFile, DatabasePath, DirectoryURL, BaseDN, BindDN, BindPassword         string
-	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                             string
-	DirectoryBindPasswordFile, DirectoryCertSHA256                                                    string
-	SessionSecret                                                                                     string
-	SessionSecretFile                                                                                 string
-	MetricsToken, MetricsTokenFile                                                                    string
-	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                                    string
-	ClientTargetVersion                                                                               string
-	OIDCIssuer, OIDCSigningKeyFiles                                                                   string
-	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled, Demo bool
+	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile string
+	DirectoryURL, BaseDN, BindDN, BindPassword                                                   string
+	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                        string
+	DirectoryBindPasswordFile, DirectoryCertSHA256                                               string
+	SessionSecret                                                                                string
+	SessionSecretFile                                                                            string
+	MetricsToken, MetricsTokenFile                                                               string
+	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                               string
+	ClientTargetVersion                                                                          string
+	OIDCIssuer, OIDCSigningKeyFiles                                                              string
+	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled  bool
+	DatabaseAllowInsecure, Demo                                                                  bool
 }
 
-func Default() Config { return Config{Listen: "0.0.0.0:8080", DatabasePath: "./data/badges.db"} }
+func Default() Config {
+	return Config{Listen: "0.0.0.0:8080", DatabaseBackend: "sqlite", DatabasePath: "./data/badges.db"}
+}
 
 // Load supports the deliberately small YAML surface used by this project. Environment variables override it.
 func Load(path string) (Config, error) {
@@ -57,6 +61,12 @@ func Load(path string) (Config, error) {
 				c.TLSKeyFile = val
 			case "database.path":
 				c.DatabasePath = val
+			case "database.backend":
+				c.DatabaseBackend = val
+			case "database.url_file":
+				c.DatabaseURLFile = val
+			case "database.allow_insecure":
+				c.DatabaseAllowInsecure = val == "true"
 			case "directory.enabled":
 				c.DirectoryEnabled = val == "true"
 			case "directory.framework_read_enabled":
@@ -118,6 +128,9 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_TLS_CERT_FILE", &c.TLSCertFile)
 	set("SWBADGE_TLS_KEY_FILE", &c.TLSKeyFile)
 	set("SWBADGE_DATABASE_PATH", &c.DatabasePath)
+	set("SWBADGE_DATABASE_BACKEND", &c.DatabaseBackend)
+	set("SWBADGE_POSTGRES_URL", &c.DatabaseURL)
+	set("SWBADGE_POSTGRES_URL_FILE", &c.DatabaseURLFile)
 	set("SWBADGE_DIRECTORY_URL", &c.DirectoryURL)
 	set("SWBADGE_DIRECTORY_BASE_DN", &c.BaseDN)
 	set("SWBADGE_DIRECTORY_BIND_DN", &c.BindDN)
@@ -152,6 +165,9 @@ func Load(path string) (Config, error) {
 	if v, ok := os.LookupEnv("SWBADGE_OIDC_ENABLED"); ok {
 		c.OIDCEnabled = v == "true"
 	}
+	if v, ok := os.LookupEnv("SWBADGE_POSTGRES_ALLOW_INSECURE"); ok {
+		c.DatabaseAllowInsecure = v == "true"
+	}
 	c.Demo = os.Getenv("SWBADGE_DEMO") == "true"
 	readSecret := func(path string, dst *string) error {
 		if path == "" || *dst != "" {
@@ -181,6 +197,11 @@ func Load(path string) (Config, error) {
 	}
 	if c.MetricsEnabled {
 		if err := readSecret(c.MetricsTokenFile, &c.MetricsToken); err != nil {
+			return c, err
+		}
+	}
+	if c.DatabaseBackend == "postgres" {
+		if err := readSecret(c.DatabaseURLFile, &c.DatabaseURL); err != nil {
 			return c, err
 		}
 	}

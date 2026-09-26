@@ -1,7 +1,12 @@
 server:
   listen: "0.0.0.0:8080"
 database:
+  # sqlite remains the default. postgres requires a separately migrated schema
+  # and a least-privilege runtime URL supplied by environment or this file.
+  backend: "sqlite"
   path: "./data/badges.db"
+  url_file: ""
+  allow_insecure: false
 updates:
   client_target_version: "1.2.1"
 directory:

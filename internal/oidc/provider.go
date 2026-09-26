@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -43,7 +44,7 @@ type Provider struct {
 	attempts map[string][]time.Time
 }
 
-func New(issuer string, keyFiles []string, store *database.Store, dir directory.Directory, sessions *adminauth.Sessions) (*Provider, error) {
+func New(issuer string, keyFiles []string, store providerStore, dir directory.Directory, sessions *adminauth.Sessions) (*Provider, error) {
 	issuer = strings.TrimSuffix(issuer, "/")
 	u, err := url.Parse(issuer)
 	if err != nil || u.Scheme != "https" || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
@@ -307,7 +308,9 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Provider) audit(r *http.Request, event, user, client string, success bool, details string) {
-	p.store.Audit(r.Context(), event, "", user, client, success, remoteIP(r), details)
+	if err := p.store.WriteAudit(r.Context(), database.Audit{EventType: event, Username: user, ClientID: client, Success: success, IPAddress: remoteIP(r), Details: details}); err != nil {
+		slog.Error("OIDC security audit write failed", "component", "audit", "event_type", event)
+	}
 }
 func (p *Provider) allowed(key string) bool {
 	p.mu.Lock()

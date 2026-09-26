@@ -19,19 +19,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Test-only compatibility boundary. Do not expose a production adapter that
-// silently discards audit errors; runtime policy remains an explicit next step.
-type postgresProviderFixture struct {
-	*database.PostgresStore
-	t *testing.T
-}
-
-func (s postgresProviderFixture) Audit(ctx context.Context, event, badge, user, client string, success bool, ip, details string) {
-	if err := s.WriteAudit(ctx, database.Audit{EventType: event, BadgeID: badge, Username: user, ClientID: client, Success: success, IPAddress: ip, Details: details}); err != nil {
-		s.t.Error("synthetic provider audit write failed")
-	}
-}
-
 func TestPostgresProviderProtocol(t *testing.T) {
 	dsn := os.Getenv("IDENTITY_TEST_POSTGRES_URL")
 	if dsn == "" {
@@ -83,7 +70,7 @@ func TestPostgresProviderProtocol(t *testing.T) {
 	if err := st.CreateOIDCClient(ctx, client.ClientID, client.SecretHash, client.RedirectURIs, client.Scopes); err != nil {
 		t.Fatal(err)
 	}
-	p.store = postgresProviderFixture{PostgresStore: st, t: t}
+	p.store = st
 	verifier := strings.Repeat("v", 43)
 	code := issueCode(t, p, verifier)
 	if denied := exchangeSecret(p, code, verifier, "wrong"); denied.Code != 401 {

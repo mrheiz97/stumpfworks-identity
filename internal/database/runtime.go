@@ -36,6 +36,13 @@ type ApplicationStore interface {
 	ClientByID(context.Context, string) (Client, error)
 	Clients(context.Context) ([]Client, error)
 	UpdateClientStatusWithUpdate(context.Context, string, string, string, string, string, string, *ClientUpdate) error
+	CreateClient(context.Context, string, string) (Client, error)
+	RotateClientToken(context.Context, string, string) error
+	SetClientEnabled(context.Context, string, bool) error
+	EnsureOIDCSubject(context.Context, int64) (string, error)
+	OIDCClientByID(context.Context, string) (OIDCClient, error)
+	CreateOIDCCode(context.Context, OIDCCode) error
+	ConsumeOIDCCode(context.Context, string, string, string, time.Time) (OIDCCode, error)
 }
 
 var _ ApplicationStore = (*Store)(nil)

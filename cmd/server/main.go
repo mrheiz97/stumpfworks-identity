@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	frameworkpg "github.com/TheRealHZL/stumpfworks-framework/data/postgres"
 	frameworkldap "github.com/TheRealHZL/stumpfworks-framework/directory/ldap"
 	frameworkmetrics "github.com/TheRealHZL/stumpfworks-framework/web/metrics"
 	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
@@ -64,12 +65,12 @@ func main() {
 		fmt.Printf("directory ok: %d active users\n", len(users))
 		return
 	}
-	st, e := database.Open(cfg.DatabasePath)
+	st, closeDatabase, e := runtimeStoreForConfig(context.Background(), cfg)
 	if e != nil {
 		slog.Error("database failed", "error", e)
 		os.Exit(1)
 	}
-	defer st.Close()
+	defer closeDatabase()
 	clientActions := 0
 	for _, value := range []string{*registerClient, *rotateClient, *disableClient, *enableClient} {
 		if value != "" {
@@ -226,7 +227,40 @@ func runtimeDirectoryForConfig(cfg config.Config, existing directory.LDAP, obser
 	return existing.WithFrameworkLookupsObserved(observer)
 }
 
-func seed(s *database.Store) {
+func runtimeStoreForConfig(ctx context.Context, cfg config.Config) (database.ApplicationStore, func(), error) {
+	switch cfg.DatabaseBackend {
+	case "", "sqlite":
+		store, err := database.Open(cfg.DatabasePath)
+		if err != nil {
+			return nil, func() {}, err
+		}
+		return store, func() { _ = store.Close() }, nil
+	case "postgres":
+		if cfg.DatabaseURL == "" {
+			return nil, func() {}, fmt.Errorf("PostgreSQL backend requires SWBADGE_POSTGRES_URL or database.url_file")
+		}
+		openCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		pool, err := frameworkpg.Open(openCtx, frameworkpg.Options{URL: cfg.DatabaseURL, MaxConnections: 10, ConnectTimeout: 5 * time.Second, MaxMessageBytes: 16 << 20, AllowInsecure: cfg.DatabaseAllowInsecure})
+		if err != nil {
+			return nil, func() {}, fmt.Errorf("open PostgreSQL runtime pool failed")
+		}
+		store, err := database.NewPostgresStore(pool)
+		if err != nil {
+			pool.Close()
+			return nil, func() {}, err
+		}
+		if _, err := store.Counts(openCtx); err != nil {
+			pool.Close()
+			return nil, func() {}, fmt.Errorf("verify pre-migrated PostgreSQL schema and runtime privileges failed")
+		}
+		return store, pool.Close, nil
+	default:
+		return nil, func() {}, fmt.Errorf("unsupported database backend %q", cfg.DatabaseBackend)
+	}
+}
+
+func seed(s database.ApplicationStore) {
 	for _, u := range []struct{ n, d string }{{"alice", "Alice Example"}, {"bob", "Bob Example"}} {
 		_, _ = s.CreateUser(context.Background(), u.n, u.d, "")
 	}

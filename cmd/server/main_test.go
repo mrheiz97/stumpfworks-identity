@@ -74,3 +74,22 @@ func TestApplicationMetricsEndpointIsExplicitlyProtected(t *testing.T) {
 		t.Fatal("nil registry accepted")
 	}
 }
+
+func TestRuntimeStoreSelectionDefaultsToSQLiteAndFailsClosed(t *testing.T) {
+	cfg := config.Default()
+	cfg.DatabasePath = t.TempDir() + "/identity.db"
+	store, closeStore, err := runtimeStoreForConfig(t.Context(), cfg)
+	if err != nil || store == nil {
+		t.Fatalf("default SQLite backend failed: %v", err)
+	}
+	closeStore()
+
+	if _, closeInvalid, err := runtimeStoreForConfig(t.Context(), config.Config{DatabaseBackend: "unknown"}); err == nil {
+		closeInvalid()
+		t.Fatal("unknown database backend accepted")
+	}
+	if _, closeMissing, err := runtimeStoreForConfig(t.Context(), config.Config{DatabaseBackend: "postgres"}); err == nil {
+		closeMissing()
+		t.Fatal("PostgreSQL backend accepted without runtime URL")
+	}
+}

@@ -150,7 +150,14 @@ Actual Identity handlers pass PKCE, signature/subject, disabled-user, replay,
 expiry, rate-limit and competing token-exchange tests against PostgreSQL. The
 real framework login client passes trusted-local-TLS contracts with both
 backends. Production credentials/TLS, backup/restore, native authentication,
-application-wide audit policy and startup/interface integration remain open.
+The HTTP server now depends on the shared `database.ApplicationStore` contract,
+which both SQLite and PostgreSQL satisfy at compile time. Runtime selection is
+explicit and defaults to SQLite. PostgreSQL requires `database.backend:
+postgres`, a protected URL file or `SWBADGE_POSTGRES_URL`, TLS by default, a
+separately pre-migrated schema and sufficient runtime privileges. Startup checks
+the schema using read-only aggregate queries and fails closed; it never runs DDL
+with runtime credentials. Application-wide atomic audit policy and production
+cutover acceptance remain open.
 
 The original 1.26.0 build toolchain had reachable standard-library advisories;
 `go run` had selected 1.26.8 for the scanner and masked the mismatch. Minimum
