@@ -12,10 +12,12 @@ import (
 type atomicBadgeStore interface {
 	CreateUser(context.Context, string, string, string) (User, error)
 	CreateBadge(context.Context, int64, string, string) (Badge, error)
+	ReplaceBadgePending(context.Context, int64, string, string) (Badge, error)
 	GetBadge(context.Context, int64) (Badge, error)
 	Audits(context.Context) ([]Audit, error)
 	WriteAudit(context.Context, Audit) error
 	RevokeActiveBadgeForUserWithAudit(context.Context, int64, int64, string) (UserBadge, error)
+	ActivatePendingBadgeForUserWithAudit(context.Context, int64, int64, string) error
 }
 
 func TestSQLiteAtomicLostBadge(t *testing.T) {
@@ -33,6 +35,64 @@ func TestSQLiteAtomicLostBadge(t *testing.T) {
 			t.Fatal("SQLite atomic audit fixture setup failed")
 		}
 	})
+	testAtomicActivation(t, s, func(reject bool) {
+		query := "DROP TRIGGER IF EXISTS fail_atomic_audit"
+		if reject {
+			query = "CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END"
+		}
+		if _, err := s.DB.ExecContext(t.Context(), query); err != nil {
+			t.Fatal("SQLite atomic audit fixture setup failed")
+		}
+	})
+}
+
+func testAtomicActivation(t *testing.T, s atomicBadgeStore, rejectAudit func(bool)) {
+	t.Helper()
+	ctx := t.Context()
+	owner, err := s.CreateUser(ctx, "activation-owner", "Synthetic activation owner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := s.CreateBadge(ctx, owner.ID, "synthetic-original-hash", "activation original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := s.ReplaceBadgePending(ctx, original.ID, "synthetic-replacement-hash", "activation replacement")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejectAudit(true)
+	if err := s.ActivatePendingBadgeForUserWithAudit(ctx, pending.ID, owner.ID, "198.51.100.88"); err == nil {
+		t.Fatal("activation committed despite audit failure")
+	}
+	found, err := s.GetBadge(ctx, pending.ID)
+	if err != nil || found.Enabled || !found.ActivationPending {
+		t.Fatal("audit failure did not roll back activation")
+	}
+	rejectAudit(false)
+	if err := s.ActivatePendingBadgeForUserWithAudit(ctx, pending.ID, owner.ID, "198.51.100.88"); err != nil {
+		t.Fatal(err)
+	}
+	found, err = s.GetBadge(ctx, pending.ID)
+	if err != nil || !found.Enabled || found.ActivationPending {
+		t.Fatal("audited activation did not persist")
+	}
+	events, err := s.Audits(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched := 0
+	for _, event := range events {
+		if event.BadgeID == pending.BadgeCode && event.EventType == "badge_self_service_activated" {
+			matched++
+			if event.Username != owner.Username || !event.Success || event.IPAddress != "198.51.100.88" || event.Details != "replacement_badge" {
+				t.Fatal("atomic activation audit identity changed")
+			}
+		}
+	}
+	if matched != 1 {
+		t.Fatal("atomic activation audit event lost or duplicated")
+	}
 }
 
 func testAtomicLostBadge(t *testing.T, s atomicBadgeStore, rejectAudit func(bool)) {

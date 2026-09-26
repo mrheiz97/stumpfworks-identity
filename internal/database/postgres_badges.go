@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"net"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -115,6 +117,23 @@ func (s *PostgresStore) ActivatePendingBadgeForUser(ctx context.Context, badgeID
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (s *PostgresStore) ActivatePendingBadgeForUserWithAudit(ctx context.Context, badgeID, userID int64, ip string) error {
+	if ip != "" && net.ParseIP(ip) == nil {
+		return errors.New("audit IP must be an address or empty")
+	}
+	return s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		var code, username string
+		if err := tx.QueryRow(ctx, `UPDATE badges SET enabled=TRUE,activation_pending=FALSE,revoked_at=NULL,updated_at=now() WHERE id=$1 AND user_id=$2 AND enabled=FALSE AND activation_pending=TRUE RETURNING badge_code`, badgeID, userID).Scan(&code); err != nil {
+			return postgresNotFound(err)
+		}
+		if err := tx.QueryRow(ctx, "SELECT username FROM users WHERE id=$1", userID).Scan(&username); err != nil {
+			return postgresNotFound(err)
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO audit_log(event_type,badge_id,username,success,ip_address,details) VALUES($1,$2,$3,$4,$5,$6)`, "badge_self_service_activated", code, username, true, ip, "replacement_badge")
+		return err
+	})
 }
 
 func (s *PostgresStore) Revoke(ctx context.Context, id int64) error {

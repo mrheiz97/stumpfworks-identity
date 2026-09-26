@@ -375,6 +375,16 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 				t.Fatal("PostgreSQL atomic audit fixture setup failed")
 			}
 		})
+		testAtomicActivation(t, store, func(reject bool) {
+			query := "DROP TRIGGER IF EXISTS fail_atomic_audit ON audit_log; DROP FUNCTION IF EXISTS fail_atomic_audit()"
+			if reject {
+				query = `CREATE FUNCTION fail_atomic_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;
+CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_atomic_audit()`
+			}
+			if _, err := pool.Native().Exec(ctx, query); err != nil {
+				t.Fatal("PostgreSQL atomic audit fixture setup failed")
+			}
+		})
 	})
 	t.Run("runtime role cannot migrate", func(t *testing.T) {
 		role := fmt.Sprintf("identity_runtime_%d", time.Now().UnixNano())

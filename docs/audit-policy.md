@@ -20,8 +20,9 @@ reusable. Database errors are sensitive and are not logged verbatim.
 
 - SQLite and PostgreSQL expose error-returning audit writes.
 - Audit write failures emit only the fixed component and bounded event type.
-- Self-service lost-badge revocation and its success event are atomic on both
-  backends; audit failure leaves the badge active.
+- Self-service lost-badge revocation and replacement-badge activation are
+  atomic with their success events on both backends; audit failure leaves the
+  previous badge state unchanged.
 - Denial events remain denials when their audit write fails.
 
 Other successful mutations still use visible best-effort audit writes. They

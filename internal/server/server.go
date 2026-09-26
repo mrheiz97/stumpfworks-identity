@@ -537,11 +537,10 @@ func (s *Server) selfServiceActivateBadge(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/self-service?error=activation_invalid", http.StatusSeeOther)
 		return
 	}
-	if err = s.store.ActivatePendingBadgeForUser(r.Context(), b.ID, u.ID); err != nil {
+	if err = s.store.ActivatePendingBadgeForUserWithAudit(r.Context(), b.ID, u.ID, remoteIP(r)); err != nil {
 		http.Redirect(w, r, "/self-service?error=activation_invalid", http.StatusSeeOther)
 		return
 	}
-	s.audit(r.Context(), "badge_self_service_activated", b.BadgeCode, u.Username, "", true, remoteIP(r), "replacement_badge")
 	http.Redirect(w, r, "/self-service?status=badge_activated", http.StatusSeeOther)
 }
 func (s *Server) selfServiceLogoutOthers(w http.ResponseWriter, r *http.Request) {
