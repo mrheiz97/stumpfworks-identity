@@ -1,14 +1,22 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	frameworkpg "github.com/TheRealHZL/stumpfworks-framework/data/postgres"
 	frameworkmetrics "github.com/TheRealHZL/stumpfworks-framework/web/metrics"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestFrameworkDirectoryRuntimeSelectionIsExplicitAndFailClosed(t *testing.T) {
@@ -91,5 +99,61 @@ func TestRuntimeStoreSelectionDefaultsToSQLiteAndFailsClosed(t *testing.T) {
 	if _, closeMissing, err := runtimeStoreForConfig(t.Context(), config.Config{DatabaseBackend: "postgres"}); err == nil {
 		closeMissing()
 		t.Fatal("PostgreSQL backend accepted without runtime URL")
+	}
+}
+
+func TestPostgresRuntimeUsesPreMigratedSchemaAndNeverCreatesIt(t *testing.T) {
+	dsn := os.Getenv("IDENTITY_TEST_POSTGRES_URL")
+	if dsn == "" {
+		t.Skip("disposable PostgreSQL cluster not configured")
+	}
+	u, err := url.Parse(dsn)
+	if err != nil || u.Hostname() != "127.0.0.1" || u.Port() != "55441" || u.Path != "/postgres" {
+		t.Fatal("runtime test requires disposable loopback PostgreSQL on port 55441")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	admin, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal("disposable PostgreSQL unavailable")
+	}
+	defer admin.Close(context.Background())
+
+	schema := fmt.Sprintf("identity_runtime_%d", time.Now().UnixNano())
+	identifier := pgx.Identifier{schema}.Sanitize()
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+identifier); err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Exec(context.Background(), "DROP SCHEMA "+identifier+" CASCADE")
+	query := u.Query()
+	query.Set("search_path", schema)
+	u.RawQuery = query.Encode()
+
+	if _, closeMissing, err := runtimeStoreForConfig(ctx, config.Config{DatabaseBackend: "postgres", DatabaseURL: u.String(), DatabaseAllowInsecure: true}); err == nil {
+		closeMissing()
+		t.Fatal("runtime startup created or accepted an unmigrated schema")
+	}
+	migrationPool, err := frameworkpg.Open(ctx, frameworkpg.Options{URL: u.String(), MaxConnections: 2, ConnectTimeout: 5 * time.Second, MaxMessageBytes: 1 << 20, AllowInsecure: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MigratePostgres(ctx, migrationPool); err != nil {
+		migrationPool.Close()
+		t.Fatal(err)
+	}
+	migrationPool.Close()
+
+	store, closeStore, err := runtimeStoreForConfig(ctx, config.Config{DatabaseBackend: "postgres", DatabaseURL: u.String(), DatabaseAllowInsecure: true})
+	if err != nil {
+		t.Fatalf("pre-migrated PostgreSQL runtime rejected: %v", err)
+	}
+	defer closeStore()
+	created, err := store.CreateUser(ctx, "runtime-user", "Runtime User", "")
+	if err != nil || created.ID == 0 {
+		t.Fatalf("PostgreSQL runtime write failed: %v", err)
+	}
+	counts, err := store.Counts(ctx)
+	if err != nil || counts["users"] != 1 {
+		t.Fatalf("PostgreSQL runtime read failed: counts=%v err=%v", counts, err)
 	}
 }
