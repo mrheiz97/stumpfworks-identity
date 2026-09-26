@@ -21,6 +21,7 @@ type ApplicationStore interface {
 	Badges(context.Context) ([]Badge, error)
 	ActiveBadgesByUser(context.Context, int64) ([]UserBadge, error)
 	RevokeActiveBadgeForUser(context.Context, int64, int64) (UserBadge, error)
+	RevokeActiveBadgeForUserWithAudit(context.Context, int64, int64, string) (UserBadge, error)
 	ActivatePendingBadgeForUser(context.Context, int64, int64) error
 	Revoke(context.Context, int64) error
 	Used(context.Context, int64) error

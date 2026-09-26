@@ -511,12 +511,11 @@ func (s *Server) selfServiceRevokeBadge(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/self-service?error=unavailable", http.StatusSeeOther)
 		return
 	}
-	b, err := s.store.RevokeActiveBadgeForUser(r.Context(), badgeID, u.ID)
+	_, err = s.store.RevokeActiveBadgeForUserWithAudit(r.Context(), badgeID, u.ID, remoteIP(r))
 	if err != nil {
 		http.Redirect(w, r, "/self-service?error=badge_unavailable", http.StatusSeeOther)
 		return
 	}
-	s.audit(r.Context(), "badge_self_service_revoked", b.BadgeCode, u.Username, "", true, remoteIP(r), "lost_badge")
 	http.Redirect(w, r, "/self-service?status=badge_revoked", http.StatusSeeOther)
 }
 func (s *Server) selfServiceActivateBadge(w http.ResponseWriter, r *http.Request) {
