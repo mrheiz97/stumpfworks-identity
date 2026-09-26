@@ -102,7 +102,7 @@ func TestRuntimeStoreSelectionDefaultsToSQLiteAndFailsClosed(t *testing.T) {
 	}
 }
 
-func TestPostgresRuntimeUsesPreMigratedSchemaAndNeverCreatesIt(t *testing.T) {
+func TestPostgresRuntimeMigrationAndSQLiteRollbackPath(t *testing.T) {
 	dsn := os.Getenv("IDENTITY_TEST_POSTGRES_URL")
 	if dsn == "" {
 		t.Skip("disposable PostgreSQL cluster not configured")
@@ -133,6 +133,18 @@ func TestPostgresRuntimeUsesPreMigratedSchemaAndNeverCreatesIt(t *testing.T) {
 		closeMissing()
 		t.Fatal("runtime startup created or accepted an unmigrated schema")
 	}
+	sqlitePath := t.TempDir() + "/identity-source.db"
+	source, err := database.Open(sqlitePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := source.CreateUser(ctx, "migration-user", "Migration User", "CN=Migration User,DC=example,DC=test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.CreateBadge(ctx, user.ID, "synthetic-token-hash", "Migration badge"); err != nil {
+		t.Fatal(err)
+	}
 	migrationPool, err := frameworkpg.Open(ctx, frameworkpg.Options{URL: u.String(), MaxConnections: 2, ConnectTimeout: 5 * time.Second, MaxMessageBytes: 1 << 20, AllowInsecure: true})
 	if err != nil {
 		t.Fatal(err)
@@ -141,19 +153,43 @@ func TestPostgresRuntimeUsesPreMigratedSchemaAndNeverCreatesIt(t *testing.T) {
 		migrationPool.Close()
 		t.Fatal(err)
 	}
+	migrationStore, err := database.NewPostgresStore(migrationPool)
+	if err != nil {
+		migrationPool.Close()
+		t.Fatal(err)
+	}
+	result, err := migrationStore.ImportSQLite(ctx, source.DB, 100)
+	if err != nil || result["users"] != 1 || result["badges"] != 1 {
+		migrationPool.Close()
+		t.Fatalf("synthetic migration failed: result=%v err=%v", result, err)
+	}
 	migrationPool.Close()
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	store, closeStore, err := runtimeStoreForConfig(ctx, config.Config{DatabaseBackend: "postgres", DatabaseURL: u.String(), DatabaseAllowInsecure: true})
 	if err != nil {
 		t.Fatalf("pre-migrated PostgreSQL runtime rejected: %v", err)
 	}
 	defer closeStore()
-	created, err := store.CreateUser(ctx, "runtime-user", "Runtime User", "")
-	if err != nil || created.ID == 0 {
-		t.Fatalf("PostgreSQL runtime write failed: %v", err)
+	created, err := store.UserByUsername(ctx, "migration-user")
+	if err != nil || created.ID != user.ID || created.DirectoryDN != "CN=Migration User,DC=example,DC=test" {
+		t.Fatalf("PostgreSQL runtime verification failed: user=%+v err=%v", created, err)
 	}
 	counts, err := store.Counts(ctx)
-	if err != nil || counts["users"] != 1 {
+	if err != nil || counts["users"] != 1 || counts["badges"] != 1 {
 		t.Fatalf("PostgreSQL runtime read failed: counts=%v err=%v", counts, err)
+	}
+
+	rollback, closeRollback, err := runtimeStoreForConfig(ctx, config.Config{DatabaseBackend: "sqlite", DatabasePath: sqlitePath})
+	if err != nil {
+		t.Fatalf("SQLite rollback path failed to reopen: %v", err)
+	}
+	defer closeRollback()
+	rollbackUser, err := rollback.UserByUsername(ctx, "migration-user")
+	rollbackCounts, countErr := rollback.Counts(ctx)
+	if err != nil || countErr != nil || rollbackUser.ID != user.ID || rollbackCounts["users"] != 1 || rollbackCounts["badges"] != 1 {
+		t.Fatalf("SQLite rollback source changed: user=%+v counts=%v err=%v count_err=%v", rollbackUser, rollbackCounts, err, countErr)
 	}
 }
