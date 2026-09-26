@@ -432,14 +432,17 @@ func (s *Store) RevokeSelfServiceSession(ctx context.Context, id, username strin
 	_, err := s.DB.ExecContext(ctx, `UPDATE self_service_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND lower(username)=lower(?)`, id, username)
 	return err
 }
-func (s *Store) Stats(ctx context.Context) map[string]int {
-	out := map[string]int{}
+// Counts is the error-returning runtime contract shared with PostgreSQL.
+func (s *Store) Counts(ctx context.Context) (map[string]int64, error) {
+	out := map[string]int64{}
 	for k, q := range map[string]string{"users": "SELECT count(*) FROM users", "badges": "SELECT count(*) FROM badges", "active": "SELECT count(*) FROM badges WHERE enabled=1", "revoked": "SELECT count(*) FROM badges WHERE enabled=0", "today": "SELECT count(*) FROM audit_log WHERE event_type='auth_success' AND date(timestamp)=date('now')", "failed": "SELECT count(*) FROM audit_log WHERE event_type='auth_failed' AND date(timestamp)=date('now')"} {
-		var n int
-		_ = s.DB.QueryRowContext(ctx, q).Scan(&n)
+		var n int64
+		if err := s.DB.QueryRowContext(ctx, q).Scan(&n); err != nil {
+			return nil, err
+		}
 		out[k] = n
 	}
-	return out
+	return out, nil
 }
 
 func (s *Store) CreateClient(ctx context.Context, clientID, tokenHash string) (Client, error) {

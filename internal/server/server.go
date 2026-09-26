@@ -29,7 +29,7 @@ import (
 )
 
 type Server struct {
-	store               *database.Store
+	store               database.ApplicationStore
 	log                 *slog.Logger
 	started             time.Time
 	mux                 *http.ServeMux
@@ -75,7 +75,7 @@ type selfServiceSessionView struct {
 	Current          bool
 }
 
-func New(st *database.Store, l *slog.Logger) *Server {
+func New(st database.ApplicationStore, l *slog.Logger) *Server {
 	s := &Server{store: st, log: l, started: time.Now(), mux: http.NewServeMux(), loginAttempts: map[string][]time.Time{}, pinAttempts: map[string][]time.Time{}, grants: map[string]loginGrant{}, clientTargetVersion: version.Version}
 	s.routes()
 	return s
@@ -101,7 +101,7 @@ func (s *Server) ConfigureClientTargetVersion(target string) error {
 	return nil
 }
 func (s *Server) ConfigureOIDC(provider *oidcprovider.Provider) { provider.Register(s.mux) }
-func NewProtected(st *database.Store, l *slog.Logger, d directory.Directory, sessions *adminauth.Sessions) *Server {
+func NewProtected(st database.ApplicationStore, l *slog.Logger, d directory.Directory, sessions *adminauth.Sessions) *Server {
 	s := New(st, l)
 	s.dir = d
 	s.sessions = sessions
@@ -880,7 +880,12 @@ func (s *Server) web(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie("swbadge_admin"); e == nil && s.sessions != nil {
 		csrf = s.sessions.CSRF(c.Value)
 	}
-	data := map[string]any{"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": s.store.Stats(r.Context()), "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload")}
+	stats, err := s.store.Counts(r.Context())
+	if err != nil {
+		s.log.Error("database counts failed", "component", "database")
+		stats = map[string]int64{}
+	}
+	data := map[string]any{"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": stats, "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload")}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = page.Execute(w, data)
