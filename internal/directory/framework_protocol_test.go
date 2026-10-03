@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	frameworkldap "github.com/TheRealHZL/stumpfworks-framework/directory/ldap"
+	frameworkldap "github.com/mrheiz97/stumpfworks-framework/directory/ldap"
 	ber "github.com/go-asn1-ber/asn1-ber"
 )
 

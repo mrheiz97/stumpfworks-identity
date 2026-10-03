@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	frameworkpg "github.com/TheRealHZL/stumpfworks-framework/data/postgres"
-	frameworkmetrics "github.com/TheRealHZL/stumpfworks-framework/web/metrics"
+	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
+	frameworkmetrics "github.com/mrheiz97/stumpfworks-framework/web/metrics"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"

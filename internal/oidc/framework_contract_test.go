@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	frameworkoidc "github.com/TheRealHZL/stumpfworks-framework/auth/oidc"
+	frameworkoidc "github.com/mrheiz97/stumpfworks-framework/auth/oidc"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 )
 

@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	frameworkldap "github.com/TheRealHZL/stumpfworks-framework/directory/ldap"
+	frameworkldap "github.com/mrheiz97/stumpfworks-framework/directory/ldap"
 )
 
 // WithFrameworkLookups uses this exact LDAP configuration for reads and keeps

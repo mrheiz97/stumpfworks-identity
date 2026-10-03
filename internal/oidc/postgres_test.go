@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	frameworkpg "github.com/TheRealHZL/stumpfworks-framework/data/postgres"
+	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"

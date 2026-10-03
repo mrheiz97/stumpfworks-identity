@@ -1,13 +1,5 @@
 github.com/Azure/go-ntlmssp v0.1.1 h1:l+FM/EEMb0U9QZE7mKNEDw5Mu3mFiaa2GKOoTSsNDPw=
 github.com/Azure/go-ntlmssp v0.1.1/go.mod h1:NYqdhxd/8aAct/s4qSYZEerdPuH1liG2/X9DiVTbhpk=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260914115057-8fccddb06c5e h1:+ftKv57rTn4hebuNm4nUGaSkv8K981cYggQHDD4RwCw=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260914115057-8fccddb06c5e/go.mod h1:nQPcndVwvHEkdtSci/vHwCvE7yLPwFC4KBdbQC5Izs0=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260918165735-b4faec548844 h1:yfY5q0Lu/FlNktu4Sk5nOdzk1rOz2RZ9YgRx/i8Mt1w=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260918165735-b4faec548844/go.mod h1:DcKzdQD86qCR3RS8ay7Fyn2EWMXmS4ngO9RjChq4ujw=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922191745-d17257edddf5 h1:G/tEOyOWclqm6u6JrR1YjBkoCoy3m+/pkEhRMQjzdnE=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922191745-d17257edddf5/go.mod h1:DcKzdQD86qCR3RS8ay7Fyn2EWMXmS4ngO9RjChq4ujw=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922194723-84cdaece5506 h1:d8rXa7x5yjbedtDYCynKqsdF6VbShEd2Z3sM/TNapjc=
-github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922194723-84cdaece5506/go.mod h1:DcKzdQD86qCR3RS8ay7Fyn2EWMXmS4ngO9RjChq4ujw=
 github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e h1:4dAU9FXIyQktpoUAgOJK3OTFc/xug0PCXYCqU0FgDKI=
 github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e/go.mod h1:cEWa1LVoE5KvSD9ONXsZrj0z6KqySlCCNKHlLzbqAt4=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -49,6 +41,8 @@ github.com/jcmturner/rpc/v2 v2.0.3 h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZ
 github.com/jcmturner/rpc/v2 v2.0.3/go.mod h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
+github.com/mrheiz97/stumpfworks-framework v0.0.0-20261003113659-86400d1b7b6f h1:JLbCBO72xA4PWQyx3UhwwdRRO7J7YjhW6wYcMl/Ip04=
+github.com/mrheiz97/stumpfworks-framework v0.0.0-20261003113659-86400d1b7b6f/go.mod h1:YMoobOdjc2IUH4BcPTQiLkqQfw9Vdvju3UEIQZc9i5w=
 github.com/ncruces/go-strftime v0.1.9 h1:bY0MQC28UADQmHmaF5dgpLmImcShSi2kHU9XLdhx/f4=
 github.com/ncruces/go-strftime v0.1.9/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

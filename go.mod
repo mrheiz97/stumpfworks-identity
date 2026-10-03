@@ -3,10 +3,11 @@ module github.com/TheRealHZL/stumpfworks-identity
 go 1.26.8
 
 require (
-	github.com/TheRealHZL/stumpfworks-framework v0.0.0-20260922194723-84cdaece5506
+	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/mrheiz97/stumpfworks-framework v0.0.0-20261003113659-86400d1b7b6f
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.56.0
 	golang.org/x/term v0.45.0
@@ -16,7 +17,6 @@ require (
 require (
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

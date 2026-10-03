@@ -10,8 +10,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/TheRealHZL/stumpfworks-framework/data/migrate"
-	frameworkpg "github.com/TheRealHZL/stumpfworks-framework/data/postgres"
+	"github.com/mrheiz97/stumpfworks-framework/data/migrate"
+	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 	"github.com/jackc/pgx/v5"
 )
 
