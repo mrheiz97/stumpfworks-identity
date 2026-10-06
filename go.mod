@@ -7,7 +7,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/mrheiz97/stumpfworks-framework v0.0.0-20261003113659-86400d1b7b6f
+	github.com/mrheiz97/stumpfworks-framework v0.9.0-rc.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.56.0
 	golang.org/x/term v0.45.0
