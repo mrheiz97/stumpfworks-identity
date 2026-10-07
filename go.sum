@@ -41,8 +41,8 @@ github.com/jcmturner/rpc/v2 v2.0.3 h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZ
 github.com/jcmturner/rpc/v2 v2.0.3/go.mod h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
-github.com/mrheiz97/stumpfworks-framework v0.9.0-rc.2 h1:lj3KgX3IzJErGNJjgJgoE0TenARCh4iJ6+3Nprmu1F0=
-github.com/mrheiz97/stumpfworks-framework v0.9.0-rc.2/go.mod h1:YMoobOdjc2IUH4BcPTQiLkqQfw9Vdvju3UEIQZc9i5w=
+github.com/mrheiz97/stumpfworks-framework v1.0.0 h1:6FRFr267Vwds1eD+Q9LXfle5DuN/dko1EqlwngKOiAg=
+github.com/mrheiz97/stumpfworks-framework v1.0.0/go.mod h1:YMoobOdjc2IUH4BcPTQiLkqQfw9Vdvju3UEIQZc9i5w=
 github.com/ncruces/go-strftime v0.1.9 h1:bY0MQC28UADQmHmaF5dgpLmImcShSi2kHU9XLdhx/f4=
 github.com/ncruces/go-strftime v0.1.9/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
