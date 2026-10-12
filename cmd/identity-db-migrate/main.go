@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -42,6 +43,12 @@ func run(args []string, output io.Writer) error {
 	if action != "schema" && action != "import" && action != "reconcile" {
 		return errors.New("action must be schema, import, or reconcile")
 	}
+	if action == "schema" && *confirmation != "create-empty-identity-schema" {
+		return errors.New("schema requires --confirm create-empty-identity-schema")
+	}
+	if action == "import" && *confirmation != "import-stopped-snapshot" {
+		return errors.New("import requires --confirm import-stopped-snapshot")
+	}
 	if *urlFile == "" {
 		return errors.New("PostgreSQL URL file is required")
 	}
@@ -60,9 +67,6 @@ func run(args []string, output io.Writer) error {
 	}
 	defer pool.Close()
 	if action == "schema" {
-		if *confirmation != "create-empty-identity-schema" {
-			return errors.New("schema requires --confirm create-empty-identity-schema")
-		}
 		if err := database.MigratePostgres(ctx, pool); err != nil {
 			return errors.New("PostgreSQL schema migration failed")
 		}
@@ -80,9 +84,6 @@ func run(args []string, output io.Writer) error {
 	}
 	var counts map[string]int64
 	if action == "import" {
-		if *confirmation != "import-stopped-snapshot" {
-			return errors.New("import requires --confirm import-stopped-snapshot")
-		}
 		counts, err = store.ImportSQLite(ctx, source, *maximumRows)
 		if err != nil {
 			return errors.New("import failed; reconcile target state before retry")
@@ -111,6 +112,13 @@ func readBoundedSecret(path string) (string, error) {
 		return "", err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("secret file must be regular")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
+		return "", errors.New("secret file permissions are too broad")
+	}
 	contents, err := io.ReadAll(io.LimitReader(file, maximumURLFileBytes+1))
 	if err != nil || len(contents) > maximumURLFileBytes {
 		return "", errors.New("invalid secret file")
@@ -130,8 +138,8 @@ func openReadOnlySQLite(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(absolute)
-	if err != nil || !info.Mode().IsRegular() {
+	info, err := os.Lstat(absolute)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("source must be a regular file")
 	}
 	dsn := "file:" + filepath.ToSlash(absolute) + "?mode=ro"

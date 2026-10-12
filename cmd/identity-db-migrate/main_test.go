@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,29 @@ func TestReadBoundedSecret(t *testing.T) {
 	}
 	if _, err := readBoundedSecret(path); err == nil {
 		t.Fatal("oversized URL file accepted")
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.WriteFile(path, []byte("postgres://fixture"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readBoundedSecret(path); err == nil {
+			t.Fatal("overly broad URL file permissions accepted")
+		}
+	}
+}
+
+func TestConfirmationIsCheckedBeforeURLFile(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-url")
+	err := run([]string{"--postgres-url-file", missing, "schema"}, &strings.Builder{})
+	if err == nil || !strings.Contains(err.Error(), "confirm") {
+		t.Fatal("schema confirmation was not checked before connection setup")
+	}
+	err = run([]string{"--postgres-url-file", missing, "import"}, &strings.Builder{})
+	if err == nil || !strings.Contains(err.Error(), "confirm") {
+		t.Fatal("import confirmation was not checked before connection setup")
 	}
 }
 
