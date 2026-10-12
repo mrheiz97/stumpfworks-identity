@@ -19,6 +19,9 @@ func TestPostgresAdapterInvalidDependencies(t *testing.T) {
 		if _, err := s.ImportSQLite(context.Background(), nil, limit); err == nil {
 			t.Fatal("invalid import dependencies accepted")
 		}
+		if _, err := s.ReconcileSQLite(context.Background(), nil, limit); err == nil {
+			t.Fatal("invalid reconciliation dependencies accepted")
+		}
 	}
 	if _, err := normalizeSQLiteValue(42, "timestamp with time zone"); err == nil {
 		t.Fatal("invalid timestamp type accepted")

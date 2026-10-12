@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	frameworkoidc "github.com/mrheiz97/stumpfworks-framework/auth/oidc"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
+	frameworkoidc "github.com/mrheiz97/stumpfworks-framework/auth/oidc"
 )
 
 func TestSQLiteFrameworkClientContract(t *testing.T) {
@@ -37,7 +37,7 @@ func testFrameworkClientContract(t *testing.T, p *Provider, store frameworkIdent
 	transport.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	configuration, err := frameworkoidc.Discover(ctx, server.URL, "stumpfworks-access", transport)
 	if err != nil {
-		t.Fatal("framework discovery of actual Identity handlers failed")
+		t.Fatalf("framework discovery of actual Identity handlers failed: %v", err)
 	}
 	client, err := frameworkoidc.NewLoginClient(configuration, "stumpfworks-access", "client-secret", "https://access.example.test/api/v1/auth/oidc/callback", transport)
 	if err != nil {

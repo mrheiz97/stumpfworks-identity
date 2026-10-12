@@ -155,6 +155,51 @@ func TestAuthorizationAndTokenFailures(t *testing.T) {
 	}
 }
 
+func TestAuthorizationCodeFailsClosedWhenAuditCannotCommit(t *testing.T) {
+	p, st, _, _ := testProvider(t)
+	if _, err := st.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_oidc_code_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END`); err != nil {
+		t.Fatal(err)
+	}
+	v := authValues(strings.Repeat("v", 43))
+	v.Set("username", "alice")
+	v.Set("password", "correct")
+	r := httptest.NewRequest(http.MethodPost, "/oauth2/authorize", strings.NewReader(v.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := serve(p, r)
+	if w.Code != http.StatusServiceUnavailable || w.Header().Get("Location") != "" {
+		t.Fatalf("audit failure exposed an authorization code: %d %s", w.Code, w.Header().Get("Location"))
+	}
+	var count int
+	if err := st.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM oidc_codes`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("audit failure left a redeemable authorization code")
+	}
+}
+
+func TestTokenFailsClosedWhenAuditCannotCommit(t *testing.T) {
+	p, st, _, _ := testProvider(t)
+	verifier := strings.Repeat("v", 43)
+	code := issueCode(t, p, verifier)
+	if _, err := st.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_oidc_token_audit BEFORE INSERT ON audit_log WHEN NEW.event_type='oidc_token_issued' BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END`); err != nil {
+		t.Fatal(err)
+	}
+	w := exchange(p, code, verifier)
+	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "temporarily_unavailable") {
+		t.Fatalf("token audit failure returned %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "access_token") || strings.Contains(w.Body.String(), "id_token") {
+		t.Fatal("audit failure exposed token material")
+	}
+	if _, err := st.DB.ExecContext(t.Context(), `DROP TRIGGER fail_oidc_token_audit`); err != nil {
+		t.Fatal(err)
+	}
+	if retry := exchange(p, code, verifier); retry.Code != http.StatusOK {
+		t.Fatalf("rolled-back token exchange could not be retried: %d %s", retry.Code, retry.Body.String())
+	}
+	if replay := exchange(p, code, verifier); replay.Code != http.StatusBadRequest {
+		t.Fatal("successfully exchanged code remained reusable")
+	}
+}
+
 func TestTokenRateLimit(t *testing.T) {
 	p, _, _, _ := testProvider(t)
 	testTokenRateLimit(t, p)

@@ -8,16 +8,17 @@ import (
 )
 
 // providerStore bounds the provider's database dependency for backend contract
-// tests. New still accepts the existing SQLite Store; there is no runtime
-// PostgreSQL switch. Legacy Audit policy is intentionally unchanged here.
+// tests. Both runtime backends implement the same fail-closed issuance paths.
 type providerStore interface {
 	OIDCClientByID(context.Context, string) (database.OIDCClient, error)
 	UserByUsername(context.Context, string) (database.User, error)
-	CreateUser(context.Context, string, string, string) (database.User, error)
+	CreateUserWithAudit(context.Context, string, string, string, string, string) (database.User, error)
 	GetUser(context.Context, int64) (database.User, error)
-	EnsureOIDCSubject(context.Context, int64) (string, error)
-	CreateOIDCCode(context.Context, database.OIDCCode) error
+	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
 	ConsumeOIDCCode(context.Context, string, string, string, time.Time) (database.OIDCCode, error)
+	CreateOIDCCodeWithAudit(context.Context, database.OIDCCode, string, string) error
+	OIDCCodeForExchange(context.Context, string, string, string, time.Time) (database.OIDCCode, error)
+	ConsumeOIDCCodeWithAudit(context.Context, string, string, string, time.Time, string) (database.OIDCCode, error)
 	WriteAudit(context.Context, database.Audit) error
 }
 

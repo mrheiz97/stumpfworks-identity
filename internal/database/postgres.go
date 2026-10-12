@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// PostgresStore is a staged adapter, not yet wired into the Identity server.
-// The caller owns the framework pool and performs migrations separately with
-// migration credentials. Runtime constructors never execute DDL.
+// PostgresStore is the opt-in PostgreSQL runtime adapter. The caller owns the
+// framework pool and performs migrations separately with migration credentials;
+// runtime constructors never execute DDL. SQLite remains the default backend.
 type PostgresStore struct{ pool *frameworkpg.Pool }
 
 func NewPostgresStore(pool *frameworkpg.Pool) (*PostgresStore, error) {

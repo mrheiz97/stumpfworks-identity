@@ -15,17 +15,15 @@ explizit über das Paar `(issuer, subject)`.
 Für den aktuellen Development-Betrieb gelten:
 
 - Identity-Issuer: `https://login01.ad.stumpfworks.de:8080`
-- Access-Origin: `https://192.168.178.85:8443`
+- Access-Origin: `https://access01.ad.stumpfworks.de:8443`
 - Client-ID: `stumpfworks-access`
-- Redirect-URI: `https://192.168.178.85:8443/api/v1/auth/oidc/callback`
+- Redirect-URI: `https://access01.ad.stumpfworks.de:8443/api/v1/auth/oidc/callback`
 - Scopes: `openid profile email`
 - Flow: Authorization Code mit PKCE S256
 - ID-Token-Signatur: RS256
 
-Issuer und Redirect-URI müssen bytegenau mit diesen Werten übereinstimmen. Wird
-Access später über einen DNS-Namen veröffentlicht, wird ein neuer exakter
-Redirect registriert und `ACCESS_ORIGIN` gemeinsam geändert; eine Wildcard ist
-nicht zulässig.
+Issuer und Redirect-URI müssen bytegenau mit diesen Werten übereinstimmen; eine
+Wildcard ist nicht zulässig.
 
 ## Signaturschlüssel vorbereiten
 
@@ -77,7 +75,7 @@ das Secret genau einmal an:
 identity-admin --config /etc/stumpfworks-badge/config.yaml \
   oidc-client create \
   --client-id stumpfworks-access \
-  --redirect-uri https://192.168.178.85:8443/api/v1/auth/oidc/callback \
+  --redirect-uri https://access01.ad.stumpfworks.de:8443/api/v1/auth/oidc/callback \
   --scopes "openid profile email"
 ```
 
@@ -89,7 +87,7 @@ Für einen Wechsel dient ausschließlich `oidc-client rotate-secret`.
 ACCESS01 benötigt:
 
 ```text
-ACCESS_ORIGIN=https://192.168.178.85:8443
+ACCESS_ORIGIN=https://access01.ad.stumpfworks.de:8443
 ACCESS_OIDC_ISSUER=https://login01.ad.stumpfworks.de:8080
 ACCESS_OIDC_CLIENT_ID=stumpfworks-access
 ACCESS_OIDC_CLIENT_SECRET=<einmalig ausgegebenes Secret>
@@ -153,6 +151,11 @@ Private Schlüssel und Client-Secrets benötigen verschlüsselte, zugriffsbeschr
 Backups. Das normale Identity-Diagnosepaket darf sie nicht enthalten.
 
 ## Abnahme
+
+Der Browserlogin, Signaturschlüsselrotation sowie Ausfall und Wiederherstellung
+wurden produktiv bestätigt. Deaktivierte und unverknüpfte Benutzer, Replay und
+Redirect-Prüfungen sind weitgehend abgedeckt. Die Rotation des OIDC-Client-
+Secrets bleibt als eigene Betriebsabnahme offen.
 
 1. Discovery und JWKS über verifiziertes HTTPS abrufen.
 2. Access-OIDC-Start öffnen und als aktiver Identity-Benutzer anmelden.

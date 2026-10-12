@@ -4,6 +4,29 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- Badge authentication now commits its last-use marker and success audit
+  atomically before retaining or returning a login grant on both SQLite and
+  PostgreSQL.
+- PKINIT certificate responses now fail closed when their success audit cannot
+  be persisted; the consumed one-time grant remains non-reusable.
+- OIDC authorization codes are created atomically with login, consent and
+  issuance audit events. Token exchange commits code consumption together with
+  its success audit before returning any token material. First-login user and
+  stable-subject creation are transactionally audited as well.
+- Administrator and self-service login, PIN changes, user provisioning and
+  administrative badge lifecycle operations now fail closed or roll back when
+  their required success audit cannot be persisted.
+- `identity-admin` now uses the configured SQLite/PostgreSQL runtime store and
+  atomically audits OIDC client creation, secret rotation, enable/disable and
+  initial subject assignment before reporting success or revealing a new
+  one-time secret.
+- Added a guarded SQLite-to-PostgreSQL migration utility with read-only source
+  handling, explicit mutation confirmations, bounded import and exact
+  aggregate-only reconciliation, plus a stop-the-world cutover and rollback
+  runbook.
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

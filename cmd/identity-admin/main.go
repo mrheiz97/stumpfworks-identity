@@ -16,6 +16,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+type identityAdminStore interface {
+	OIDCClientByID(context.Context, string) (database.OIDCClient, error)
+	CreateOIDCClientWithAudit(context.Context, string, string, string, string, string) error
+	RotateOIDCClientSecretWithAudit(context.Context, string, string, string) error
+	SetOIDCClientEnabledWithAudit(context.Context, string, bool, string) error
+	UserByUsername(context.Context, string) (database.User, error)
+	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
+}
+
 type values []string
 
 func (v *values) String() string     { return strings.Join(*v, ",") }
@@ -33,11 +42,14 @@ func main() {
 	if err != nil {
 		fail("configuration: " + err.Error())
 	}
-	store, err := database.Open(cfg.DatabasePath)
+	store, closeStore, err := database.OpenRuntime(context.Background(), database.RuntimeOptions{
+		Backend: cfg.DatabaseBackend, SQLitePath: cfg.DatabasePath,
+		PostgreSQLURL: cfg.DatabaseURL, PostgreSQLAllowInsecure: cfg.DatabaseAllowInsecure,
+	})
 	if err != nil {
 		fail("database: " + err.Error())
 	}
-	defer store.Close()
+	defer closeStore()
 	switch args[0] {
 	case "oidc-client":
 		clientCommand(store, args[1:])
@@ -47,7 +59,7 @@ func main() {
 		fail("unknown command")
 	}
 }
-func clientCommand(store *database.Store, args []string) {
+func clientCommand(store identityAdminStore, args []string) {
 	if len(args) == 0 {
 		fail("oidc-client action required: create, rotate-secret, enable, or disable")
 	}
@@ -86,7 +98,7 @@ func clientCommand(store *database.Store, args []string) {
 		if err != nil {
 			fail("secret hashing failed")
 		}
-		if err = store.CreateOIDCClient(ctx, *id, string(hash), strings.Join(redirects, "\n"), strings.Join(requested, " ")); err != nil {
+		if err = store.CreateOIDCClientWithAudit(ctx, *id, string(hash), strings.Join(redirects, "\n"), strings.Join(requested, " "), ""); err != nil {
 			fail("client registration failed")
 		}
 		fmt.Printf("client_id=%s\nclient_secret=%s\nnotice=This secret is shown once. Store it securely.\n", *id, secret)
@@ -99,12 +111,12 @@ func clientCommand(store *database.Store, args []string) {
 		if err != nil {
 			fail("secret hashing failed")
 		}
-		if err = store.RotateOIDCClientSecret(ctx, *id, string(hash)); err != nil {
+		if err = store.RotateOIDCClientSecretWithAudit(ctx, *id, string(hash), ""); err != nil {
 			fail("secret rotation failed")
 		}
 		fmt.Printf("client_id=%s\nclient_secret=%s\nnotice=This secret is shown once. Store it securely.\n", *id, secret)
 	case "enable", "disable":
-		if err := store.SetOIDCClientEnabled(ctx, *id, action == "enable"); err != nil {
+		if err := store.SetOIDCClientEnabledWithAudit(ctx, *id, action == "enable", ""); err != nil {
 			fail("client state change failed")
 		}
 		fmt.Printf("client_id=%s\nenabled=%t\n", *id, action == "enable")
@@ -112,7 +124,7 @@ func clientCommand(store *database.Store, args []string) {
 		fail("unknown oidc-client action")
 	}
 }
-func subjectCommand(store *database.Store, args []string) {
+func subjectCommand(store identityAdminStore, args []string) {
 	fs := flag.NewFlagSet("oidc-subject", flag.ExitOnError)
 	login := fs.String("login", "", "existing Identity login")
 	_ = fs.Parse(args)
@@ -120,7 +132,7 @@ func subjectCommand(store *database.Store, args []string) {
 	if err != nil {
 		fail("user not found")
 	}
-	subject, err := store.EnsureOIDCSubject(context.Background(), u.ID)
+	subject, err := store.EnsureOIDCSubjectWithAudit(context.Background(), u.ID, "")
 	if err != nil {
 		fail("subject lookup failed")
 	}

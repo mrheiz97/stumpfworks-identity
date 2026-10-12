@@ -146,6 +146,25 @@ func (s *PostgresStore) Used(ctx context.Context, id int64) error {
 	return err
 }
 
+func (s *PostgresStore) RecordBadgeAuthenticationSuccess(ctx context.Context, badgeID int64, clientID, ip string) error {
+	if ip != "" && net.ParseIP(ip) == nil {
+		return errors.New("audit IP must be an address or empty")
+	}
+	return s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		var code string
+		var userID int64
+		if err := tx.QueryRow(ctx, `UPDATE badges SET last_used_at=now() WHERE id=$1 AND enabled=TRUE RETURNING badge_code,user_id`, badgeID).Scan(&code, &userID); err != nil {
+			return postgresNotFound(err)
+		}
+		var username string
+		if err := tx.QueryRow(ctx, "SELECT username FROM users WHERE id=$1", userID).Scan(&username); err != nil {
+			return postgresNotFound(err)
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO audit_log(event_type,badge_id,username,client_id,success,ip_address,details) VALUES($1,$2,$3,$4,$5,$6,$7)`, "auth_success", code, username, clientID, true, ip, "")
+		return err
+	})
+}
+
 // RevokeActiveBadgeForUserWithAudit is the staged atomic equivalent of the
 // SQLite API. The consumer supplies only its authenticated user ID and peer IP;
 // event identity/code/reason are derived here, never from untrusted form fields.

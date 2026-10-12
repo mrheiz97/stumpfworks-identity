@@ -14,6 +14,35 @@ func (s *Store) WriteAudit(ctx context.Context, event Audit) error {
 	return err
 }
 
+// RecordBadgeAuthenticationSuccess updates the last-use marker and commits the
+// canonical success event in one transaction. A concurrent revocation or audit
+// failure leaves both unchanged, so callers must not issue a login grant.
+func (s *Store) RecordBadgeAuthenticationSuccess(ctx context.Context, badgeID int64, clientID, ip string) error {
+	if ip != "" && net.ParseIP(ip) == nil {
+		return errors.New("audit IP must be an address or empty")
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var code, username string
+	if err := tx.QueryRowContext(ctx, `SELECT b.badge_code,u.username FROM badges b JOIN users u ON u.id=b.user_id WHERE b.id=? AND b.enabled=1`, badgeID).Scan(&code, &username); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE badges SET last_used_at=CURRENT_TIMESTAMP WHERE id=? AND enabled=1`, badgeID)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,badge_id,username,client_id,success,ip_address,details) VALUES(?,?,?,?,?,?,?)`, "auth_success", code, username, clientID, true, ip, ""); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func lostBadgeAudit(username, code, ip string) (Audit, error) {
 	if ip != "" && net.ParseIP(ip) == nil {
 		return Audit{}, errors.New("audit IP must be an address or empty")

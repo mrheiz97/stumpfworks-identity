@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 )
 
 func TestPostgresIdentityAdapter(t *testing.T) {
@@ -271,6 +271,27 @@ CREATE TRIGGER corrupt_import_fixture BEFORE INSERT ON users FOR EACH ROW EXECUT
 				t.Fatalf("unexpected count for %s", table)
 			}
 		}
+		reconciled, err := store.ReconcileSQLite(ctx, source.DB, 100)
+		if err != nil {
+			t.Fatal("exact post-import reconciliation failed")
+		}
+		for _, table := range importTables {
+			if reconciled[table] != counts[table] {
+				t.Fatal("reconciliation count changed")
+			}
+		}
+		if _, err := pool.Native().Exec(ctx, "UPDATE users SET display_name='synthetic target divergence' WHERE id=$1", user.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.ReconcileSQLite(ctx, source.DB, 100); !errors.Is(err, ErrImportFailed) {
+			t.Fatal("reconciliation accepted changed target data")
+		}
+		if _, err := pool.Native().Exec(ctx, "UPDATE users SET display_name=$1 WHERE id=$2", user.DisplayName, user.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.ReconcileSQLite(ctx, source.DB, 100); err != nil {
+			t.Fatal("reconciliation did not recover after restoring target data")
+		}
 		found, err := store.GetUser(ctx, user.ID)
 		if err != nil || found.OIDCSubject != subject || found.PINHash != "synthetic-pin-hash" {
 			t.Fatal("import changed user identity/hash")
@@ -376,6 +397,56 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 			}
 		})
 		testAtomicActivation(t, store, func(reject bool) {
+			query := "DROP TRIGGER IF EXISTS fail_atomic_audit ON audit_log; DROP FUNCTION IF EXISTS fail_atomic_audit()"
+			if reject {
+				query = `CREATE FUNCTION fail_atomic_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;
+CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_atomic_audit()`
+			}
+			if _, err := pool.Native().Exec(ctx, query); err != nil {
+				t.Fatal("PostgreSQL atomic audit fixture setup failed")
+			}
+		})
+		testAtomicBadgeAuthentication(t, store, func(reject bool) {
+			query := "DROP TRIGGER IF EXISTS fail_atomic_audit ON audit_log; DROP FUNCTION IF EXISTS fail_atomic_audit()"
+			if reject {
+				query = `CREATE FUNCTION fail_atomic_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;
+CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_atomic_audit()`
+			}
+			if _, err := pool.Native().Exec(ctx, query); err != nil {
+				t.Fatal("PostgreSQL atomic audit fixture setup failed")
+			}
+		})
+		testAtomicOIDCIssuance(t, store, func(reject bool) {
+			query := "DROP TRIGGER IF EXISTS fail_atomic_audit ON audit_log; DROP FUNCTION IF EXISTS fail_atomic_audit()"
+			if reject {
+				query = `CREATE FUNCTION fail_atomic_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;
+CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_atomic_audit()`
+			}
+			if _, err := pool.Native().Exec(ctx, query); err != nil {
+				t.Fatal("PostgreSQL atomic audit fixture setup failed")
+			}
+		})
+		testAtomicSessionMutations(t, store, func(reject bool) {
+			query := "DROP TRIGGER IF EXISTS fail_atomic_audit ON audit_log; DROP FUNCTION IF EXISTS fail_atomic_audit()"
+			if reject {
+				query = `CREATE FUNCTION fail_atomic_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;
+CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_atomic_audit()`
+			}
+			if _, err := pool.Native().Exec(ctx, query); err != nil {
+				t.Fatal("PostgreSQL atomic audit fixture setup failed")
+			}
+		})
+		testAtomicAdministrativeMutations(t, store, func(reject bool) {
+			query := "DROP TRIGGER IF EXISTS fail_atomic_audit ON audit_log; DROP FUNCTION IF EXISTS fail_atomic_audit()"
+			if reject {
+				query = `CREATE FUNCTION fail_atomic_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;
+CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_atomic_audit()`
+			}
+			if _, err := pool.Native().Exec(ctx, query); err != nil {
+				t.Fatal("PostgreSQL atomic audit fixture setup failed")
+			}
+		})
+		testAtomicOIDCAdministration(t, store, func(reject bool) {
 			query := "DROP TRIGGER IF EXISTS fail_atomic_audit ON audit_log; DROP FUNCTION IF EXISTS fail_atomic_audit()"
 			if reject {
 				query = `CREATE FUNCTION fail_atomic_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;

@@ -188,13 +188,13 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		local, err = p.store.CreateUser(r.Context(), u.Username, u.DisplayName, u.DN)
+		local, err = p.store.CreateUserWithAudit(r.Context(), u.Username, u.DisplayName, u.DN, "oidc_user_provisioned", remoteIP(r))
 	}
 	if err != nil {
 		http.Error(w, "unavailable", 503)
 		return
 	}
-	if _, err = p.store.EnsureOIDCSubject(r.Context(), local.ID); err != nil {
+	if _, err = p.store.EnsureOIDCSubjectWithAudit(r.Context(), local.ID, remoteIP(r)); err != nil {
 		http.Error(w, "unavailable", 503)
 		return
 	}
@@ -205,14 +205,12 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	code := base64.RawURLEncoding.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(code))
-	err = p.store.CreateOIDCCode(r.Context(), database.OIDCCode{CodeHash: hex.EncodeToString(sum[:]), ClientID: a.ClientID, UserID: local.ID, RedirectURI: a.RedirectURI, Scope: a.Scope, Nonce: a.Nonce, CodeChallenge: a.Challenge, ExpiresAt: p.now().Add(90 * time.Second)})
+	err = p.store.CreateOIDCCodeWithAudit(r.Context(), database.OIDCCode{CodeHash: hex.EncodeToString(sum[:]), ClientID: a.ClientID, UserID: local.ID, RedirectURI: a.RedirectURI, Scope: a.Scope, Nonce: a.Nonce, CodeChallenge: a.Challenge, ExpiresAt: p.now().Add(90 * time.Second)}, local.Username, remoteIP(r))
 	if err != nil {
+		slog.Error("OIDC authorization success audit failed", "component", "audit", "event_type", "oidc_code_issued")
 		http.Error(w, "unavailable", 503)
 		return
 	}
-	p.audit(r, "oidc_login", local.Username, a.ClientID, true, "")
-	p.audit(r, "oidc_consent", local.Username, a.ClientID, true, a.Scope)
-	p.audit(r, "oidc_code_issued", local.Username, a.ClientID, true, "")
 	dest, _ := url.Parse(a.RedirectURI)
 	q := dest.Query()
 	q.Set("code", code)
@@ -250,7 +248,10 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	}
 	code := r.FormValue("code")
 	sum := sha256.Sum256([]byte(code))
-	stored, err := p.store.ConsumeOIDCCode(r.Context(), hex.EncodeToString(sum[:]), clientID, r.FormValue("redirect_uri"), p.now())
+	codeHash := hex.EncodeToString(sum[:])
+	redirectURI := r.FormValue("redirect_uri")
+	exchangeTime := p.now()
+	stored, err := p.store.OIDCCodeForExchange(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
 	if err != nil {
 		p.audit(r, "oidc_token_denied", "", clientID, false, "invalid_grant")
 		p.oauthError(w, "invalid_grant", 400)
@@ -258,34 +259,38 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	}
 	verifier := r.FormValue("code_verifier")
 	if len(verifier) < 43 || len(verifier) > 128 {
+		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
 		p.audit(r, "oidc_token_denied", "", clientID, false, "pkce_failed")
 		p.oauthError(w, "invalid_grant", 400)
 		return
 	}
 	challenge := sha256.Sum256([]byte(verifier))
 	if verifier == "" || base64.RawURLEncoding.EncodeToString(challenge[:]) != stored.CodeChallenge {
+		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
 		p.audit(r, "oidc_token_denied", "", clientID, false, "pkce_failed")
 		p.oauthError(w, "invalid_grant", 400)
 		return
 	}
 	u, err := p.store.GetUser(r.Context(), stored.UserID)
 	if err != nil {
+		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
 		p.oauthError(w, "invalid_grant", 400)
 		return
 	}
 	du, err := p.dir.GetUser(r.Context(), u.Username)
 	if err != nil {
+		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
 		p.audit(r, "oidc_token_denied", u.Username, clientID, false, "user_inactive")
 		p.oauthError(w, "invalid_grant", 400)
 		return
 	}
-	sub, err := p.store.EnsureOIDCSubject(r.Context(), u.ID)
+	sub, err := p.store.EnsureOIDCSubjectWithAudit(r.Context(), u.ID, remoteIP(r))
 	if err != nil {
 		p.oauthError(w, "server_error", 500)
 		return
 	}
-	now := p.now().UTC()
-	claims := map[string]any{"iss": p.issuer, "sub": sub, "aud": clientID, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": stored.Nonce}
+	issuedAt := p.now().UTC()
+	claims := map[string]any{"iss": p.issuer, "sub": sub, "aud": clientID, "exp": issuedAt.Add(5 * time.Minute).Unix(), "iat": issuedAt.Unix(), "nonce": stored.Nonce}
 	if strings.Contains(" "+stored.Scope+" ", " profile ") {
 		claims["name"] = u.DisplayName
 		claims["preferred_username"] = u.Username
@@ -303,7 +308,16 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		p.oauthError(w, "server_error", 500)
 		return
 	}
-	p.audit(r, "oidc_token_issued", u.Username, clientID, true, "")
+	if _, err = p.store.ConsumeOIDCCodeWithAudit(r.Context(), codeHash, clientID, redirectURI, exchangeTime, remoteIP(r)); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			p.audit(r, "oidc_token_denied", "", clientID, false, "invalid_grant")
+			p.oauthError(w, "invalid_grant", http.StatusBadRequest)
+			return
+		}
+		slog.Error("OIDC token success audit failed", "component", "audit", "event_type", "oidc_token_issued")
+		p.oauthError(w, "temporarily_unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	p.writeJSON(w, 200, map[string]any{"access_token": base64.RawURLEncoding.EncodeToString(accessRaw), "token_type": "Bearer", "expires_in": 300, "id_token": idToken, "scope": stored.Scope})
 }
 

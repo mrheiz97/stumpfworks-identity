@@ -8,7 +8,7 @@ Local preparation only. No production cutover or database driver change.
 the existing authentication and listing implementation while allowing a
 consumer callback to replace single-user reads. Tests verify lookup delegation,
 unchanged auth policy, missing-user handling and propagated infrastructure
-errors. It is not wired into cmd/server. `WithFrameworkUserLookup` now bridges
+errors. `WithFrameworkUserLookup` bridges
 the pinned framework LDAPS reader to Identity's user projection. Only missing
 users map to `ErrUserNotFound`; ambiguity, outages and cancellation remain errors.
 Tests cover projection, policy isolation, invalid results, rejected plaintext
@@ -17,20 +17,20 @@ configuration and cancellation before any network connection.
 instance, bounds custom CA files to 1 MiB, and rejects legacy certificate-pin
 exceptions. Synthetic end-to-end TLS/BER LDAP tests cover full user projection,
 missing/ambiguous users and untrusted certificates; ten shuffled runs passed.
-Next: verified CA/SAN compatibility and explicit selection against an actual
-directory. No silent certificate bypass or
-automatic insecure fallback. Do not point read and auth adapters at different
-directories.
+The production LDAP certificate and trust path work, and a real framework LDAP
+read was confirmed through the Access login. No silent certificate bypass or
+automatic insecure fallback is allowed. Do not point read and auth adapters at
+different directories.
 
-The server now has a separate, default-off `directory.framework_read_enabled`
+The server has a separately controlled `directory.framework_read_enabled`
 switch (environment: `SWBADGE_DIRECTORY_FRAMEWORK_READ_ENABLED`). When enabled,
 only user reads use the framework adapter; password/admin authentication and
 listing remain on the exact same LDAP configuration. Startup fails if the
-legacy certificate-pin/SAN bypass is still configured. DC01 currently has no
-DNS SAN, so this switch must remain disabled until its certificate is replaced.
-The runtime-selection tests verify default-off behavior, reject selection while
-the directory itself is disabled, reject the legacy pin, and accept a normal
-CA/hostname-verifying configuration. On 2026-09-22 the complete local suite,
+legacy certificate-pin/SAN bypass is configured. The production CA, certificate
+name and trust path are working, and the framework read path has been confirmed
+through a real Access login. Runtime-selection tests still verify safe default
+behavior, reject selection while the directory itself is disabled, reject the
+legacy pin, and accept a normal CA/hostname-verifying configuration. On 2026-09-22 the complete local suite,
 including disposable PostgreSQL import/restore and OIDC contracts, plus vet and
 module verification passed. No production configuration was changed.
 
@@ -96,10 +96,11 @@ backup/cutover acceptance remain separate.
 
 ## Next implementation stages
 
-The inactive `PostgresStore` now reuses framework pool/transactions/migrations.
+The selectable `PostgresStore` reuses framework pool/transactions/migrations.
 It covers users/PIN, OIDC subjects/client administration/codes, badges,
-self-service sessions and greeter clients. Both production entry points still
-open SQLite. Go 1.26.8 is now enforced; CI already
+self-service sessions and greeter clients. Both the HTTP server and
+`identity-admin` select the configured backend through one runtime opener; the
+known production Identity instance remains on SQLite. Go 1.26.8 is now enforced; CI already
 reads the Go version from go.mod. Full local tests and vet passed after the bump.
 
 Opt-in tests use a disposable database and unique schemas removed by cleanup:
@@ -136,13 +137,16 @@ Initial migrations refuse existing unverified application tables.
 Generated or hidden source columns are refused. SQLite AUTOINCREMENT high-water
 marks are retained, including IDs of deleted rows, and tested after restoration.
 
-`WriteAudit` and `Counts` return errors, unlike legacy `Audit`/`Stats`; application
-failure policy remains separate open work. Both backends now expose a staged
-`RevokeActiveBadgeForUserWithAudit`: mutation and canonical lost-badge audit
-commit together or roll back together. Error-trigger tests keep the badge active;
-eight competitors produce exactly one revocation and one event. Existing server
-callers still use their old path; this API is not enabled in production.
-This is not a drop-in Store replacement, production-ready importer or full auth
+`WriteAudit` and `Counts` return errors, unlike legacy `Audit`/`Stats`. Both
+backends now commit lost-badge revocation, replacement-badge activation,
+successful badge last-use updates and OIDC code/token state with their canonical
+audit events. Error-trigger tests prove rollback; competing lost-badge and OIDC
+token requests produce exactly one winner and event. The HTTP server uses these
+paths. PKINIT responses are also withheld unless their success event is durable.
+User provisioning, PIN changes, web sessions and administrative badge changes
+now use the same fail-closed policy. OIDC client administration and first
+subject assignment through `identity-admin` also commit with audit and use the
+configured SQLite/PostgreSQL backend. This is not a production-ready importer or full auth
 acceptance. A restricted temporary PostgreSQL login role can perform normal
 operations but cannot create schema objects or run migrations. pg_dump/restore
 of synthetic data preserves complete table fingerprints and ID sequences.
@@ -156,8 +160,9 @@ explicit and defaults to SQLite. PostgreSQL requires `database.backend:
 postgres`, a protected URL file or `SWBADGE_POSTGRES_URL`, TLS by default, a
 separately pre-migrated schema and sufficient runtime privileges. Startup checks
 the schema using read-only aggregate queries and fails closed; it never runs DDL
-with runtime credentials. Application-wide atomic audit policy and production
-cutover acceptance remain open.
+with runtime credentials. Application-wide atomic success-audit coverage is
+implemented. Production backup/restore, migration-copy, cutover and
+reconciliation acceptance remain open.
 
 The original 1.26.0 build toolchain had reachable standard-library advisories;
 `go run` had selected 1.26.8 for the scanner and masked the mismatch. Minimum
@@ -166,16 +171,12 @@ report no reachable/imported-package findings; one unimported OpenPGP module
 advisory remains. LDAP/BER/NTLM, x/crypto and Windows x/sys dependencies were
 updated locally. No patched binary or new adapter has been deployed.
 
-1. Inventory Store queries and both cmd/server and cmd/identity-admin startup.
-   Move question-mark placeholders, bool comparisons, LastInsertId and SQLite
-   schema introspection to explicit PostgreSQL implementations.
-2. Preserve numeric IDs and OIDC subjects, all credential hashes and history.
+1. Preserve numeric IDs and OIDC subjects, all credential hashes and history.
    Identity owns these tables; the framework supplies pool/migration primitives.
-3. Rewrite code consumption as one atomic UPDATE ... RETURNING with client,
-   callback and expiry constraints; test competing consumers and rollback.
-4. Make audit errors visible and test mutation-plus-audit atomicity (the current
-   Store Audit method ignores errors). Treat this as a separate behavior change.
-5. Build a bounded importer and verify every table with aggregate-safe output.
-6. Rehearse backup/restore before any production switch. Once PostgreSQL has
+2. Review and approve the production procedure in
+   `docs/postgresql-migration.md`, including maintenance ownership and runtime
+   credentials.
+3. Rehearse the documented procedure with a protected production snapshot
+   before any production switch. Once PostgreSQL has
    accepted new writes, restoring an old SQLite snapshot would lose them; an
    explicit reconciliation strategy is required before promising rollback.

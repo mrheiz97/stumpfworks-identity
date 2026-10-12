@@ -231,6 +231,45 @@ func TestAuth(t *testing.T) {
 	}
 }
 
+func TestAuthSuccessFailsClosedWhenAuditCannotCommit(t *testing.T) {
+	s, st := testServer(t)
+	u, err := st.CreateUser(t.Context(), "audit-failure-user", "Audit Failure User", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := "synthetic-secret"
+	b, err := st.CreateBadge(t.Context(), u.ID, badge.HashToken(token), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_auth_success_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END`); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(AuthRequest{BadgeID: b.BadgeCode, Token: token, ClientID: "test-client"})
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/badge", bytes.NewReader(raw))
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "authentication_unavailable") {
+		t.Fatalf("audit failure returned %d: %s", w.Code, w.Body.String())
+	}
+	var response AuthResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Valid || response.LoginGrant != "" {
+		t.Fatal("audit failure exposed a successful authentication or grant")
+	}
+	found, err := st.GetBadge(t.Context(), b.ID)
+	if err != nil || found.LastUsedAt.Valid {
+		t.Fatal("audit failure persisted badge use")
+	}
+	s.grantMu.Lock()
+	defer s.grantMu.Unlock()
+	if len(s.grants) != 0 {
+		t.Fatal("audit failure retained an undisclosed login grant")
+	}
+}
+
 func TestAdminLoginProtection(t *testing.T) {
 	_, st := testServer(t)
 	sessions, _ := adminauth.NewSessions("01234567890123456789012345678901", time.Hour)
@@ -276,6 +315,23 @@ func TestAdminLoginProtection(t *testing.T) {
 	s.Handler().ServeHTTP(w, r)
 	if w.Code != 303 {
 		t.Fatalf("import returned %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminLoginFailsClosedWhenAuditCannotPersist(t *testing.T) {
+	_, st := testServer(t)
+	sessions, _ := adminauth.NewSessions("01234567890123456789012345678901", time.Hour)
+	s := NewProtected(st, slog.New(slog.NewTextHandler(io.Discard, nil)), fakeDirectory{}, sessions)
+	if _, err := st.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_admin_login_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END`); err != nil {
+		t.Fatal(err)
+	}
+	form := strings.NewReader("username=alice-admin&password=correct")
+	r := httptest.NewRequest(http.MethodPost, "/login", form)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable || len(w.Result().Cookies()) != 0 || !strings.Contains(w.Body.String(), "authentication_unavailable") {
+		t.Fatalf("admin audit failure returned %d with cookies=%d: %s", w.Code, len(w.Result().Cookies()), w.Body.String())
 	}
 }
 
