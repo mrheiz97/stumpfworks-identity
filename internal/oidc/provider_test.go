@@ -155,6 +155,60 @@ func TestAuthorizationAndTokenFailures(t *testing.T) {
 	}
 }
 
+type rotatingOIDCStore interface {
+	RotateOIDCClientSecretWithAudit(context.Context, string, string, string) error
+	Audits(context.Context) ([]database.Audit, error)
+}
+
+func TestOIDCClientSecretRotation(t *testing.T) {
+	p, store, _, _ := testProvider(t)
+	testOIDCClientSecretRotation(t, p, store)
+}
+
+func testOIDCClientSecretRotation(t *testing.T, p *Provider, store rotatingOIDCStore) {
+	t.Helper()
+	verifier := strings.Repeat("r", 43)
+	code := issueCode(t, p, verifier)
+	const replacement = "replacement-client-secret"
+	hash, err := bcrypt.GenerateFromPassword([]byte(replacement), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RotateOIDCClientSecretWithAudit(t.Context(), "stumpfworks-access", string(hash), ""); err != nil {
+		t.Fatal("client secret rotation failed")
+	}
+	if denied := exchangeSecret(p, code, verifier, "client-secret"); denied.Code != http.StatusUnauthorized {
+		t.Fatalf("old client secret accepted after rotation: %d", denied.Code)
+	}
+	if accepted := exchangeSecret(p, code, verifier, replacement); accepted.Code != http.StatusOK {
+		t.Fatalf("new client secret rejected or code burned by old secret: %d %s", accepted.Code, accepted.Body.String())
+	}
+	events, err := store.Audits(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rotations int
+	for _, event := range events {
+		if event.EventType != "oidc_client_secret_rotated" {
+			continue
+		}
+		rotations++
+		if event.ClientID != "stumpfworks-access" || !event.Success || event.Details != "" {
+			t.Fatal("client secret rotation audit exposed or changed security context")
+		}
+	}
+	if rotations != 1 {
+		t.Fatalf("client secret rotation audit count=%d, want 1", rotations)
+	}
+	originalHash, err := bcrypt.GenerateFromPassword([]byte("client-secret"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RotateOIDCClientSecretWithAudit(t.Context(), "stumpfworks-access", string(originalHash), ""); err != nil {
+		t.Fatal("client secret fixture restoration failed")
+	}
+}
+
 func TestAuthorizationCodeFailsClosedWhenAuditCannotCommit(t *testing.T) {
 	p, st, _, _ := testProvider(t)
 	if _, err := st.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_oidc_code_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END`); err != nil {

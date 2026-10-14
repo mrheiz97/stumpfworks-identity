@@ -84,6 +84,25 @@ Das ausgegebene Secret unmittelbar in eine root-only Access-Environment-Datei
 werden. Ein erneuter `create`-Aufruf überschreibt einen bestehenden Client nicht.
 Für einen Wechsel dient ausschließlich `oidc-client rotate-secret`.
 
+### Client-Secret sicher rotieren
+
+1. Identity-Datenbank und die geschützte Access-Secretdatei sichern.
+2. Das neue Secret mit `identity-admin oidc-client rotate-secret` erzeugen. Es
+   wird erst nach erfolgreichem Datenbank- und Audit-Commit einmalig angezeigt.
+3. Access noch nicht neu starten, bevor das neue Secret sicher in seiner
+   root-only Environment-Datei liegt. Das alte Secret ist ab dem Identity-
+   Commit sofort ungültig; es gibt bewusst keine Überlappungsphase.
+4. Access kontrolliert neu starten und Readiness, OIDC-Browserlogin, Callback
+   und Tokenaustausch prüfen. Lokale Access-Anmeldung bleibt der Fallback.
+5. Bei einem Fehler das Identity-Datenbankbackup und die vorherige
+   Access-Secretdatei nur als zusammengehöriges Rollback wiederherstellen.
+
+SQLite und PostgreSQL besitzen einen gemeinsamen automatisierten Vertrag: Nach
+der Rotation wird das alte Secret abgelehnt, das neue akzeptiert und ein zuvor
+ausgestellter, noch unbenutzter Authorization Code nicht durch den Versuch mit
+dem alten Secret verbraucht. Das Rotation-Audit enthält weder altes noch neues
+Secret. Die produktive Betriebsabnahme bleibt separat erforderlich.
+
 ACCESS01 benötigt:
 
 ```text
@@ -155,7 +174,8 @@ Backups. Das normale Identity-Diagnosepaket darf sie nicht enthalten.
 Der Browserlogin, Signaturschlüsselrotation sowie Ausfall und Wiederherstellung
 wurden produktiv bestätigt. Deaktivierte und unverknüpfte Benutzer, Replay und
 Redirect-Prüfungen sind weitgehend abgedeckt. Die Rotation des OIDC-Client-
-Secrets bleibt als eigene Betriebsabnahme offen.
+Secrets ist lokal für SQLite und PostgreSQL abgedeckt, bleibt aber als eigene
+produktive Betriebsabnahme offen.
 
 1. Discovery und JWKS über verifiziertes HTTPS abrufen.
 2. Access-OIDC-Start öffnen und als aktiver Identity-Benutzer anmelden.

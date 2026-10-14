@@ -26,6 +26,10 @@ All notable changes to StumpfWorks Identity are documented here.
   handling, explicit mutation confirmations, bounded import and exact
   aggregate-only reconciliation, plus a stop-the-world cutover and rollback
   runbook.
+- Added SQLite and PostgreSQL protocol coverage for OIDC client-secret
+  rotation: the old secret is rejected immediately, the replacement succeeds,
+  failed old-secret authentication does not consume the authorization code and
+  audit records contain no secret material.
 
 ## [1.3.0] - 2026-08-29
 

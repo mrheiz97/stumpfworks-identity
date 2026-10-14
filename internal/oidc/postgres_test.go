@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jackc/pgx/v5"
+	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 )
 
 func TestPostgresProviderProtocol(t *testing.T) {
@@ -71,6 +71,9 @@ func TestPostgresProviderProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.store = st
+	t.Run("client secret rotation", func(t *testing.T) {
+		testOIDCClientSecretRotation(t, p, st)
+	})
 	verifier := strings.Repeat("v", 43)
 	code := issueCode(t, p, verifier)
 	if denied := exchangeSecret(p, code, verifier, "wrong"); denied.Code != 401 {
