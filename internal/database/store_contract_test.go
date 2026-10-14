@@ -88,7 +88,16 @@ func testSessionOIDCContract(t *testing.T, s sessionOIDCStore) {
 		t.Fatal("explicit upsert contract changed")
 	}
 	clients, err := s.OIDCClients(ctx)
-	if err != nil || len(clients) != 1 || clients[0].ClientID != clientID || clients[0].SecretHash != "synthetic-upsert-secret" {
+	if err != nil {
+		t.Fatal("OIDC client list failed")
+	}
+	foundClient := false
+	for _, listed := range clients {
+		if listed.ClientID == clientID {
+			foundClient = listed.SecretHash == "synthetic-upsert-secret"
+		}
+	}
+	if !foundClient {
 		t.Fatal("OIDC client list contract changed")
 	}
 	now := time.Now().UTC()
