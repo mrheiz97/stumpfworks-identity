@@ -19,6 +19,7 @@ type sessionOIDCStore interface {
 	RotateOIDCClientSecret(context.Context, string, string) error
 	SetOIDCClientEnabled(context.Context, string, bool) error
 	OIDCClientByID(context.Context, string) (OIDCClient, error)
+	OIDCClients(context.Context) ([]OIDCClient, error)
 	CreateSelfServiceSession(context.Context, string, string, time.Time) error
 	ActiveSelfServiceSession(context.Context, string, string, time.Time) (SelfServiceSession, error)
 	ActiveSelfServiceSessions(context.Context, string, time.Time) ([]SelfServiceSession, error)
@@ -85,6 +86,10 @@ func testSessionOIDCContract(t *testing.T, s sessionOIDCStore) {
 	client, err = s.OIDCClientByID(ctx, clientID)
 	if err != nil || !client.Enabled || client.SecretHash != "synthetic-upsert-secret" || client.Scopes != "openid profile" {
 		t.Fatal("explicit upsert contract changed")
+	}
+	clients, err := s.OIDCClients(ctx)
+	if err != nil || len(clients) != 1 || clients[0].ClientID != clientID || clients[0].SecretHash != "synthetic-upsert-secret" {
+		t.Fatal("OIDC client list contract changed")
 	}
 	now := time.Now().UTC()
 	for _, id := range []string{"contract-current", "contract-other"} {

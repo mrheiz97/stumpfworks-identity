@@ -432,6 +432,7 @@ func (s *Store) RevokeSelfServiceSession(ctx context.Context, id, username strin
 	_, err := s.DB.ExecContext(ctx, `UPDATE self_service_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND lower(username)=lower(?)`, id, username)
 	return err
 }
+
 // Counts is the error-returning runtime contract shared with PostgreSQL.
 func (s *Store) Counts(ctx context.Context) (map[string]int64, error) {
 	out := map[string]int64{}
@@ -577,6 +578,22 @@ func (s *Store) RotateOIDCClientSecret(ctx context.Context, clientID, secretHash
 func (s *Store) OIDCClientByID(ctx context.Context, clientID string) (c OIDCClient, err error) {
 	err = s.DB.QueryRowContext(ctx, `SELECT client_id,secret_hash,redirect_uris,scopes,enabled FROM oidc_clients WHERE client_id=?`, clientID).Scan(&c.ClientID, &c.SecretHash, &c.RedirectURIs, &c.Scopes, &c.Enabled)
 	return
+}
+func (s *Store) OIDCClients(ctx context.Context) ([]OIDCClient, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT client_id,secret_hash,redirect_uris,scopes,enabled FROM oidc_clients ORDER BY client_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var clients []OIDCClient
+	for rows.Next() {
+		var c OIDCClient
+		if err := rows.Scan(&c.ClientID, &c.SecretHash, &c.RedirectURIs, &c.Scopes, &c.Enabled); err != nil {
+			return nil, err
+		}
+		clients = append(clients, c)
+	}
+	return clients, rows.Err()
 }
 func (s *Store) SetOIDCClientEnabled(ctx context.Context, clientID string, enabled bool) error {
 	r, err := s.DB.ExecContext(ctx, `UPDATE oidc_clients SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, enabled, clientID)

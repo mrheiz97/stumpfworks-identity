@@ -79,6 +79,19 @@ identity-admin --config /etc/stumpfworks-badge/config.yaml \
   --scopes "openid profile email"
 ```
 
+Alternativ steht angemeldeten Administratoren unter `/oidc-clients` die
+geschützte Clientverwaltung zur Verfügung. Sie kann Clients registrieren,
+Secrets rotieren und Clients deaktivieren oder wieder aktivieren. Alle
+Änderungen sind CSRF-geschützt und werden gemeinsam mit ihrem Audit-Ereignis
+transaktional gespeichert. Ein neues Secret erscheint ausschließlich in der
+direkten Erfolgsantwort und muss vor dem Verlassen der Seite sicher übernommen
+werden; spätere Listenansichten enthalten weder Klartext-Secret noch Hash.
+
+Für automatisierte oder lokale Wartung bleibt `identity-admin` der geeignete
+Weg. Eine Secret-Rotation wird erst dann in der Zielanwendung eingetragen,
+nachdem dort ein eigener Rollback der bisherigen Konfiguration vorbereitet
+wurde.
+
 Das ausgegebene Secret unmittelbar in eine root-only Access-Environment-Datei
 übernehmen. Es darf nicht in Shell-History, Tickets, Chat, Git oder Logs kopiert
 werden. Ein erneuter `create`-Aufruf überschreibt einen bestehenden Client nicht.

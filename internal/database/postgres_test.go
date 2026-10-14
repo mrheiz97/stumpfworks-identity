@@ -127,6 +127,10 @@ func TestPostgresIdentityAdapter(t *testing.T) {
 	if err != nil || !client.Enabled || client.SecretHash != "synthetic-hash" {
 		t.Fatal("client registration roundtrip failed")
 	}
+	clients, err := store.OIDCClients(ctx)
+	if err != nil || len(clients) != 1 || clients[0].ClientID != "fixture-app" || clients[0].SecretHash != "synthetic-hash" {
+		t.Fatal("client listing roundtrip failed")
+	}
 	code := OIDCCode{CodeHash: "synthetic-code", ClientID: "fixture-app", UserID: user.ID, RedirectURI: "https://example.test/callback", Scope: "openid", Nonce: "synthetic-nonce", CodeChallenge: "synthetic-challenge", ExpiresAt: time.Now().Add(time.Minute)}
 	if err := store.CreateOIDCCode(ctx, code); err != nil {
 		t.Fatal(err)

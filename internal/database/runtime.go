@@ -55,6 +55,7 @@ type ApplicationStore interface {
 	EnsureOIDCSubject(context.Context, int64) (string, error)
 	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
 	OIDCClientByID(context.Context, string) (OIDCClient, error)
+	OIDCClients(context.Context) ([]OIDCClient, error)
 	CreateOIDCClientWithAudit(context.Context, string, string, string, string, string) error
 	RotateOIDCClientSecretWithAudit(context.Context, string, string, string) error
 	SetOIDCClientEnabledWithAudit(context.Context, string, bool, string) error

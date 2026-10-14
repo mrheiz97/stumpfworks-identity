@@ -39,6 +39,10 @@ All notable changes to StumpfWorks Identity are documented here.
 - PostgreSQL OIDC protocol tests now fail first-login user and subject creation
   closed on audit rejection and require exactly one success audit across
   competing token exchanges.
+- The protected administration interface can now list, register, rotate,
+  disable and enable OIDC clients. Mutations require CSRF validation, use the
+  existing transactional audit boundary and reveal a new secret only in the
+  immediate successful response; listings never expose secret hashes.
 
 ## [1.3.0] - 2026-08-29
 

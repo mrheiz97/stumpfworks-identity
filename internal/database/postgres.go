@@ -10,9 +10,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/mrheiz97/stumpfworks-framework/data/migrate"
 	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
-	"github.com/jackc/pgx/v5"
 )
 
 // PostgresStore is the opt-in PostgreSQL runtime adapter. The caller owns the
@@ -118,6 +118,23 @@ func (s *PostgresStore) OIDCClientByID(ctx context.Context, clientID string) (OI
 	var c OIDCClient
 	err := s.pool.Native().QueryRow(ctx, "SELECT client_id,secret_hash,redirect_uris,scopes,enabled FROM oidc_clients WHERE client_id=$1", clientID).Scan(&c.ClientID, &c.SecretHash, &c.RedirectURIs, &c.Scopes, &c.Enabled)
 	return c, postgresNotFound(err)
+}
+
+func (s *PostgresStore) OIDCClients(ctx context.Context) ([]OIDCClient, error) {
+	rows, err := s.pool.Native().Query(ctx, "SELECT client_id,secret_hash,redirect_uris,scopes,enabled FROM oidc_clients ORDER BY client_id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var clients []OIDCClient
+	for rows.Next() {
+		var c OIDCClient
+		if err := rows.Scan(&c.ClientID, &c.SecretHash, &c.RedirectURIs, &c.Scopes, &c.Enabled); err != nil {
+			return nil, err
+		}
+		clients = append(clients, c)
+	}
+	return clients, rows.Err()
 }
 
 func (s *PostgresStore) CreateOIDCCode(ctx context.Context, c OIDCCode) error {
