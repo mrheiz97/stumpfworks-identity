@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"slices"
@@ -31,112 +33,136 @@ func (v *values) String() string     { return strings.Join(*v, ",") }
 func (v *values) Set(s string) error { *v = append(*v, s); return nil }
 
 func main() {
-	global := flag.NewFlagSet("identity-admin", flag.ExitOnError)
+	if err := execute(os.Args[1:], os.Stdout); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func execute(args []string, output io.Writer) error {
+	global := flag.NewFlagSet("identity-admin", flag.ContinueOnError)
+	global.SetOutput(io.Discard)
 	configPath := global.String("config", "", "Identity configuration file")
-	_ = global.Parse(os.Args[1:])
-	args := global.Args()
+	if err := global.Parse(args); err != nil {
+		return errors.New("invalid command arguments")
+	}
+	args = global.Args()
 	if len(args) == 0 {
-		fail("command required: oidc-client or oidc-subject")
+		return errors.New("command required: oidc-client or oidc-subject")
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fail("configuration: " + err.Error())
+		return errors.New("configuration could not be loaded")
 	}
 	store, closeStore, err := database.OpenRuntime(context.Background(), database.RuntimeOptions{
 		Backend: cfg.DatabaseBackend, SQLitePath: cfg.DatabasePath,
 		PostgreSQLURL: cfg.DatabaseURL, PostgreSQLAllowInsecure: cfg.DatabaseAllowInsecure,
 	})
 	if err != nil {
-		fail("database: " + err.Error())
+		return errors.New("database could not be opened")
 	}
 	defer closeStore()
 	switch args[0] {
 	case "oidc-client":
-		clientCommand(store, args[1:])
+		return clientCommand(context.Background(), store, args[1:], output)
 	case "oidc-subject":
-		subjectCommand(store, args[1:])
+		return subjectCommand(context.Background(), store, args[1:], output)
 	default:
-		fail("unknown command")
+		return errors.New("unknown command")
 	}
 }
-func clientCommand(store identityAdminStore, args []string) {
+
+func clientCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		fail("oidc-client action required: create, rotate-secret, enable, or disable")
+		return errors.New("oidc-client action required: create, rotate-secret, enable, or disable")
 	}
 	action := args[0]
-	fs := flag.NewFlagSet("oidc-client "+action, flag.ExitOnError)
+	fs := flag.NewFlagSet("oidc-client "+action, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	id := fs.String("client-id", "", "exact OIDC client ID")
 	scopes := fs.String("scopes", "openid", "space-separated scopes")
 	var redirects values
 	fs.Var(&redirects, "redirect-uri", "exact HTTPS redirect URI; repeatable")
-	_ = fs.Parse(args[1:])
-	if !validID(*id) {
-		fail("invalid client ID")
+	if err := fs.Parse(args[1:]); err != nil {
+		return errors.New("invalid oidc-client arguments")
 	}
-	ctx := context.Background()
+	if !validID(*id) {
+		return errors.New("invalid client ID")
+	}
 	switch action {
 	case "create":
 		if len(redirects) == 0 {
-			fail("at least one redirect URI is required")
+			return errors.New("at least one redirect URI is required")
 		}
 		for _, r := range redirects {
 			if !validRedirect(r) {
-				fail("redirect URIs must be exact HTTPS URLs without fragments")
+				return errors.New("redirect URIs must be exact HTTPS URLs without fragments")
 			}
 		}
 		requested := strings.Fields(*scopes)
 		if !slices.Contains(requested, "openid") {
-			fail("openid scope is required")
+			return errors.New("openid scope is required")
 		}
 		for _, s := range requested {
 			if s != "openid" && s != "profile" && s != "email" {
-				fail("unsupported scope: " + s)
+				return errors.New("unsupported scope")
 			}
 		}
-		secret := newSecret()
+		secret, err := newSecret()
+		if err != nil {
+			return errors.New("secure random generation failed")
+		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
 		if err != nil {
-			fail("secret hashing failed")
+			return errors.New("secret hashing failed")
 		}
 		if err = store.CreateOIDCClientWithAudit(ctx, *id, string(hash), strings.Join(redirects, "\n"), strings.Join(requested, " "), ""); err != nil {
-			fail("client registration failed")
+			return errors.New("client registration failed")
 		}
-		fmt.Printf("client_id=%s\nclient_secret=%s\nnotice=This secret is shown once. Store it securely.\n", *id, secret)
+		fmt.Fprintf(output, "client_id=%s\nclient_secret=%s\nnotice=This secret is shown once. Store it securely.\n", *id, secret)
 	case "rotate-secret":
 		if _, err := store.OIDCClientByID(ctx, *id); err != nil {
-			fail("client not found")
+			return errors.New("client not found")
 		}
-		secret := newSecret()
+		secret, err := newSecret()
+		if err != nil {
+			return errors.New("secure random generation failed")
+		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
 		if err != nil {
-			fail("secret hashing failed")
+			return errors.New("secret hashing failed")
 		}
 		if err = store.RotateOIDCClientSecretWithAudit(ctx, *id, string(hash), ""); err != nil {
-			fail("secret rotation failed")
+			return errors.New("secret rotation failed")
 		}
-		fmt.Printf("client_id=%s\nclient_secret=%s\nnotice=This secret is shown once. Store it securely.\n", *id, secret)
+		fmt.Fprintf(output, "client_id=%s\nclient_secret=%s\nnotice=This secret is shown once. Store it securely.\n", *id, secret)
 	case "enable", "disable":
 		if err := store.SetOIDCClientEnabledWithAudit(ctx, *id, action == "enable", ""); err != nil {
-			fail("client state change failed")
+			return errors.New("client state change failed")
 		}
-		fmt.Printf("client_id=%s\nenabled=%t\n", *id, action == "enable")
+		fmt.Fprintf(output, "client_id=%s\nenabled=%t\n", *id, action == "enable")
 	default:
-		fail("unknown oidc-client action")
+		return errors.New("unknown oidc-client action")
 	}
+	return nil
 }
-func subjectCommand(store identityAdminStore, args []string) {
-	fs := flag.NewFlagSet("oidc-subject", flag.ExitOnError)
+func subjectCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {
+	fs := flag.NewFlagSet("oidc-subject", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	login := fs.String("login", "", "existing Identity login")
-	_ = fs.Parse(args)
-	u, err := store.UserByUsername(context.Background(), strings.TrimSpace(*login))
-	if err != nil {
-		fail("user not found")
+	if err := fs.Parse(args); err != nil {
+		return errors.New("invalid oidc-subject arguments")
 	}
-	subject, err := store.EnsureOIDCSubjectWithAudit(context.Background(), u.ID, "")
+	u, err := store.UserByUsername(ctx, strings.TrimSpace(*login))
 	if err != nil {
-		fail("subject lookup failed")
+		return errors.New("user not found")
 	}
-	fmt.Printf("login=%s\noidc_subject=%s\n", u.Username, subject)
+	subject, err := store.EnsureOIDCSubjectWithAudit(ctx, u.ID, "")
+	if err != nil {
+		return errors.New("subject lookup failed")
+	}
+	fmt.Fprintf(output, "login=%s\noidc_subject=%s\n", u.Username, subject)
+	return nil
 }
 func validID(v string) bool {
 	if v == "" || len(v) > 128 {
@@ -153,11 +179,10 @@ func validRedirect(v string) bool {
 	u, err := url.Parse(v)
 	return err == nil && u.Scheme == "https" && u.Host != "" && u.Fragment == "" && u.User == nil
 }
-func newSecret() string {
+func newSecret() (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		fail("secure random generation failed")
+		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(raw)
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
-func fail(message string) { fmt.Fprintln(os.Stderr, message); os.Exit(1) }

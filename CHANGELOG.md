@@ -30,6 +30,9 @@ All notable changes to StumpfWorks Identity are documented here.
   rotation: the old secret is rejected immediately, the replacement succeeds,
   failed old-secret authentication does not consume the authorization code and
   audit records contain no secret material.
+- Added end-to-end `identity-admin` command coverage on SQLite and PostgreSQL
+  for client creation, one-time secret output, secret rotation, disable/enable,
+  stable subject creation and the corresponding audit records.
 
 ## [1.3.0] - 2026-08-29
 

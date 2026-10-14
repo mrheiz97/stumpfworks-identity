@@ -44,7 +44,8 @@ reusable. Database errors are sensitive and are not logged verbatim.
 - The `identity-admin` OIDC client create, secret rotation, enable/disable and
   first subject assignment operations use the configured runtime backend and
   commit their mutation with the corresponding audit event. One-time client
-  secrets are printed only after the transaction commits.
+  secrets are printed only after the transaction commits. End-to-end command
+  contracts exercise this behavior on both SQLite and PostgreSQL.
 - Denial events remain denials when their audit write fails.
 
 All success events currently emitted by the HTTP application are now durable
