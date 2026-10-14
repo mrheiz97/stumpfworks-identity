@@ -91,3 +91,31 @@ per-table counts, reconciliation success, backup/restore success, tested build
 hash, configuration backup location, rollback boundary and smoke-test results.
 Do not place URLs with credentials, private keys, client secrets, PINs, badge
 tokens, raw hashes or database rows in the change record.
+
+## Production-snapshot rehearsal evidence
+
+On 2026-10-14 an existing LOGIN01 online backup was copied into a temporary,
+non-versioned local directory and rehearsed against an isolated PostgreSQL 17
+cluster bound to loopback only. LOGIN01 remained active on SQLite and no
+production configuration or data was changed.
+
+- The source backup had mode `0600` and passed SQLite `integrity_check` in
+  read-only mode.
+- `identity-db-migrate` created an empty schema, imported all seven known
+  application tables and reported `import=verified`.
+- Reconciliation compared every normalized field, including preserved numeric
+  IDs, credential hashes, OIDC subjects and audit history, and reported
+  `reconcile=verified`.
+- A custom-format `pg_dump` was restored into a second empty database. A second
+  full reconciliation also reported `reconcile=verified`.
+- `identity-admin` was exercised against the restored PostgreSQL database for
+  OIDC client creation, secret rotation, disable and enable. Exactly four
+  corresponding empty-detail audit events were verified. Generated test
+  secrets were checked only in process memory and were not printed or stored.
+- The isolated cluster was stopped afterward. The SQLite copy, PostgreSQL data,
+  dump, restored database, logs, generated binary and temporary connection
+  files were deleted completely.
+
+This completes the production-snapshot rehearsal gate. It does not authorize a
+production cutover. LOGIN01 remains on SQLite until a separately approved
+maintenance window follows the cutover and rollback boundaries above.
