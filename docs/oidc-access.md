@@ -174,8 +174,37 @@ Backups. Das normale Identity-Diagnosepaket darf sie nicht enthalten.
 Der Browserlogin, Signaturschlüsselrotation sowie Ausfall und Wiederherstellung
 wurden produktiv bestätigt. Deaktivierte und unverknüpfte Benutzer, Replay und
 Redirect-Prüfungen sind weitgehend abgedeckt. Die Rotation des OIDC-Client-
-Secrets ist lokal für SQLite und PostgreSQL abgedeckt, bleibt aber als eigene
-produktive Betriebsabnahme offen.
+Secrets ist lokal für SQLite und PostgreSQL abgedeckt und wurde am 14. Oktober
+2026 produktiv abgenommen.
+
+Die produktive Rotation wurde in einem gemeinsamen Wartungsfenster mit
+gestopptem Access und Identity durchgeführt. Vor jeder Mutation wurden eine
+konsistente Identity-SQLite-Sicherung und die root-only Access-Secretdatei als
+zusammengehöriges Rollback gesichert. Der aktuelle `identity-admin`-Stand wurde
+auf LOGIN01 installiert, nachdem die dort zuvor vorhandene ältere Binärdatei
+bei einem ersten Rotationsversuch noch kein Auditereignis erzeugt hatte. Die
+Wiederholungsrotation bestätigte anschließend:
+
+- neues Client-Secret am Token-Endpunkt akzeptiert (`invalid_grant` statt
+  `invalid_client` bei bewusst ungültigem Code), ohne Secret- oder Tokenausgabe;
+- genau ein transaktionales `oidc_client_secret_rotated`-Ereignis;
+- Access-Readiness und OIDC-Startredirect über verifiziertes TLS;
+- aktive Dienste und konsistente Identity-SQLite-Datenbank;
+- vollständige Löschung aller temporären Secret- und Hilfsdateien.
+
+Rollbackpaare auf den Produktivhosts:
+
+- erster Ausgangszustand:
+  `/root/identity-oidc-secret-rotation-rollback-20261014T184441Z` und
+  `/root/access-oidc-secret-rotation-rollback-20261014T184441Z`;
+- unmittelbar vor der auditierten Wiederholungsrotation:
+  `/root/identity-oidc-secret-rotation-rollback-20261014T184853Z` und
+  `/root/access-oidc-secret-rotation-rollback-20261014T184853Z`.
+
+Die jeweiligen Identity-Datenbank- und Access-Secretdateien dürfen nur als Paar
+wiederhergestellt werden. Ein Browserlogin mit Benutzerinteraktion war nicht
+Teil dieses Wartungsfensters; die bereits zuvor produktiv bestätigte
+Browserkette blieb unverändert.
 
 1. Discovery und JWKS über verifiziertes HTTPS abrufen.
 2. Access-OIDC-Start öffnen und als aktiver Identity-Benutzer anmelden.
