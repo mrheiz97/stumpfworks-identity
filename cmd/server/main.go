@@ -103,7 +103,7 @@ func main() {
 		}
 		if *disableClient != "" || *enableClient != "" {
 			enabled := *enableClient != ""
-			if err := st.SetClientEnabled(context.Background(), clientID, enabled); err != nil {
+			if err := st.SetClientEnabledWithAudit(context.Background(), clientID, enabled, ""); err != nil {
 				slog.Error("client state change failed", "error", err)
 				os.Exit(1)
 			}
@@ -117,12 +117,12 @@ func main() {
 		}
 		token := base64.RawURLEncoding.EncodeToString(raw)
 		if *registerClient != "" {
-			if _, err := st.CreateClient(context.Background(), clientID, app.HashClientToken(token)); err != nil {
+			if _, err := st.CreateClientWithAudit(context.Background(), clientID, app.HashClientToken(token), ""); err != nil {
 				slog.Error("client registration failed", "error", err)
 				os.Exit(1)
 			}
 		} else {
-			if err := st.RotateClientToken(context.Background(), clientID, app.HashClientToken(token)); err != nil {
+			if err := st.RotateClientTokenWithAudit(context.Background(), clientID, app.HashClientToken(token), ""); err != nil {
 				slog.Error("client token rotation failed", "error", err)
 				os.Exit(1)
 			}

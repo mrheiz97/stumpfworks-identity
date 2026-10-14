@@ -33,6 +33,12 @@ All notable changes to StumpfWorks Identity are documented here.
 - Added end-to-end `identity-admin` command coverage on SQLite and PostgreSQL
   for client creation, one-time secret output, secret rotation, disable/enable,
   stable subject creation and the corresponding audit records.
+- Greeter-client registration, status-token rotation and credential state
+  changes now commit with their success audit on SQLite and PostgreSQL before a
+  one-time token or success result is returned.
+- PostgreSQL OIDC protocol tests now fail first-login user and subject creation
+  closed on audit rejection and require exactly one success audit across
+  competing token exchanges.
 
 ## [1.3.0] - 2026-08-29
 

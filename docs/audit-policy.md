@@ -46,10 +46,42 @@ reusable. Database errors are sensitive and are not logged verbatim.
   commit their mutation with the corresponding audit event. One-time client
   secrets are printed only after the transaction commits. End-to-end command
   contracts exercise this behavior on both SQLite and PostgreSQL.
+- Greeter-client registration, status-token rotation and credential
+  enable/disable from the server's local administration mode commit their
+  mutation with `client_registered`, `client_token_rotated`,
+  `client_disabled` or `client_enabled`. A new one-time token is printed only
+  after the database and audit transaction commits.
 - Denial events remain denials when their audit write fails.
 
 All success events currently emitted by the HTTP application are now durable
 before success is returned, and state-changing events use transaction-owned
-methods. The same policy now covers the separate `identity-admin` CLI. A real
-PostgreSQL migration, backup/restore, cutover and reconciliation rehearsal is
-still required before production cutover.
+methods. The same policy now covers the separate `identity-admin` CLI and local
+greeter-client administration. PostgreSQL HTTP contracts additionally prove
+that audit rejection during first-user provisioning or first-subject assignment
+exposes neither a redirect nor an authorization code, leaves no partial identity
+state, and that competing token exchanges create exactly one success audit.
+
+## Retention, export, rotation and monitoring
+
+- The database audit table is the authoritative record. Identity performs no
+  automatic audit-row deletion or truncation. This prevents silent loss before
+  an archive policy is explicitly approved.
+- A consistent SQLite online backup or PostgreSQL custom-format `pg_dump` is
+  the supported lossless audit export. Keep exports root-readable, encrypted at
+  rest when moved off-host, never commit them, and verify a restore before
+  treating an export as recoverable.
+- LOGIN01's daily maintenance keeps the existing rolling set of 50 consistent
+  database backups for operational recovery. This rotates backup files, not
+  audit rows. Removing old audit rows requires a separately reviewed archive,
+  retention period and destructive maintenance command; none is authorized or
+  implemented.
+- Bounded operational messages with `component=audit` and an `event_type`
+  identify audit-write failures without database errors or sensitive values.
+  Monitor the service journal for these messages and alert on every occurrence;
+  there is no acceptable steady-state failure rate for required success events.
+- After restore or migration, validate aggregate audit counts and the newest
+  event timestamp without printing event details. PostgreSQL reconciliation
+  remains the field-complete database check.
+- Human-readable ad-hoc exports are intentionally not provided yet. They would
+  contain personal security history and require explicit access control,
+  minimization and deletion rules before implementation.

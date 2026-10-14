@@ -47,8 +47,11 @@ type ApplicationStore interface {
 	Clients(context.Context) ([]Client, error)
 	UpdateClientStatusWithUpdate(context.Context, string, string, string, string, string, string, *ClientUpdate) error
 	CreateClient(context.Context, string, string) (Client, error)
+	CreateClientWithAudit(context.Context, string, string, string) (Client, error)
 	RotateClientToken(context.Context, string, string) error
+	RotateClientTokenWithAudit(context.Context, string, string, string) error
 	SetClientEnabled(context.Context, string, bool) error
+	SetClientEnabledWithAudit(context.Context, string, bool, string) error
 	EnsureOIDCSubject(context.Context, int64) (string, error)
 	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
 	OIDCClientByID(context.Context, string) (OIDCClient, error)

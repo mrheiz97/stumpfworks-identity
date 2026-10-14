@@ -30,6 +30,10 @@ type atomicBadgeStore interface {
 	CreateOIDCClientWithAudit(context.Context, string, string, string, string, string) error
 	RotateOIDCClientSecretWithAudit(context.Context, string, string, string) error
 	SetOIDCClientEnabledWithAudit(context.Context, string, bool, string) error
+	ClientByID(context.Context, string) (Client, error)
+	CreateClientWithAudit(context.Context, string, string, string) (Client, error)
+	RotateClientTokenWithAudit(context.Context, string, string, string) error
+	SetClientEnabledWithAudit(context.Context, string, bool, string) error
 	OIDCClientByID(context.Context, string) (OIDCClient, error)
 	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
 	CreateOIDCCodeWithAudit(context.Context, OIDCCode, string, string) error
@@ -111,6 +115,74 @@ func TestSQLiteAtomicLostBadge(t *testing.T) {
 			t.Fatal("SQLite atomic audit fixture setup failed")
 		}
 	})
+	testAtomicClientAdministration(t, s, func(reject bool) {
+		query := "DROP TRIGGER IF EXISTS fail_atomic_audit"
+		if reject {
+			query = "CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END"
+		}
+		if _, err := s.DB.ExecContext(t.Context(), query); err != nil {
+			t.Fatal("SQLite atomic audit fixture setup failed")
+		}
+	})
+}
+
+func testAtomicClientAdministration(t *testing.T, s atomicBadgeStore, rejectAudit func(bool)) {
+	t.Helper()
+	ctx := t.Context()
+	rejectAudit(true)
+	if _, err := s.CreateClientWithAudit(ctx, "atomic-greeter", "initial-hash", ""); err == nil {
+		t.Fatal("client registration committed despite audit failure")
+	}
+	if _, err := s.ClientByID(ctx, "atomic-greeter"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("audit failure left a registered client")
+	}
+	rejectAudit(false)
+	if _, err := s.CreateClientWithAudit(ctx, "atomic-greeter", "initial-hash", ""); err != nil {
+		t.Fatal(err)
+	}
+	rejectAudit(true)
+	if err := s.RotateClientTokenWithAudit(ctx, "atomic-greeter", "replacement-hash", ""); err == nil {
+		t.Fatal("client token rotation committed despite audit failure")
+	}
+	client, err := s.ClientByID(ctx, "atomic-greeter")
+	if err != nil || client.TokenHash != "initial-hash" {
+		t.Fatal("audit failure changed the client token")
+	}
+	if err := s.SetClientEnabledWithAudit(ctx, "atomic-greeter", false, ""); err == nil {
+		t.Fatal("client disable committed despite audit failure")
+	}
+	client, err = s.ClientByID(ctx, "atomic-greeter")
+	if err != nil || !client.Enabled {
+		t.Fatal("audit failure disabled the client")
+	}
+	rejectAudit(false)
+	if err := s.RotateClientTokenWithAudit(ctx, "atomic-greeter", "replacement-hash", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClientEnabledWithAudit(ctx, "atomic-greeter", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClientEnabledWithAudit(ctx, "atomic-greeter", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	events, err := s.Audits(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{"client_registered": 1, "client_token_rotated": 1, "client_disabled": 1, "client_enabled": 1}
+	for _, event := range events {
+		if event.ClientID == "atomic-greeter" {
+			want[event.EventType]--
+			if !event.Success || event.Details != "" {
+				t.Fatal("client administration audit exposed unexpected detail")
+			}
+		}
+	}
+	for event, remaining := range want {
+		if remaining != 0 {
+			t.Fatalf("client administration audit %s lost or duplicated", event)
+		}
+	}
 }
 
 func testAtomicOIDCAdministration(t *testing.T, s atomicBadgeStore, rejectAudit func(bool)) {

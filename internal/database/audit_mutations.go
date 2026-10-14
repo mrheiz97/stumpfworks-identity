@@ -7,8 +7,9 @@ import (
 	"net"
 )
 
-// WriteAudit is the error-returning path for future consumer integration.
-// Existing Audit callers keep their current policy until explicitly migrated.
+// WriteAudit is the error-returning path for denial and informational events.
+// Successful issuance and security-sensitive mutations use transaction-owned
+// methods instead.
 func (s *Store) WriteAudit(ctx context.Context, event Audit) error {
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO audit_log(event_type,badge_id,username,client_id,success,ip_address,details) VALUES(?,?,?,?,?,?,?)`, event.EventType, event.BadgeID, event.Username, event.ClientID, event.Success, event.IPAddress, event.Details)
 	return err

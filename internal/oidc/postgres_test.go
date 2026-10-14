@@ -2,8 +2,12 @@ package oidc
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -71,6 +75,52 @@ func TestPostgresProviderProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.store = st
+	setAuditRejection := func(reject bool) {
+		t.Helper()
+		query := "DROP TRIGGER IF EXISTS fail_oidc_audit_fixture ON audit_log; DROP FUNCTION IF EXISTS fail_oidc_audit_fixture()"
+		if reject {
+			query = `CREATE FUNCTION fail_oidc_audit_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit rejection'; END $$;
+CREATE TRIGGER fail_oidc_audit_fixture BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_oidc_audit_fixture()`
+		}
+		if _, err := pool.Native().Exec(ctx, query); err != nil {
+			t.Fatal("PostgreSQL OIDC audit fixture setup failed")
+		}
+	}
+	t.Run("first login fails closed on audit rejection", func(t *testing.T) {
+		setAuditRejection(true)
+		values := authValues(strings.Repeat("f", 43))
+		values.Set("username", "alice")
+		values.Set("password", "correct")
+		request := httptest.NewRequest(http.MethodPost, "/oauth2/authorize", strings.NewReader(values.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		response := serve(p, request)
+		if response.Code != http.StatusServiceUnavailable || response.Header().Get("Location") != "" {
+			t.Fatal("user-provision audit failure exposed authorization success")
+		}
+		if _, err := st.UserByUsername(ctx, "alice"); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatal("user-provision audit failure left a partial user")
+		}
+
+		setAuditRejection(false)
+		user, err := st.CreateUser(ctx, "alice", "Alice Example", "CN=Alice")
+		if err != nil {
+			t.Fatal(err)
+		}
+		setAuditRejection(true)
+		response = serve(p, request)
+		if response.Code != http.StatusServiceUnavailable || response.Header().Get("Location") != "" {
+			t.Fatal("subject audit failure exposed authorization success")
+		}
+		user, err = st.GetUser(ctx, user.ID)
+		if err != nil || user.OIDCSubject != "" {
+			t.Fatal("subject audit failure left a partial subject")
+		}
+		var codes int
+		if err := pool.Native().QueryRow(ctx, "SELECT count(*) FROM oidc_codes").Scan(&codes); err != nil || codes != 0 {
+			t.Fatal("first-login audit failure left a redeemable code")
+		}
+		setAuditRejection(false)
+	})
 	t.Run("client secret rotation", func(t *testing.T) {
 		testOIDCClientSecretRotation(t, p, st)
 	})
@@ -120,6 +170,10 @@ func TestPostgresProviderProtocol(t *testing.T) {
 	}
 	dir.disabled = false
 	code = issueCode(t, p, verifier)
+	var tokenAuditsBefore int
+	if err := pool.Native().QueryRow(ctx, "SELECT count(*) FROM audit_log WHERE event_type='oidc_token_issued' AND client_id='stumpfworks-access'").Scan(&tokenAuditsBefore); err != nil {
+		t.Fatal("token audit baseline failed")
+	}
 	var winners atomic.Int32
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
@@ -140,6 +194,10 @@ func TestPostgresProviderProtocol(t *testing.T) {
 	wg.Wait()
 	if winners.Load() != 1 {
 		t.Fatal("competing protocol exchanges did not have one winner")
+	}
+	var tokenAuditsAfter int
+	if err := pool.Native().QueryRow(ctx, "SELECT count(*) FROM audit_log WHERE event_type='oidc_token_issued' AND client_id='stumpfworks-access'").Scan(&tokenAuditsAfter); err != nil || tokenAuditsAfter != tokenAuditsBefore+1 {
+		t.Fatal("competing protocol exchanges did not produce exactly one success audit")
 	}
 	clock := time.Now().UTC()
 	p.now = func() time.Time { return clock }

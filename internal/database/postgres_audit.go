@@ -4,8 +4,9 @@ import (
 	"context"
 )
 
-// WriteAudit deliberately returns errors instead of copying the legacy silent
-// Audit method. Consumer failure policy must be explicit before runtime wiring.
+// WriteAudit is the explicit path for denial and informational events.
+// Successful issuance and security-sensitive mutations use transaction-owned
+// methods instead.
 // Database errors can include sensitive values: never log them verbatim.
 func (s *PostgresStore) WriteAudit(ctx context.Context, event Audit) error {
 	_, err := s.pool.Native().Exec(ctx, `INSERT INTO audit_log(event_type,badge_id,username,client_id,success,ip_address,details) VALUES($1,$2,$3,$4,$5,$6,$7)`, event.EventType, event.BadgeID, event.Username, event.ClientID, event.Success, event.IPAddress, event.Details)
