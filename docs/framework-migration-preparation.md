@@ -38,8 +38,8 @@ Identity now also has a default-off, bearer-protected `/metrics` endpoint using
 the framework registry. Configuration uses `metrics.enabled` plus a runtime
 `SWBADGE_METRICS_TOKEN` or root-readable `metrics.token_file`; tokens are not
 accepted as command-line arguments or committed examples. HTTP metrics are
-available immediately, and framework LDAP observations join them when that
-separate adapter switch is later enabled. Direct tests cover unauthorized and
+available immediately, and framework LDAP observations join them through the
+enabled framework reader. Direct tests cover unauthorized and
 authorized scraping plus unchanged application routing. It is not deployed.
 
 Prometheus should read the same token from a protected file rather than embed it
@@ -69,9 +69,9 @@ Windows PKINIT certificate test requires OpenSSL on PATH; the installed Git
 OpenSSL was used. No runtime adapter was enabled and no production data changed.
 The prepared CI workflow runs race tests against a synthetic PostgreSQL 16
 service and explicitly requires matching dump/restore tools from the runner.
-Disposable local PostgreSQL 17 tests cover the next major version. This workflow
-change has not yet run on GitHub; local Windows checks do not establish race-test
-acceptance. Ten shuffled repetitions of directory/database/OIDC tests passed.
+Disposable local PostgreSQL 17 tests cover the next major version. The workflow
+has run successfully on GitHub against PostgreSQL 16 with the race detector.
+Ten shuffled repetitions of directory/database/OIDC tests passed.
 
 ## Synthetic PostgreSQL rehearsal
 
@@ -126,7 +126,9 @@ minutes. UTC timestamps use PostgreSQL microseconds (sub-microsecond source
 precision is truncated); naive SQLite timestamps mean UTC. Tests cover row
 budget/unknown-column rejection and rollback when a target trigger alters a
 copied field. A lost commit response is ambiguous: verify target state before
-retry. Sequence gaps after failures are allowed. No production CLI is exposed.
+retry. Sequence gaps after failures are allowed. The guarded
+`identity-db-migrate` CLI exposes schema creation, stopped-snapshot import and
+aggregate-only reconciliation; it does not authorize a production cutover.
 SQLite row/cell size is capped at 256 KiB and aggregate payload at 128 MiB. The
 connection-local SQLite limit is restored after failures, never raised above
 an existing stricter limit. Unknown tables and ASCII-fold duplicate accounts
@@ -146,23 +148,27 @@ paths. PKINIT responses are also withheld unless their success event is durable.
 User provisioning, PIN changes, web sessions and administrative badge changes
 now use the same fail-closed policy. OIDC client administration and first
 subject assignment through `identity-admin` also commit with audit and use the
-configured SQLite/PostgreSQL backend. This is not a production-ready importer or full auth
-acceptance. A restricted temporary PostgreSQL login role can perform normal
+configured SQLite/PostgreSQL backend. The guarded importer and full synthetic
+database acceptance are complete; rehearsal with a protected production
+snapshot and native production authentication acceptance remain separate
+gates. A restricted temporary PostgreSQL login role can perform normal
 operations but cannot create schema objects or run migrations. pg_dump/restore
 of synthetic data preserves complete table fingerprints and ID sequences.
 Actual Identity handlers pass PKCE, signature/subject, disabled-user, replay,
 expiry, rate-limit and competing token-exchange tests against PostgreSQL. The
 real framework login client passes trusted-local-TLS contracts with both
-backends. Production credentials/TLS, backup/restore, native authentication,
-The HTTP server now depends on the shared `database.ApplicationStore` contract,
+backends. Production credentials/TLS and native authentication remain
+deployment gates. The HTTP server now depends on the shared
+`database.ApplicationStore` contract,
 which both SQLite and PostgreSQL satisfy at compile time. Runtime selection is
 explicit and defaults to SQLite. PostgreSQL requires `database.backend:
 postgres`, a protected URL file or `SWBADGE_POSTGRES_URL`, TLS by default, a
 separately pre-migrated schema and sufficient runtime privileges. Startup checks
 the schema using read-only aggregate queries and fails closed; it never runs DDL
 with runtime credentials. Application-wide atomic success-audit coverage is
-implemented. Production backup/restore, migration-copy, cutover and
-reconciliation acceptance remain open.
+implemented. Synthetic backup/restore, migration-copy and reconciliation
+acceptance are complete. A protected production-snapshot rehearsal, cutover
+and post-cutover authentication acceptance remain open.
 
 The original 1.26.0 build toolchain had reachable standard-library advisories;
 `go run` had selected 1.26.8 for the scanner and masked the mismatch. Minimum
