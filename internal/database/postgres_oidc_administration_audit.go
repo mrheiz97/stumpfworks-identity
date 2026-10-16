@@ -26,6 +26,10 @@ func (s *PostgresStore) RotateOIDCClientSecretWithAudit(ctx context.Context, cli
 	return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_secret_rotated", `UPDATE oidc_clients SET secret_hash=$1,updated_at=now() WHERE client_id=$2`, secretHash, clientID)
 }
 
+func (s *PostgresStore) UpdateOIDCClientConfigurationWithAudit(ctx context.Context, clientID, redirectURIs, scopes, ip string) error {
+	return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_configuration_updated", `UPDATE oidc_clients SET redirect_uris=$1,scopes=$2,updated_at=now() WHERE client_id=$3`, redirectURIs, scopes, clientID)
+}
+
 func (s *PostgresStore) SetOIDCClientEnabledWithAudit(ctx context.Context, clientID string, enabled bool, ip string) error {
 	if enabled {
 		return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_enabled", `UPDATE oidc_clients SET enabled=$1,updated_at=now() WHERE client_id=$2`, true, clientID)

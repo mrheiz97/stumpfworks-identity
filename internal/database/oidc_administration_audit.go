@@ -29,6 +29,10 @@ func (s *Store) RotateOIDCClientSecretWithAudit(ctx context.Context, clientID, s
 	return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_secret_rotated", `UPDATE oidc_clients SET secret_hash=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, secretHash, clientID)
 }
 
+func (s *Store) UpdateOIDCClientConfigurationWithAudit(ctx context.Context, clientID, redirectURIs, scopes, ip string) error {
+	return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_configuration_updated", `UPDATE oidc_clients SET redirect_uris=?,scopes=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, redirectURIs, scopes, clientID)
+}
+
 func (s *Store) SetOIDCClientEnabledWithAudit(ctx context.Context, clientID string, enabled bool, ip string) error {
 	if enabled {
 		return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_enabled", `UPDATE oidc_clients SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, true, clientID)

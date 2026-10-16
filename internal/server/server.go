@@ -117,6 +117,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /oidc-clients", s.oidcClientsPage)
 	s.mux.HandleFunc("POST /oidc-clients", s.createOIDCClient)
 	s.mux.HandleFunc("POST /oidc-clients/{id}/rotate-secret", s.rotateOIDCClientSecret)
+	s.mux.HandleFunc("POST /oidc-clients/{id}/configure", s.updateOIDCClientConfiguration)
 	s.mux.HandleFunc("POST /oidc-clients/{id}/enable", s.enableOIDCClient)
 	s.mux.HandleFunc("POST /oidc-clients/{id}/disable", s.disableOIDCClient)
 	s.mux.HandleFunc("GET /oidc-sessions", s.oidcSessionsPage)

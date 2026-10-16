@@ -58,6 +58,7 @@ type ApplicationStore interface {
 	OIDCClients(context.Context) ([]OIDCClient, error)
 	CreateOIDCClientWithAudit(context.Context, string, string, string, string, string) error
 	RotateOIDCClientSecretWithAudit(context.Context, string, string, string) error
+	UpdateOIDCClientConfigurationWithAudit(context.Context, string, string, string, string) error
 	SetOIDCClientEnabledWithAudit(context.Context, string, bool, string) error
 	CreateOIDCCode(context.Context, OIDCCode) error
 	ConsumeOIDCCode(context.Context, string, string, string, time.Time) (OIDCCode, error)

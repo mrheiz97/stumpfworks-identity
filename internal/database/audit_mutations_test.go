@@ -29,6 +29,7 @@ type atomicBadgeStore interface {
 	CreateOIDCClient(context.Context, string, string, string, string) error
 	CreateOIDCClientWithAudit(context.Context, string, string, string, string, string) error
 	RotateOIDCClientSecretWithAudit(context.Context, string, string, string) error
+	UpdateOIDCClientConfigurationWithAudit(context.Context, string, string, string, string) error
 	SetOIDCClientEnabledWithAudit(context.Context, string, bool, string) error
 	ClientByID(context.Context, string) (Client, error)
 	CreateClientWithAudit(context.Context, string, string, string) (Client, error)
@@ -207,6 +208,13 @@ func testAtomicOIDCAdministration(t *testing.T, s atomicBadgeStore, rejectAudit 
 	if err != nil || client.SecretHash != "initial-hash" {
 		t.Fatal("audit failure changed the OIDC client secret")
 	}
+	if err := s.UpdateOIDCClientConfigurationWithAudit(ctx, "admin-atomic-client", "https://changed.example.test/callback", "openid profile", ""); err == nil {
+		t.Fatal("OIDC configuration update committed despite audit failure")
+	}
+	client, err = s.OIDCClientByID(ctx, "admin-atomic-client")
+	if err != nil || client.RedirectURIs != "https://example.test/callback" || client.Scopes != "openid" {
+		t.Fatal("audit failure changed the OIDC client configuration")
+	}
 	if err := s.SetOIDCClientEnabledWithAudit(ctx, "admin-atomic-client", false, ""); err == nil {
 		t.Fatal("OIDC client disable committed despite audit failure")
 	}
@@ -229,11 +237,31 @@ func testAtomicOIDCAdministration(t *testing.T, s atomicBadgeStore, rejectAudit 
 	if err := s.RotateOIDCClientSecretWithAudit(ctx, "admin-atomic-client", "replacement-hash", ""); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.UpdateOIDCClientConfigurationWithAudit(ctx, "admin-atomic-client", "https://first.example.test/callback\nhttps://second.example.test/callback", "openid profile", ""); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.SetOIDCClientEnabledWithAudit(ctx, "admin-atomic-client", false, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.EnsureOIDCSubjectWithAudit(ctx, owner.ID, ""); err != nil {
 		t.Fatal(err)
+	}
+	client, err = s.OIDCClientByID(ctx, "admin-atomic-client")
+	if err != nil || client.RedirectURIs != "https://first.example.test/callback\nhttps://second.example.test/callback" || client.Scopes != "openid profile" {
+		t.Fatal("OIDC client configuration update was not committed")
+	}
+	events, err := s.Audits(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configurationEvents := 0
+	for _, event := range events {
+		if event.EventType == "oidc_client_configuration_updated" && event.ClientID == "admin-atomic-client" && event.Success && event.Details == "" {
+			configurationEvents++
+		}
+	}
+	if configurationEvents != 1 {
+		t.Fatalf("expected one safe OIDC configuration audit event, got %d", configurationEvents)
 	}
 }
 

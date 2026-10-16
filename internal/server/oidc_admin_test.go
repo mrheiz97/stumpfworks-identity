@@ -150,6 +150,25 @@ func TestOIDCClientAdministration(t *testing.T) {
 		t.Fatal("client page may be cached")
 	}
 
+	updated := postOIDCAdmin(t, s, cookie, "/oidc-clients/example-app/configure", url.Values{
+		"_csrf":         {sessions.CSRF(cookie.Value)},
+		"redirect_uris": {"https://app.example.test/callback\nhttps://app.example.test/secondary"},
+		"scopes":        {"openid email"},
+	})
+	if updated.Code != http.StatusSeeOther {
+		t.Fatalf("configuration update returned %d: %s", updated.Code, updated.Body.String())
+	}
+	client, err = s.store.OIDCClientByID(t.Context(), "example-app")
+	if err != nil || client.RedirectURIs != "https://app.example.test/callback\nhttps://app.example.test/secondary" || client.Scopes != "openid email" {
+		t.Fatal("client configuration was not updated")
+	}
+	invalidUpdate := postOIDCAdmin(t, s, cookie, "/oidc-clients/example-app/configure", url.Values{
+		"_csrf": {sessions.CSRF(cookie.Value)}, "redirect_uris": {"http://app.example.test/callback"}, "scopes": {"openid"},
+	})
+	if invalidUpdate.Code != http.StatusBadRequest {
+		t.Fatalf("insecure redirect update returned %d", invalidUpdate.Code)
+	}
+
 	rotated := postOIDCAdmin(t, s, cookie, "/oidc-clients/example-app/rotate-secret", url.Values{"_csrf": {sessions.CSRF(cookie.Value)}})
 	rotatedMatch := secretPattern.FindStringSubmatch(rotated.Body.String())
 	if rotated.Code != http.StatusOK || len(rotatedMatch) != 2 || rotatedMatch[1] == secret {
@@ -173,7 +192,7 @@ func TestOIDCClientAdministration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"oidc_client_created": false, "oidc_client_secret_rotated": false, "oidc_client_disabled": false}
+	want := map[string]bool{"oidc_client_created": false, "oidc_client_configuration_updated": false, "oidc_client_secret_rotated": false, "oidc_client_disabled": false}
 	for _, audit := range audits {
 		if _, ok := want[audit.EventType]; ok && audit.ClientID == "example-app" {
 			want[audit.EventType] = true

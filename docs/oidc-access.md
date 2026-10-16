@@ -110,9 +110,12 @@ identity-admin --config /etc/stumpfworks-badge/config.yaml \
 
 Alternativ steht angemeldeten Administratoren unter `/oidc-clients` die
 geschützte Clientverwaltung zur Verfügung. Sie kann Clients registrieren,
-Secrets rotieren und Clients deaktivieren oder wieder aktivieren. Alle
-Änderungen sind CSRF-geschützt und werden gemeinsam mit ihrem Audit-Ereignis
-transaktional gespeichert. Ein neues Secret erscheint ausschließlich in der
+die exakte HTTPS-Redirect-Allowlist und freigegebene Scopes bestehender Clients
+bearbeiten, Secrets rotieren und Clients deaktivieren oder wieder aktivieren.
+Jede Anwendung besitzt eine getrennte Client-ID und eine eigene Allowlist mit
+höchstens 20 Redirect-URIs. Alle Änderungen sind CSRF-geschützt und werden
+gemeinsam mit ihrem Audit-Ereignis transaktional gespeichert. Ein neues Secret
+erscheint ausschließlich in der
 direkten Erfolgsantwort und muss vor dem Verlassen der Seite sicher übernommen
 werden; spätere Listenansichten enthalten weder Klartext-Secret noch Hash.
 
