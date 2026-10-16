@@ -184,9 +184,11 @@ func reconcileTable(ctx context.Context, target pgx.Tx, source *sql.Tx, table st
 		key = "client_id"
 	} else if table == "oidc_codes" {
 		key = "code_hash"
+	} else if table == "oidc_sessions" {
+		key = "session_id"
 	}
 	sourceOrder, targetOrder := pgx.Identifier{key}.Sanitize(), pgx.Identifier{key}.Sanitize()
-	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" {
+	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" || table == "oidc_sessions" {
 		sourceOrder += " COLLATE BINARY"
 		targetOrder += ` COLLATE "C"`
 	}

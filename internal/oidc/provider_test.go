@@ -137,6 +137,14 @@ func exchangeFrom(p *Provider, code, verifier, secret, remoteAddress string) *ht
 	return serve(p, r)
 }
 
+func clientTokenRequest(p *Provider, path, token, secret string) *httptest.ResponseRecorder {
+	v := url.Values{"token": {token}}
+	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(v.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.SetBasicAuth("stumpfworks-access", secret)
+	return serve(p, r)
+}
+
 func TestAuthorizationAndTokenFailures(t *testing.T) {
 	p, _, _, _ := testProvider(t)
 	v := authValues(strings.Repeat("v", 43))
@@ -243,6 +251,10 @@ func TestTokenFailsClosedWhenAuditCannotCommit(t *testing.T) {
 	if strings.Contains(w.Body.String(), "access_token") || strings.Contains(w.Body.String(), "id_token") {
 		t.Fatal("audit failure exposed token material")
 	}
+	var sessions int
+	if err := st.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM oidc_sessions`).Scan(&sessions); err != nil || sessions != 0 {
+		t.Fatal("audit failure persisted an undisclosed OIDC session")
+	}
 	if _, err := st.DB.ExecContext(t.Context(), `DROP TRIGGER fail_oidc_token_audit`); err != nil {
 		t.Fatal(err)
 	}
@@ -251,6 +263,93 @@ func TestTokenFailsClosedWhenAuditCannotCommit(t *testing.T) {
 	}
 	if replay := exchange(p, code, verifier); replay.Code != http.StatusBadRequest {
 		t.Fatal("successfully exchanged code remained reusable")
+	}
+}
+
+func TestOpaqueAccessTokenIntrospectionAndRevocation(t *testing.T) {
+	p, st, _, _ := testProvider(t)
+	verifier := strings.Repeat("i", 43)
+	response := exchange(p, issueCode(t, p, verifier), verifier)
+	if response.Code != http.StatusOK {
+		t.Fatalf("token exchange returned %d", response.Code)
+	}
+	var tokens map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &tokens); err != nil {
+		t.Fatal(err)
+	}
+	accessToken, ok := tokens["access_token"].(string)
+	if !ok || accessToken == "" {
+		t.Fatal("opaque access token missing")
+	}
+	var rawTokens int
+	if err := st.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM oidc_sessions WHERE access_token_hash=?`, accessToken).Scan(&rawTokens); err != nil || rawTokens != 0 {
+		t.Fatal("raw access token was persisted")
+	}
+	active := clientTokenRequest(p, "/oauth2/introspect", accessToken, "client-secret")
+	if active.Code != http.StatusOK || !strings.Contains(active.Body.String(), `"active":true`) || strings.Contains(active.Body.String(), accessToken) {
+		t.Fatalf("active token introspection failed: %d %s", active.Code, active.Body.String())
+	}
+	if wrongClient := clientTokenRequest(p, "/oauth2/introspect", accessToken, "wrong"); wrongClient.Code != http.StatusUnauthorized {
+		t.Fatal("introspection accepted wrong client secret")
+	}
+	if _, err := st.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_oidc_revoke_audit BEFORE INSERT ON audit_log WHEN NEW.event_type='oidc_session_revoked' BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if failed := clientTokenRequest(p, "/oauth2/revoke", accessToken, "client-secret"); failed.Code != http.StatusServiceUnavailable {
+		t.Fatal("revocation audit failure did not fail closed")
+	}
+	if stillActive := clientTokenRequest(p, "/oauth2/introspect", accessToken, "client-secret"); stillActive.Code != http.StatusOK || !strings.Contains(stillActive.Body.String(), `"active":true`) {
+		t.Fatal("failed revocation changed token state")
+	}
+	if _, err := st.DB.ExecContext(t.Context(), `DROP TRIGGER fail_oidc_revoke_audit`); err != nil {
+		t.Fatal(err)
+	}
+	revoked := clientTokenRequest(p, "/oauth2/revoke", accessToken, "client-secret")
+	if revoked.Code != http.StatusOK {
+		t.Fatalf("revocation returned %d", revoked.Code)
+	}
+	inactive := clientTokenRequest(p, "/oauth2/introspect", accessToken, "client-secret")
+	if inactive.Code != http.StatusOK || !strings.Contains(inactive.Body.String(), `"active":false`) {
+		t.Fatal("revoked token remained active")
+	}
+	if repeat := clientTokenRequest(p, "/oauth2/revoke", accessToken, "client-secret"); repeat.Code != http.StatusOK {
+		t.Fatal("revocation was not idempotent")
+	}
+	audits, err := st.Audits(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revocations int
+	for _, audit := range audits {
+		if audit.EventType == "oidc_session_revoked" {
+			revocations++
+			if audit.ClientID != "stumpfworks-access" || audit.Details != "client_revocation" || strings.Contains(audit.Details, accessToken) {
+				t.Fatal("revocation audit leaked token material")
+			}
+		}
+	}
+	if revocations != 1 {
+		t.Fatalf("revocation audits=%d, want 1", revocations)
+	}
+}
+
+func TestDisablingOIDCClientPermanentlyRevokesSessions(t *testing.T) {
+	p, st, _, _ := testProvider(t)
+	verifier := strings.Repeat("d", 43)
+	response := exchange(p, issueCode(t, p, verifier), verifier)
+	var tokens map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &tokens); err != nil {
+		t.Fatal(err)
+	}
+	accessToken := tokens["access_token"].(string)
+	if err := st.SetOIDCClientEnabledWithAudit(t.Context(), "stumpfworks-access", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetOIDCClientEnabledWithAudit(t.Context(), "stumpfworks-access", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if result := clientTokenRequest(p, "/oauth2/introspect", accessToken, "client-secret"); result.Code != http.StatusOK || !strings.Contains(result.Body.String(), `"active":false`) {
+		t.Fatal("session became active after client re-enable")
 	}
 }
 
@@ -342,7 +441,7 @@ func TestDiscoveryAndAuthorizationCodePKCE(t *testing.T) {
 	if err = parsed.Claims(&key.PublicKey, &claims); err != nil {
 		t.Fatal(err)
 	}
-	if claims["iss"] != "https://identity.example.test" || claims["sub"] == "alice" || claims["nonce"] != "nonce-1" {
+	if claims["iss"] != "https://identity.example.test" || claims["sub"] == "alice" || claims["nonce"] != "nonce-1" || claims["sid"] == "" {
 		t.Fatalf("bad claims: %#v", claims)
 	}
 	if replay := exchange(p, code, verifier); replay.Code != 400 || !strings.Contains(replay.Body.String(), "invalid_grant") {

@@ -97,10 +97,12 @@ func (p *Provider) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /oauth2/authorize", p.authorize)
 	mux.HandleFunc("POST /oauth2/authorize", p.authorize)
 	mux.HandleFunc("POST /oauth2/token", p.token)
+	mux.HandleFunc("POST /oauth2/introspect", p.introspect)
+	mux.HandleFunc("POST /oauth2/revoke", p.revoke)
 	mux.HandleFunc("GET /oauth2/jwks", p.jwks)
 }
 func (p *Provider) discovery(w http.ResponseWriter, _ *http.Request) {
-	p.writeJSON(w, 200, map[string]any{"issuer": p.issuer, "authorization_endpoint": p.issuer + "/oauth2/authorize", "token_endpoint": p.issuer + "/oauth2/token", "jwks_uri": p.issuer + "/oauth2/jwks", "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code"}, "subject_types_supported": []string{"public"}, "id_token_signing_alg_values_supported": []string{"RS256"}, "scopes_supported": []string{"openid", "profile", "email"}, "code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"}})
+	p.writeJSON(w, 200, map[string]any{"issuer": p.issuer, "authorization_endpoint": p.issuer + "/oauth2/authorize", "token_endpoint": p.issuer + "/oauth2/token", "introspection_endpoint": p.issuer + "/oauth2/introspect", "revocation_endpoint": p.issuer + "/oauth2/revoke", "jwks_uri": p.issuer + "/oauth2/jwks", "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code"}, "subject_types_supported": []string{"public"}, "id_token_signing_alg_values_supported": []string{"RS256"}, "scopes_supported": []string{"openid", "profile", "email"}, "code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"}, "introspection_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"}, "revocation_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"}})
 }
 func (p *Provider) jwks(w http.ResponseWriter, _ *http.Request) {
 	p.writeJSON(w, 200, jose.JSONWebKeySet{Keys: p.keys})
@@ -235,13 +237,8 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		p.oauthError(w, "unsupported_grant_type", 400)
 		return
 	}
-	clientID, secret, ok := r.BasicAuth()
+	clientID, ok := p.authenticateClient(r)
 	if !ok {
-		clientID = r.FormValue("client_id")
-		secret = r.FormValue("client_secret")
-	}
-	c, err := p.store.OIDCClientByID(r.Context(), clientID)
-	if err != nil || !c.Enabled || bcrypt.CompareHashAndPassword([]byte(c.SecretHash), []byte(secret)) != nil {
 		p.audit(r, "oidc_token_denied", "", clientID, false, "invalid_client")
 		p.oauthError(w, "invalid_client", 401)
 		return
@@ -290,7 +287,14 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issuedAt := p.now().UTC()
-	claims := map[string]any{"iss": p.issuer, "sub": sub, "aud": clientID, "exp": issuedAt.Add(5 * time.Minute).Unix(), "iat": issuedAt.Unix(), "nonce": stored.Nonce}
+	expiresAt := issuedAt.Add(5 * time.Minute)
+	sessionRaw := make([]byte, 24)
+	if _, err = rand.Read(sessionRaw); err != nil {
+		p.oauthError(w, "server_error", 500)
+		return
+	}
+	sessionID := base64.RawURLEncoding.EncodeToString(sessionRaw)
+	claims := map[string]any{"iss": p.issuer, "sub": sub, "aud": clientID, "exp": expiresAt.Unix(), "iat": issuedAt.Unix(), "nonce": stored.Nonce, "sid": sessionID}
 	if strings.Contains(" "+stored.Scope+" ", " profile ") {
 		claims["name"] = u.DisplayName
 		claims["preferred_username"] = u.Username
@@ -308,7 +312,9 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		p.oauthError(w, "server_error", 500)
 		return
 	}
-	if _, err = p.store.ConsumeOIDCCodeWithAudit(r.Context(), codeHash, clientID, redirectURI, exchangeTime, remoteIP(r)); err != nil {
+	accessToken := base64.RawURLEncoding.EncodeToString(accessRaw)
+	accessHash := sha256.Sum256([]byte(accessToken))
+	if _, err = p.store.ConsumeOIDCCodeWithSessionAudit(r.Context(), codeHash, clientID, redirectURI, exchangeTime, database.OIDCSession{SessionID: sessionID, AccessTokenHash: hex.EncodeToString(accessHash[:]), ExpiresAt: expiresAt}, remoteIP(r)); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			p.audit(r, "oidc_token_denied", "", clientID, false, "invalid_grant")
 			p.oauthError(w, "invalid_grant", http.StatusBadRequest)
@@ -318,7 +324,71 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		p.oauthError(w, "temporarily_unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	p.writeJSON(w, 200, map[string]any{"access_token": base64.RawURLEncoding.EncodeToString(accessRaw), "token_type": "Bearer", "expires_in": 300, "id_token": idToken, "scope": stored.Scope})
+	p.writeJSON(w, 200, map[string]any{"access_token": accessToken, "token_type": "Bearer", "expires_in": 300, "id_token": idToken, "scope": stored.Scope})
+}
+
+func (p *Provider) authenticateClient(r *http.Request) (string, bool) {
+	clientID, secret, ok := r.BasicAuth()
+	if !ok {
+		clientID = r.FormValue("client_id")
+		secret = r.FormValue("client_secret")
+	}
+	client, err := p.store.OIDCClientByID(r.Context(), clientID)
+	return clientID, err == nil && client.Enabled && bcrypt.CompareHashAndPassword([]byte(client.SecretHash), []byte(secret)) == nil
+}
+
+func (p *Provider) introspect(w http.ResponseWriter, r *http.Request) {
+	if !p.allowed("oidc-client-api:" + remoteIP(r)) {
+		p.oauthError(w, "temporarily_unavailable", http.StatusTooManyRequests)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+	if err := r.ParseForm(); err != nil {
+		p.oauthError(w, "invalid_request", 400)
+		return
+	}
+	clientID, ok := p.authenticateClient(r)
+	if !ok {
+		p.oauthError(w, "invalid_client", http.StatusUnauthorized)
+		return
+	}
+	tokenHash := sha256.Sum256([]byte(r.FormValue("token")))
+	session, err := p.store.OIDCSessionByTokenHash(r.Context(), hex.EncodeToString(tokenHash[:]), clientID, p.now())
+	if err != nil {
+		p.writeJSON(w, http.StatusOK, map[string]bool{"active": false})
+		return
+	}
+	result := map[string]any{"active": true, "client_id": session.ClientID, "sub": session.Subject, "scope": session.Scope, "token_type": "Bearer", "iat": session.IssuedAt.Unix(), "exp": session.ExpiresAt.Unix(), "sid": session.SessionID}
+	if strings.Contains(" "+session.Scope+" ", " profile ") {
+		result["username"] = session.Username
+	}
+	p.writeJSON(w, http.StatusOK, result)
+}
+
+func (p *Provider) revoke(w http.ResponseWriter, r *http.Request) {
+	if !p.allowed("oidc-client-api:" + remoteIP(r)) {
+		p.oauthError(w, "temporarily_unavailable", http.StatusTooManyRequests)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+	if err := r.ParseForm(); err != nil {
+		p.oauthError(w, "invalid_request", 400)
+		return
+	}
+	clientID, ok := p.authenticateClient(r)
+	if !ok {
+		p.oauthError(w, "invalid_client", http.StatusUnauthorized)
+		return
+	}
+	tokenHash := sha256.Sum256([]byte(r.FormValue("token")))
+	err := p.store.RevokeOIDCSessionByTokenHashWithAudit(r.Context(), hex.EncodeToString(tokenHash[:]), clientID, remoteIP(r))
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		slog.Error("OIDC revocation audit failed", "component", "audit", "event_type", "oidc_session_revoked")
+		p.oauthError(w, "temporarily_unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (p *Provider) audit(r *http.Request, event, user, client string, success bool, details string) {

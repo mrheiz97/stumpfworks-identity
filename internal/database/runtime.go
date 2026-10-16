@@ -64,6 +64,11 @@ type ApplicationStore interface {
 	CreateOIDCCodeWithAudit(context.Context, OIDCCode, string, string) error
 	OIDCCodeForExchange(context.Context, string, string, string, time.Time) (OIDCCode, error)
 	ConsumeOIDCCodeWithAudit(context.Context, string, string, string, time.Time, string) (OIDCCode, error)
+	ConsumeOIDCCodeWithSessionAudit(context.Context, string, string, string, time.Time, OIDCSession, string) (OIDCCode, error)
+	OIDCSessionByTokenHash(context.Context, string, string, time.Time) (OIDCSession, error)
+	OIDCSessions(context.Context, time.Time) ([]OIDCSession, error)
+	RevokeOIDCSessionWithAudit(context.Context, string, string, string) error
+	RevokeOIDCSessionByTokenHashWithAudit(context.Context, string, string, string) error
 }
 
 var _ ApplicationStore = (*Store)(nil)

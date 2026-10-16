@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 	"github.com/jackc/pgx/v5"
+	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 )
 
 func testPostgresBackupRestore(t *testing.T, ctx context.Context, dsn, schema string, pool *frameworkpg.Pool) {
@@ -62,7 +62,7 @@ func testPostgresBackupRestore(t *testing.T, ctx context.Context, dsn, schema st
 	before := postgresFixtureFingerprint(t, ctx, pool)
 	backup := filepath.Join(t.TempDir(), "synthetic-identity.dump")
 	run(dump, "--format=custom", "--data-only", "--schema="+schema, "--exclude-table="+schema+".swf_schema_migrations", "--file="+backup)
-	if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 	run(restore, "--data-only", "--exit-on-error", "--no-owner", "--no-privileges", "--dbname=postgres", "--schema="+schema, backup)
@@ -83,6 +83,8 @@ func postgresFixtureFingerprint(t *testing.T, ctx context.Context, pool *framewo
 			key = "client_id"
 		} else if table == "oidc_codes" {
 			key = "code_hash"
+		} else if table == "oidc_sessions" {
+			key = "session_id"
 		}
 		rows, err := pool.Native().Query(ctx, "SELECT row_to_json(t)::text FROM "+pgx.Identifier{table}.Sanitize()+" t ORDER BY "+pgx.Identifier{key}.Sanitize())
 		if err != nil {

@@ -19,6 +19,9 @@ type providerStore interface {
 	CreateOIDCCodeWithAudit(context.Context, database.OIDCCode, string, string) error
 	OIDCCodeForExchange(context.Context, string, string, string, time.Time) (database.OIDCCode, error)
 	ConsumeOIDCCodeWithAudit(context.Context, string, string, string, time.Time, string) (database.OIDCCode, error)
+	ConsumeOIDCCodeWithSessionAudit(context.Context, string, string, string, time.Time, database.OIDCSession, string) (database.OIDCCode, error)
+	OIDCSessionByTokenHash(context.Context, string, string, time.Time) (database.OIDCSession, error)
+	RevokeOIDCSessionByTokenHashWithAudit(context.Context, string, string, string) error
 	WriteAudit(context.Context, database.Audit) error
 }
 

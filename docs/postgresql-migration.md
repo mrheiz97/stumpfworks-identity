@@ -101,7 +101,7 @@ production configuration or data was changed.
 
 - The source backup had mode `0600` and passed SQLite `integrity_check` in
   read-only mode.
-- `identity-db-migrate` created an empty schema, imported all seven known
+- `identity-db-migrate` created an empty schema, imported all eight known
   application tables and reported `import=verified`.
 - Reconciliation compared every normalized field, including preserved numeric
   IDs, credential hashes, OIDC subjects and audit history, and reported

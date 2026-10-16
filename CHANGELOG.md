@@ -43,6 +43,13 @@ All notable changes to StumpfWorks Identity are documented here.
   disable and enable OIDC clients. Mutations require CSRF validation, use the
   existing transactional audit boundary and reveal a new secret only in the
   immediate successful response; listings never expose secret hashes.
+- OIDC access tokens are now opaque, stored only as SHA-256 hashes and tied to
+  server-side sessions. Authenticated RFC 7662 introspection, RFC 7009
+  revocation and a protected administrative session view make active grants
+  centrally revocable on SQLite and PostgreSQL.
+- Token issuance now commits authorization-code consumption, the revocable
+  session and its audit event together. Revocation also fails closed with its
+  audit, and disabling a client permanently revokes all of its active sessions.
 
 ## [1.3.0] - 2026-08-29
 

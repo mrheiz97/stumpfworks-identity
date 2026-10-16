@@ -32,7 +32,11 @@ func MigratePostgres(ctx context.Context, pool *frameworkpg.Pool) error {
 		return errors.New("Identity PostgreSQL pool required")
 	}
 	sum := sha256.Sum256([]byte(postgresSchema))
-	return migrate.Apply(ctx, pool.Native(), []migrate.Migration{{Version: 1, Name: "001_identity.up.sql", SQL: postgresSchema, Checksum: hex.EncodeToString(sum[:])}})
+	sessionsSum := sha256.Sum256([]byte(postgresOIDCSessionsMigration))
+	return migrate.Apply(ctx, pool.Native(), []migrate.Migration{
+		{Version: 1, Name: "001_identity.up.sql", SQL: postgresSchema, Checksum: hex.EncodeToString(sum[:])},
+		{Version: 2, Name: "002_oidc_sessions.up.sql", SQL: postgresOIDCSessionsMigration, Checksum: hex.EncodeToString(sessionsSum[:])},
+	})
 }
 
 func postgresNotFound(err error) error {

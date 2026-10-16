@@ -27,11 +27,26 @@ func (s *PostgresStore) RotateOIDCClientSecretWithAudit(ctx context.Context, cli
 }
 
 func (s *PostgresStore) SetOIDCClientEnabledWithAudit(ctx context.Context, clientID string, enabled bool, ip string) error {
-	event := "oidc_client_disabled"
 	if enabled {
-		event = "oidc_client_enabled"
+		return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_enabled", `UPDATE oidc_clients SET enabled=$1,updated_at=now() WHERE client_id=$2`, true, clientID)
 	}
-	return s.updateOIDCClientWithAudit(ctx, clientID, ip, event, `UPDATE oidc_clients SET enabled=$1,updated_at=now() WHERE client_id=$2`, enabled, clientID)
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	return s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		result, err := tx.Exec(ctx, `UPDATE oidc_clients SET enabled=FALSE,updated_at=now() WHERE client_id=$1`, clientID)
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected() != 1 {
+			return sql.ErrNoRows
+		}
+		if _, err := tx.Exec(ctx, `UPDATE oidc_sessions SET revoked_at=now() WHERE client_id=$1 AND revoked_at IS NULL`, clientID); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO audit_log(event_type,client_id,success,ip_address) VALUES($1,$2,$3,$4)`, "oidc_client_disabled", clientID, true, ip)
+		return err
+	})
 }
 
 func (s *PostgresStore) updateOIDCClientWithAudit(ctx context.Context, clientID, ip, event, query string, args ...any) error {

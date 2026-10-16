@@ -119,6 +119,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /oidc-clients/{id}/rotate-secret", s.rotateOIDCClientSecret)
 	s.mux.HandleFunc("POST /oidc-clients/{id}/enable", s.enableOIDCClient)
 	s.mux.HandleFunc("POST /oidc-clients/{id}/disable", s.disableOIDCClient)
+	s.mux.HandleFunc("GET /oidc-sessions", s.oidcSessionsPage)
+	s.mux.HandleFunc("POST /oidc-sessions/{id}/revoke", s.revokeOIDCSession)
 	s.mux.HandleFunc("GET /api/v1/users", s.users)
 	s.mux.HandleFunc("POST /api/v1/users", s.users)
 	s.mux.HandleFunc("GET /api/v1/users/{id}", s.user)
@@ -860,6 +862,7 @@ var page = template.Must(template.New("page").Parse(webPageTemplate()))
 
 func webPageTemplate() string {
 	result := strings.Replace(webTemplate, `{{if .Enabled}}<span class="badge success">Active</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}`, `{{if .Enabled}}<span class="badge success">Active</span>{{else if .ActivationPending}}<span class="badge warning">Pending activation</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}`, 1)
+	result = strings.Replace(result, `<a href="/oidc-clients"><span>↗</span>OIDC clients</a>`, `<a href="/oidc-clients"><span>↗</span>OIDC clients</a><a href="/oidc-sessions"><span>◌</span>OIDC sessions</a>`, 1)
 	const revoke = `<form method="post" action="/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Revoke</button></form>`
 	return strings.Replace(result, revoke, revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>`, 1)
 }

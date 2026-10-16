@@ -207,7 +207,7 @@ func TestPostgresIdentityAdapter(t *testing.T) {
 		if _, err := store.ImportSQLite(ctx, source.DB, 100); !errors.Is(err, ErrImportFailed) {
 			t.Fatal("nonempty import target accepted")
 		}
-		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes RESTART IDENTITY CASCADE"); err != nil {
+		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions RESTART IDENTITY CASCADE"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := store.ImportSQLite(ctx, source.DB, 1); !errors.Is(err, ErrImportFailed) {
@@ -568,7 +568,7 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 		}
 	})
 	t.Run("legacy client import and fail-closed source shape", func(t *testing.T) {
-		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes RESTART IDENTITY CASCADE"); err != nil {
+		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions RESTART IDENTITY CASCADE"); err != nil {
 			t.Fatal(err)
 		}
 		path := filepath.Join(t.TempDir(), "synthetic-legacy.db")

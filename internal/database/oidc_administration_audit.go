@@ -30,11 +30,31 @@ func (s *Store) RotateOIDCClientSecretWithAudit(ctx context.Context, clientID, s
 }
 
 func (s *Store) SetOIDCClientEnabledWithAudit(ctx context.Context, clientID string, enabled bool, ip string) error {
-	event := "oidc_client_disabled"
 	if enabled {
-		event = "oidc_client_enabled"
+		return s.updateOIDCClientWithAudit(ctx, clientID, ip, "oidc_client_enabled", `UPDATE oidc_clients SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, true, clientID)
 	}
-	return s.updateOIDCClientWithAudit(ctx, clientID, ip, event, `UPDATE oidc_clients SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, enabled, clientID)
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE oidc_clients SET enabled=0,updated_at=CURRENT_TIMESTAMP WHERE client_id=?`, clientID)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE oidc_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE client_id=? AND revoked_at IS NULL`, clientID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,client_id,success,ip_address) VALUES(?,?,?,?)`, "oidc_client_disabled", clientID, true, ip); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) updateOIDCClientWithAudit(ctx context.Context, clientID, ip, event, query string, args ...any) error {

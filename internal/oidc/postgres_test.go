@@ -149,6 +149,19 @@ CREATE TRIGGER fail_oidc_audit_fixture BEFORE INSERT ON audit_log FOR EACH ROW E
 	if err := token.Claims(&key.PublicKey, &claims); err != nil {
 		t.Fatal("signature verification failed")
 	}
+	accessToken, ok := body["access_token"].(string)
+	if !ok || accessToken == "" {
+		t.Fatal("PostgreSQL opaque access token missing")
+	}
+	if active := clientTokenRequest(p, "/oauth2/introspect", accessToken, "client-secret"); active.Code != http.StatusOK || !strings.Contains(active.Body.String(), `"active":true`) {
+		t.Fatal("PostgreSQL introspection rejected active token")
+	}
+	if revoked := clientTokenRequest(p, "/oauth2/revoke", accessToken, "client-secret"); revoked.Code != http.StatusOK {
+		t.Fatal("PostgreSQL token revocation failed")
+	}
+	if inactive := clientTokenRequest(p, "/oauth2/introspect", accessToken, "client-secret"); inactive.Code != http.StatusOK || !strings.Contains(inactive.Body.String(), `"active":false`) {
+		t.Fatal("PostgreSQL revoked token remained active")
+	}
 	user, err := st.UserByUsername(ctx, "alice")
 	if err != nil || claims["sub"] != user.OIDCSubject || claims["nonce"] != "nonce-1" || claims["iss"] != "https://identity.example.test" {
 		t.Fatal("persistent identity claims changed")

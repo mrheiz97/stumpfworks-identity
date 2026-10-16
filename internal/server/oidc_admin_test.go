@@ -12,6 +12,7 @@ import (
 	"time"
 
 	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -32,6 +33,60 @@ func oidcAdminTestServer(t *testing.T) (*Server, *adminauth.Sessions, *http.Cook
 		t.Fatalf("login returned %d", response.Code)
 	}
 	return s, sessions, response.Result().Cookies()[0]
+}
+
+func TestOIDCSessionAdministration(t *testing.T) {
+	s, sessions, cookie := oidcAdminTestServer(t)
+	store := s.store.(*database.Store)
+	user, err := store.CreateUser(t.Context(), "session-user", "Session User", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertOIDCClient(t.Context(), "session-app", "synthetic-hash", "https://app.example.test/callback", "openid"); err != nil {
+		t.Fatal(err)
+	}
+	const sessionID = "0123456789abcdefghijklmnopqrstuv"
+	const tokenHash = "synthetic-token-hash-must-not-render"
+	if _, err := store.DB.ExecContext(t.Context(), `INSERT INTO oidc_sessions(session_id,access_token_hash,client_id,user_id,scope,issued_at,expires_at) VALUES(?,?,?,?,?,?,?)`, sessionID, tokenHash, "session-app", user.ID, "openid", time.Now().UTC(), time.Now().Add(5*time.Minute).UTC()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/oidc-sessions", nil)
+	req.AddCookie(cookie)
+	page := httptest.NewRecorder()
+	s.Handler().ServeHTTP(page, req)
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), sessionID) || strings.Contains(page.Body.String(), tokenHash) {
+		t.Fatal("session page missing safe metadata or exposed token hash")
+	}
+
+	missingCSRF := postOIDCAdmin(t, s, cookie, "/oidc-sessions/"+sessionID+"/revoke", url.Values{})
+	if missingCSRF.Code != http.StatusForbidden {
+		t.Fatalf("missing CSRF returned %d", missingCSRF.Code)
+	}
+	revoked := postOIDCAdmin(t, s, cookie, "/oidc-sessions/"+sessionID+"/revoke", url.Values{"_csrf": {sessions.CSRF(cookie.Value)}})
+	if revoked.Code != http.StatusSeeOther {
+		t.Fatalf("revoke returned %d", revoked.Code)
+	}
+	var revokedCount int
+	if err := store.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM oidc_sessions WHERE session_id=? AND revoked_at IS NOT NULL`, sessionID).Scan(&revokedCount); err != nil || revokedCount != 1 {
+		t.Fatal("session was not revoked")
+	}
+	audits, err := store.Audits(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, audit := range audits {
+		if audit.EventType == "oidc_session_revoked" && audit.ClientID == "session-app" && audit.Username == "session-user" && audit.Details == "admin_revocation" {
+			found = true
+		}
+		if strings.Contains(audit.Details, tokenHash) {
+			t.Fatal("session revocation audit exposed token hash")
+		}
+	}
+	if !found {
+		t.Fatal("session revocation audit missing")
+	}
 }
 
 func postOIDCAdmin(t *testing.T, s *Server, cookie *http.Cookie, path string, values url.Values) *httptest.ResponseRecorder {

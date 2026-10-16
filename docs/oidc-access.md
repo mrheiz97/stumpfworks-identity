@@ -62,8 +62,37 @@ SWBADGE_OIDC_SIGNING_KEY_FILES=/etc/stumpfworks-badge/oidc/signing-current.pem
 
 OIDC verlangt den bereits vorhandenen geschützten Directory-Modus und damit die
 aktive LDAPS-Anbindung. Discovery ist anschließend unter
-`/.well-known/openid-configuration` erreichbar. Authorization, Token und JWKS
-liegen unter `/oauth2/authorize`, `/oauth2/token` und `/oauth2/jwks`.
+`/.well-known/openid-configuration` erreichbar. Authorization, Token, JWKS,
+Introspection und Revocation liegen unter `/oauth2/authorize`, `/oauth2/token`,
+`/oauth2/jwks`, `/oauth2/introspect` und `/oauth2/revoke`.
+
+## Sitzungen und zentraler Widerruf
+
+Identity gibt fünf Minuten gültige, opaque Access-Tokens aus und persistiert
+ausschließlich deren SHA-256-Hash. Jede Ausgabe erzeugt eine zufällige
+serverseitige Session-ID (`sid`). Codeverbrauch, Session und Erfolgs-Audit
+werden gemeinsam transaktional gespeichert; bei einem Audit- oder
+Datenbankfehler wird kein Tokenmaterial zurückgegeben.
+
+Vertrauliche Clients authentifizieren sich an `/oauth2/introspect` und
+`/oauth2/revoke` mit derselben Client-ID und demselben Secret wie am
+Token-Endpunkt. Introspection liefert nur eigene, nicht abgelaufene und nicht
+widerrufene Tokens als aktiv. Revocation ist absichtlich idempotent und legt
+keine Tokenexistenz offen. Das Deaktivieren eines Clients widerruft zusätzlich
+alle noch aktiven Sessions dauerhaft.
+
+Administratoren sehen unter `/oidc-sessions` höchstens 200 zuletzt ausgestellte
+Sessions mit Session-ID, Benutzer, Client, Scope und Laufzeit und können aktive
+Sessions CSRF-geschützt widerrufen. Access-Token und Token-Hash werden weder
+angezeigt noch auditiert.
+
+Wichtig: Ein bereits signiertes ID-Token bleibt bis zu seinem kurzen Ablauf
+kryptografisch prüfbar. Sofortiger zentraler Widerruf gilt deshalb für den
+opaque Access-Token bei Introspection. Eine Anwendung, die nach dem OIDC-Login
+eine eigene lokale Cookie-Sitzung anlegt, muss Introspection beziehungsweise
+später OIDC Back-Channel Logout integrieren, um diese lokale Sitzung sofort zu
+beenden. Die aktuelle Access-Integration muss vor einer produktiven
+Widerrufsabnahme entsprechend erweitert werden.
 
 ## Access als vertraulichen Client registrieren
 

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, client
 CREATE TABLE IF NOT EXISTS self_service_sessions (id TEXT PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, revoked_at DATETIME);
 CREATE TABLE IF NOT EXISTS oidc_clients (client_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, redirect_uris TEXT NOT NULL, scopes TEXT NOT NULL DEFAULT 'openid', enabled BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS oidc_codes (code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), redirect_uri TEXT NOT NULL, scope TEXT NOT NULL, nonce TEXT NOT NULL, code_challenge TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
+CREATE TABLE IF NOT EXISTS oidc_sessions (session_id TEXT PRIMARY KEY, access_token_hash TEXT NOT NULL UNIQUE, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), scope TEXT NOT NULL, issued_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, revoked_at DATETIME);
 CREATE INDEX IF NOT EXISTS idx_badges_code ON badges(badge_code); CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp); CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients(last_seen_at);`
 
 type Store struct{ DB *sql.DB }
@@ -41,6 +42,12 @@ type OIDCCode struct {
 	CodeHash, ClientID, RedirectURI, Scope, Nonce, CodeChallenge string
 	UserID                                                       int64
 	ExpiresAt                                                    time.Time
+}
+type OIDCSession struct {
+	SessionID, AccessTokenHash, ClientID, Username, Subject, Scope string
+	UserID                                                         int64
+	IssuedAt, ExpiresAt                                            time.Time
+	RevokedAt                                                      sql.NullTime
 }
 type Badge struct {
 	ID                int64        `json:"id"`
@@ -157,7 +164,7 @@ func Open(path string) (*Store, error) {
 			return nil, err
 		}
 	}
-	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_subject ON users(oidc_subject) WHERE oidc_subject<>''; CREATE INDEX IF NOT EXISTS idx_oidc_codes_expiry ON oidc_codes(expires_at)`); err != nil {
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_subject ON users(oidc_subject) WHERE oidc_subject<>''; CREATE INDEX IF NOT EXISTS idx_oidc_codes_expiry ON oidc_codes(expires_at); CREATE INDEX IF NOT EXISTS idx_oidc_sessions_expiry ON oidc_sessions(expires_at); CREATE INDEX IF NOT EXISTS idx_oidc_sessions_user ON oidc_sessions(user_id,issued_at)`); err != nil {
 		db.Close()
 		return nil, err
 	}

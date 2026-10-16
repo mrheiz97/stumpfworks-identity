@@ -16,3 +16,7 @@ ALTER TABLE badges ADD COLUMN activation_pending BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE UNIQUE INDEX idx_users_oidc_subject ON users(oidc_subject) WHERE oidc_subject<>'';
 CREATE INDEX idx_oidc_codes_expiry ON oidc_codes(expires_at);
 `
+
+const postgresOIDCSessionsMigration = `CREATE TABLE oidc_sessions (session_id TEXT PRIMARY KEY, access_token_hash TEXT NOT NULL UNIQUE, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id BIGINT NOT NULL REFERENCES users(id), scope TEXT NOT NULL, issued_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, revoked_at TIMESTAMPTZ);
+CREATE INDEX idx_oidc_sessions_expiry ON oidc_sessions(expires_at);
+CREATE INDEX idx_oidc_sessions_user ON oidc_sessions(user_id,issued_at);`

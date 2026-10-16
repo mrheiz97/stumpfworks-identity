@@ -87,7 +87,7 @@ $env:IDENTITY_REHEARSAL_PSQL='C:\Program Files\PostgreSQL\17\bin\psql.exe'
 python scripts/rehearse-postgres-synthetic.py
 ```
 
-All seven table transfers, counts, synthetic subjects/hashes, ID sequences,
+All eight table transfers, counts, synthetic subjects/hashes, ID sequences,
 audit time/null preservation, FK/subject constraints, sequential code replay,
 repeat execution and import-failure rollback passed locally on 2026-09-17.
 This SQL-only tool is not application acceptance. Additional staged adapter
@@ -118,7 +118,7 @@ greeter status/rotation and privacy-bounded audit reads. Concurrent subject
 creation stays stable, codes have one winner, badge codes remain unique and
 one original badge produces only one concurrent replacement.
 
-`ImportSQLite` accepts only an empty, migrated target and the known seven-table
+`ImportSQLite` accepts only an empty, migrated target and the known eight-table
 source shape. It streams bounded rows, compares all normalized fields using
 private digests, preserves numeric IDs/subjects/hashes/nulls and advances
 sequences. It never writes source records. Limits: one million rows and two
