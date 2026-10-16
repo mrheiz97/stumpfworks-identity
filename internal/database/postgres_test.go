@@ -204,6 +204,9 @@ func TestPostgresIdentityAdapter(t *testing.T) {
 		if err := source.CreateOIDCCode(ctx, code); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := source.DB.ExecContext(ctx, `INSERT INTO oidc_sessions(session_id,access_token_hash,client_id,user_id,scope,issued_at,expires_at) VALUES(?,?,?,?,?,?,?)`, "import-oidc-session", "synthetic-access-token-hash", "import-app", user.ID, "openid", time.Now().UTC(), time.Now().Add(5*time.Minute).UTC()); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := store.ImportSQLite(ctx, source.DB, 100); !errors.Is(err, ErrImportFailed) {
 			t.Fatal("nonempty import target accepted")
 		}
