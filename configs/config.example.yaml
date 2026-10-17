@@ -1,11 +1,18 @@
 server:
   listen: "0.0.0.0:8080"
 database:
+  # sqlite remains the default. postgres requires a separately migrated schema
+  # and a least-privilege runtime URL supplied by environment or this file.
+  backend: "sqlite"
   path: "./data/badges.db"
+  url_file: ""
+  allow_insecure: false
 updates:
   client_target_version: "1.2.1"
 directory:
   enabled: false
+  # Read-only framework adapter. Requires a CA-trusted hostname-valid LDAPS certificate.
+  framework_read_enabled: false
   url: "ldaps://dc01.example.test:636"
   base_dn: "DC=example,DC=test"
   bind_dn: ""
@@ -17,3 +24,15 @@ directory:
 auth:
   # Prefer SWBADGE_SESSION_SECRET; use at least 32 random bytes.
   session_secret: ""
+
+metrics:
+  enabled: false
+  # Prefer SWBADGE_METRICS_TOKEN or a root-readable token file.
+  token_file: ""
+
+oidc:
+  # Disabled by default. The issuer must exactly match the externally visible HTTPS URL.
+  enabled: false
+  issuer: "https://login01.example.test:8080"
+  # First key signs; subsequent comma-separated keys remain published during rotation.
+  signing_key_files: "/etc/stumpfworks-badge/oidc/signing-current.pem"

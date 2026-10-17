@@ -95,6 +95,8 @@ docs/                Architecture, API, security and operations guides
 
 ## Documentation
 
+- [StumpfWorks Access OIDC integration](docs/oidc-access.md)
+
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)
 - [Security model](docs/security.md)

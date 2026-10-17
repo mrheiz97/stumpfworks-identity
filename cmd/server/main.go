@@ -10,8 +10,11 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
 	app "github.com/TheRealHZL/stumpfworks-identity/internal/server"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/version"
+	frameworkldap "github.com/mrheiz97/stumpfworks-framework/directory/ldap"
+	frameworkmetrics "github.com/mrheiz97/stumpfworks-framework/web/metrics"
 	"log/slog"
 	"net/http"
 	"os"
@@ -38,6 +41,16 @@ func main() {
 		os.Exit(1)
 	}
 	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
+	metricsRegistry := frameworkmetrics.New()
+	var directoryObserver frameworkldap.Observer
+	if cfg.MetricsEnabled {
+		directoryObserver = metricsRegistry.LDAPObserver()
+	}
+	runtimeDirectory, e := runtimeDirectoryForConfig(cfg, configuredDirectory, directoryObserver)
+	if e != nil {
+		slog.Error("framework directory read configuration failed", "error", e)
+		os.Exit(1)
+	}
 	if *checkDirectory {
 		if !cfg.DirectoryEnabled {
 			slog.Error("directory is disabled")
@@ -51,12 +64,12 @@ func main() {
 		fmt.Printf("directory ok: %d active users\n", len(users))
 		return
 	}
-	st, e := database.Open(cfg.DatabasePath)
+	st, closeDatabase, e := runtimeStoreForConfig(context.Background(), cfg)
 	if e != nil {
 		slog.Error("database failed", "error", e)
 		os.Exit(1)
 	}
-	defer st.Close()
+	defer closeDatabase()
 	clientActions := 0
 	for _, value := range []string{*registerClient, *rotateClient, *disableClient, *enableClient} {
 		if value != "" {
@@ -90,7 +103,7 @@ func main() {
 		}
 		if *disableClient != "" || *enableClient != "" {
 			enabled := *enableClient != ""
-			if err := st.SetClientEnabled(context.Background(), clientID, enabled); err != nil {
+			if err := st.SetClientEnabledWithAudit(context.Background(), clientID, enabled, ""); err != nil {
 				slog.Error("client state change failed", "error", err)
 				os.Exit(1)
 			}
@@ -104,12 +117,12 @@ func main() {
 		}
 		token := base64.RawURLEncoding.EncodeToString(raw)
 		if *registerClient != "" {
-			if _, err := st.CreateClient(context.Background(), clientID, app.HashClientToken(token)); err != nil {
+			if _, err := st.CreateClientWithAudit(context.Background(), clientID, app.HashClientToken(token), ""); err != nil {
 				slog.Error("client registration failed", "error", err)
 				os.Exit(1)
 			}
 		} else {
-			if err := st.RotateClientToken(context.Background(), clientID, app.HashClientToken(token)); err != nil {
+			if err := st.RotateClientTokenWithAudit(context.Background(), clientID, app.HashClientToken(token), ""); err != nil {
 				slog.Error("client token rotation failed", "error", err)
 				os.Exit(1)
 			}
@@ -122,17 +135,18 @@ func main() {
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	var srv *app.Server
+	var sessions *adminauth.Sessions
 	if cfg.DirectoryEnabled {
 		if !strings.HasPrefix(cfg.DirectoryURL, "ldaps://") {
 			slog.Error("directory URL must use ldaps:// when enabled")
 			os.Exit(1)
 		}
-		sessions, err := adminauth.NewSessions(cfg.SessionSecret, time.Hour)
-		if err != nil {
-			slog.Error("session configuration failed", "error", err)
+		sessions, e = adminauth.NewSessions(cfg.SessionSecret, time.Hour)
+		if e != nil {
+			slog.Error("session configuration failed", "error", e)
 			os.Exit(1)
 		}
-		srv = app.NewProtected(st, log, configuredDirectory, sessions)
+		srv = app.NewProtected(st, log, runtimeDirectory, sessions)
 	} else {
 		srv = app.New(st, log)
 	}
@@ -148,22 +162,78 @@ func main() {
 		}
 		srv.ConfigurePKINIT(issuer)
 	}
-	log.Info("server starting", "component", "server", "listen", cfg.Listen, "version", version.Version)
+	if cfg.OIDCEnabled {
+		if !cfg.DirectoryEnabled {
+			slog.Error("OIDC requires the protected directory authentication mode")
+			os.Exit(1)
+		}
+		provider, err := oidcprovider.New(cfg.OIDCIssuer, strings.Split(cfg.OIDCSigningKeyFiles, ","), st, runtimeDirectory, sessions)
+		if err != nil {
+			slog.Error("OIDC configuration failed", "error", err)
+			os.Exit(1)
+		}
+		srv.ConfigureOIDC(provider)
+	}
+	applicationHandler := srv.Handler()
+	if cfg.MetricsEnabled {
+		applicationHandler, e = applicationHandlerWithMetrics(applicationHandler, cfg.MetricsToken, metricsRegistry)
+		if e != nil {
+			slog.Error("metrics configuration failed", "error", e)
+			os.Exit(1)
+		}
+	}
+	log.Info("server starting", "component", "server", "listen", cfg.Listen, "version", version.Version, "metrics_enabled", cfg.MetricsEnabled)
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
 		if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
 			slog.Error("both TLS certificate and key are required")
 			os.Exit(1)
 		}
-		e = http.ListenAndServeTLS(cfg.Listen, cfg.TLSCertFile, cfg.TLSKeyFile, srv.Handler())
+		e = http.ListenAndServeTLS(cfg.Listen, cfg.TLSCertFile, cfg.TLSKeyFile, applicationHandler)
 	} else {
-		e = http.ListenAndServe(cfg.Listen, srv.Handler())
+		e = http.ListenAndServe(cfg.Listen, applicationHandler)
 	}
 	if e != nil {
 		slog.Error("server stopped", "error", e)
 		os.Exit(1)
 	}
 }
-func seed(s *database.Store) {
+
+func applicationHandlerWithMetrics(application http.Handler, token string, registry *frameworkmetrics.Registry) (http.Handler, error) {
+	if application == nil || registry == nil {
+		return nil, fmt.Errorf("metrics requires application handler and registry")
+	}
+	metricsHandler, err := frameworkmetrics.ProtectBearer(registry.Handler(), token)
+	if err != nil {
+		return nil, err
+	}
+	root := http.NewServeMux()
+	root.Handle("GET /metrics", metricsHandler)
+	root.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+	root.Handle("/", registry.Middleware(application))
+	return root, nil
+}
+
+func runtimeDirectoryForConfig(cfg config.Config, existing directory.LDAP, observer frameworkldap.Observer) (directory.Directory, error) {
+	if !cfg.DirectoryFrameworkReadEnabled {
+		return existing, nil
+	}
+	if !cfg.DirectoryEnabled {
+		return nil, fmt.Errorf("framework directory reads require directory.enabled")
+	}
+	return existing.WithFrameworkLookupsObserved(observer)
+}
+
+func runtimeStoreForConfig(ctx context.Context, cfg config.Config) (database.ApplicationStore, func(), error) {
+	return database.OpenRuntime(ctx, database.RuntimeOptions{
+		Backend: cfg.DatabaseBackend, SQLitePath: cfg.DatabasePath,
+		PostgreSQLURL: cfg.DatabaseURL, PostgreSQLAllowInsecure: cfg.DatabaseAllowInsecure,
+	})
+}
+
+func seed(s database.ApplicationStore) {
 	for _, u := range []struct{ n, d string }{{"alice", "Alice Example"}, {"bob", "Bob Example"}} {
 		_, _ = s.CreateUser(context.Background(), u.n, u.d, "")
 	}

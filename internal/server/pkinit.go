@@ -14,6 +14,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 )
 
 var loginUsername = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -90,7 +92,7 @@ func (s *Server) issuePKINIT(w http.ResponseWriter, r *http.Request) {
 	}
 	g, ok := s.redeemLoginGrant(in.Grant, in.ClientID)
 	if !ok || !loginUsername.MatchString(g.Username) {
-		s.store.Audit(r.Context(), "pkinit_denied", "", "", in.ClientID, false, remoteIP(r), "invalid_grant")
+		s.audit(r.Context(), "pkinit_denied", "", "", in.ClientID, false, remoteIP(r), "invalid_grant")
 		s.problem(w, 403, "invalid_grant")
 		return
 	}
@@ -110,7 +112,11 @@ func (s *Server) issuePKINIT(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 500, "pkinit_error")
 		return
 	}
-	s.store.Audit(r.Context(), "pkinit_issued", "", g.Username, in.ClientID, true, remoteIP(r), "expires="+expires.UTC().Format(time.RFC3339))
+	if err := s.store.WriteAudit(r.Context(), database.Audit{EventType: "pkinit_issued", Username: g.Username, ClientID: in.ClientID, Success: true, IPAddress: remoteIP(r), Details: "expires=" + expires.UTC().Format(time.RFC3339)}); err != nil {
+		s.log.Error("PKINIT success audit failed", "component", "audit", "event_type", "pkinit_issued")
+		s.problem(w, http.StatusServiceUnavailable, "pkinit_unavailable")
+		return
+	}
 	s.json(w, 200, PKINITResponse{Username: g.Username, Certificate: certPEM, CA: s.pkinit.caPEM, ExpiresAt: expires.UTC().Format(time.RFC3339)})
 }
 

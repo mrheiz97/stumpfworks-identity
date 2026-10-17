@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -21,13 +22,14 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/badge"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
 	userpin "github.com/TheRealHZL/stumpfworks-identity/internal/pin"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/version"
 	"github.com/skip2/go-qrcode"
 )
 
 type Server struct {
-	store               *database.Store
+	store               database.ApplicationStore
 	log                 *slog.Logger
 	started             time.Time
 	mux                 *http.ServeMux
@@ -73,10 +75,19 @@ type selfServiceSessionView struct {
 	Current          bool
 }
 
-func New(st *database.Store, l *slog.Logger) *Server {
+func New(st database.ApplicationStore, l *slog.Logger) *Server {
 	s := &Server{store: st, log: l, started: time.Now(), mux: http.NewServeMux(), loginAttempts: map[string][]time.Time{}, pinAttempts: map[string][]time.Time{}, grants: map[string]loginGrant{}, clientTargetVersion: version.Version}
 	s.routes()
 	return s
+}
+
+// audit records rejection and informational events without exposing database
+// details to the request or logs. Successful credential issuance and security-
+// sensitive mutations use explicit fail-closed store methods instead.
+func (s *Server) audit(ctx context.Context, event, badge, user, client string, success bool, ip, details string) {
+	if err := s.store.WriteAudit(ctx, database.Audit{EventType: event, BadgeID: badge, Username: user, ClientID: client, Success: success, IPAddress: ip, Details: details}); err != nil {
+		s.log.Error("security audit write failed", "component", "audit", "event_type", event)
+	}
 }
 func (s *Server) ConfigureClientTargetVersion(target string) error {
 	if target == "" {
@@ -89,7 +100,8 @@ func (s *Server) ConfigureClientTargetVersion(target string) error {
 	s.clientTargetVersion = target
 	return nil
 }
-func NewProtected(st *database.Store, l *slog.Logger, d directory.Directory, sessions *adminauth.Sessions) *Server {
+func (s *Server) ConfigureOIDC(provider *oidcprovider.Provider) { provider.Register(s.mux) }
+func NewProtected(st database.ApplicationStore, l *slog.Logger, d directory.Directory, sessions *adminauth.Sessions) *Server {
 	s := New(st, l)
 	s.dir = d
 	s.sessions = sessions
@@ -102,6 +114,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/client/status", s.clientStatus)
 	s.mux.HandleFunc("GET /api/v1/clients", s.clients)
 	s.mux.HandleFunc("GET /status", s.systemStatusPage)
+	s.mux.HandleFunc("GET /oidc-clients", s.oidcClientsPage)
+	s.mux.HandleFunc("POST /oidc-clients", s.createOIDCClient)
+	s.mux.HandleFunc("POST /oidc-clients/{id}/rotate-secret", s.rotateOIDCClientSecret)
+	s.mux.HandleFunc("POST /oidc-clients/{id}/configure", s.updateOIDCClientConfiguration)
+	s.mux.HandleFunc("POST /oidc-clients/{id}/enable", s.enableOIDCClient)
+	s.mux.HandleFunc("POST /oidc-clients/{id}/disable", s.disableOIDCClient)
+	s.mux.HandleFunc("GET /oidc-sessions", s.oidcSessionsPage)
+	s.mux.HandleFunc("POST /oidc-sessions/{id}/revoke", s.revokeOIDCSession)
 	s.mux.HandleFunc("GET /api/v1/users", s.users)
 	s.mux.HandleFunc("POST /api/v1/users", s.users)
 	s.mux.HandleFunc("GET /api/v1/users/{id}", s.user)
@@ -136,7 +156,7 @@ func (s *Server) routes() {
 }
 func (s *Server) adminGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.protect || r.URL.Path == "/login" || r.URL.Path == "/api/v1/health" || r.URL.Path == "/api/v1/client/status" || r.URL.Path == "/api/v1/auth/badge" || r.URL.Path == "/api/v1/auth/pkinit" || strings.HasPrefix(r.URL.Path, "/self-service") || strings.HasPrefix(r.URL.Path, "/static/") {
+		if !s.protect || r.URL.Path == "/login" || r.URL.Path == "/api/v1/health" || r.URL.Path == "/api/v1/client/status" || r.URL.Path == "/api/v1/auth/badge" || r.URL.Path == "/api/v1/auth/pkinit" || r.URL.Path == "/.well-known/openid-configuration" || strings.HasPrefix(r.URL.Path, "/oauth2/") || strings.HasPrefix(r.URL.Path, "/self-service") || strings.HasPrefix(r.URL.Path, "/static/") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -240,10 +260,14 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.loginSucceeded(ip)
+	if e = s.store.WriteAudit(r.Context(), database.Audit{EventType: "admin_login", Username: u.Username, Success: true, IPAddress: ip}); e != nil {
+		s.log.Error("admin login success audit failed", "component", "audit", "event_type", "admin_login")
+		s.problem(w, http.StatusServiceUnavailable, "authentication_unavailable")
+		return
+	}
 	token := s.sessions.Issue(u.Username, time.Now())
 	http.SetCookie(w, &http.Cookie{Name: "swbadge_admin", Value: token, Path: "/", MaxAge: 3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 	s.log.Info("admin login accepted", "event", "admin_login_success", "username", u.Username, "ip_address", remoteIP(r))
-	s.store.Audit(r.Context(), "admin_login", "", u.Username, "", true, ip, "")
 	http.Redirect(w, r, "/", 303)
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -273,12 +297,11 @@ func (s *Server) importDirectoryUser(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 404, "directory_user_not_found")
 		return
 	}
-	created, e := s.store.CreateUser(r.Context(), u.Username, u.DisplayName, u.DN)
+	_, e = s.store.CreateUserWithAudit(r.Context(), u.Username, u.DisplayName, u.DN, "directory_user_imported", remoteIP(r))
 	if e != nil {
 		http.Redirect(w, r, "/users?status=already_imported", 303)
 		return
 	}
-	s.store.Audit(r.Context(), "directory_user_imported", "", created.Username, "", true, remoteIP(r), "")
 	http.Redirect(w, r, "/users?status=imported", 303)
 }
 func (s *Server) setUserPIN(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +310,7 @@ func (s *Server) setUserPIN(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 400, "invalid_id")
 		return
 	}
-	u, e := s.store.GetUser(r.Context(), n)
+	_, e = s.store.GetUser(r.Context(), n)
 	if e != nil {
 		s.problem(w, 404, "user_unknown")
 		return
@@ -303,11 +326,10 @@ func (s *Server) setUserPIN(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if e = s.store.SetUserPIN(r.Context(), n, hash); e != nil {
+	if e = s.store.SetUserPINWithAudit(r.Context(), n, hash, event, remoteIP(r)); e != nil {
 		s.problem(w, 500, "database_error")
 		return
 	}
-	s.store.Audit(r.Context(), event, "", u.Username, "", true, remoteIP(r), "")
 	http.Redirect(w, r, "/users", 303)
 }
 func (s *Server) pinPage(w http.ResponseWriter, r *http.Request) {
@@ -407,14 +429,14 @@ func (s *Server) selfServiceLogin(w http.ResponseWriter, r *http.Request) {
 	if e != nil {
 		s.loginFailed("self-service:" + ip)
 		s.log.Warn("self-service login denied", "event", "self_service_login_failed", "username", username, "ip_address", ip)
-		s.store.Audit(r.Context(), "self_service_login", "", username, "", false, ip, "")
+		s.audit(r.Context(), "self_service_login", "", username, "", false, ip, "")
 		http.Redirect(w, r, "/self-service?error=invalid_credentials", http.StatusSeeOther)
 		return
 	}
 	s.loginSucceeded("self-service:" + ip)
 	local, e := s.store.UserByUsername(r.Context(), u.Username)
 	if errors.Is(e, sql.ErrNoRows) {
-		local, e = s.store.CreateUser(r.Context(), u.Username, u.DisplayName, u.DN)
+		local, e = s.store.CreateUserWithAudit(r.Context(), u.Username, u.DisplayName, u.DN, "self_service_user_provisioned", ip)
 	}
 	if e != nil {
 		s.log.Error("self-service user provisioning failed", "username", u.Username, "error", e)
@@ -427,13 +449,12 @@ func (s *Server) selfServiceLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expiresAt := time.Now().Add(15 * time.Minute)
-	if e = s.store.CreateSelfServiceSession(r.Context(), sessionID, local.Username, expiresAt); e != nil {
+	if e = s.store.CreateSelfServiceSessionWithAudit(r.Context(), sessionID, local.Username, expiresAt, ip); e != nil {
 		http.Redirect(w, r, "/self-service?error=unavailable", http.StatusSeeOther)
 		return
 	}
 	token := s.sessions.IssueForDuration("self-service", local.Username+"\x1f"+sessionID, time.Now(), 15*time.Minute)
 	http.SetCookie(w, &http.Cookie{Name: "swbadge_selfservice", Value: token, Path: "/self-service", MaxAge: 900, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
-	s.store.Audit(r.Context(), "self_service_login", "", local.Username, "", true, ip, "")
 	http.Redirect(w, r, "/self-service", http.StatusSeeOther)
 }
 func (s *Server) selfServiceSetPIN(w http.ResponseWriter, r *http.Request) {
@@ -459,11 +480,10 @@ func (s *Server) selfServiceSetPIN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash, e := userpin.Hash(pinValue)
-	if e != nil || s.store.SetUserPIN(r.Context(), u.ID, hash) != nil {
+	if e != nil || s.store.SetUserPINWithAudit(r.Context(), u.ID, hash, "pin_self_service_changed", remoteIP(r)) != nil {
 		http.Redirect(w, r, "/self-service?error=unavailable", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "pin_self_service_changed", "", u.Username, "", true, remoteIP(r), "")
 	http.Redirect(w, r, "/self-service?status=pin_updated", http.StatusSeeOther)
 }
 func validSelfServicePIN(value string) bool {
@@ -499,12 +519,11 @@ func (s *Server) selfServiceRevokeBadge(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/self-service?error=unavailable", http.StatusSeeOther)
 		return
 	}
-	b, err := s.store.RevokeActiveBadgeForUser(r.Context(), badgeID, u.ID)
+	_, err = s.store.RevokeActiveBadgeForUserWithAudit(r.Context(), badgeID, u.ID, remoteIP(r))
 	if err != nil {
 		http.Redirect(w, r, "/self-service?error=badge_unavailable", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "badge_self_service_revoked", b.BadgeCode, u.Username, "", true, remoteIP(r), "lost_badge")
 	http.Redirect(w, r, "/self-service?status=badge_revoked", http.StatusSeeOther)
 }
 func (s *Server) selfServiceActivateBadge(w http.ResponseWriter, r *http.Request) {
@@ -526,11 +545,10 @@ func (s *Server) selfServiceActivateBadge(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/self-service?error=activation_invalid", http.StatusSeeOther)
 		return
 	}
-	if err = s.store.ActivatePendingBadgeForUser(r.Context(), b.ID, u.ID); err != nil {
+	if err = s.store.ActivatePendingBadgeForUserWithAudit(r.Context(), b.ID, u.ID, remoteIP(r)); err != nil {
 		http.Redirect(w, r, "/self-service?error=activation_invalid", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "badge_self_service_activated", b.BadgeCode, u.Username, "", true, remoteIP(r), "replacement_badge")
 	http.Redirect(w, r, "/self-service?status=badge_activated", http.StatusSeeOther)
 }
 func (s *Server) selfServiceLogoutOthers(w http.ResponseWriter, r *http.Request) {
@@ -545,12 +563,11 @@ func (s *Server) selfServiceLogoutOthers(w http.ResponseWriter, r *http.Request)
 		s.problem(w, http.StatusForbidden, "csrf_invalid")
 		return
 	}
-	count, err := s.store.RevokeOtherSelfServiceSessions(r.Context(), username, sessionID)
+	_, err := s.store.RevokeOtherSelfServiceSessionsWithAudit(r.Context(), username, sessionID, remoteIP(r))
 	if err != nil {
 		http.Redirect(w, r, "/self-service?error=unavailable", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "self_service_sessions_revoked", "", username, "", true, remoteIP(r), fmt.Sprintf("count=%d", count))
 	http.Redirect(w, r, "/self-service?status=sessions_revoked", http.StatusSeeOther)
 }
 func (s *Server) selfServiceLogout(w http.ResponseWriter, r *http.Request) {
@@ -601,12 +618,11 @@ func (s *Server) users(w http.ResponseWriter, r *http.Request) {
 	if in.DisplayName == "" {
 		in.DisplayName = in.Username
 	}
-	u, e := s.store.CreateUser(r.Context(), in.Username, in.DisplayName, in.DirectoryDN)
+	u, e := s.store.CreateUserWithAudit(r.Context(), in.Username, in.DisplayName, in.DirectoryDN, "user_created", remoteIP(r))
 	if e != nil {
 		s.problem(w, 409, "user_exists")
 		return
 	}
-	s.store.Audit(r.Context(), "user_created", "", u.Username, "", true, remoteIP(r), "")
 	s.json(w, 201, u)
 }
 func (s *Server) user(w http.ResponseWriter, r *http.Request) {
@@ -666,10 +682,7 @@ func (s *Server) createBadge(r *http.Request, user int64, desc string) (database
 	if e != nil {
 		return database.Badge{}, "", e
 	}
-	b, e := s.store.CreateBadge(r.Context(), user, badge.HashToken(t), desc)
-	if e == nil {
-		s.store.Audit(r.Context(), "badge_created", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
-	}
+	b, e := s.store.CreateBadgeWithAudit(r.Context(), user, badge.HashToken(t), desc, remoteIP(r))
 	return b, t, e
 }
 func (s *Server) badge(w http.ResponseWriter, r *http.Request) {
@@ -695,16 +708,14 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 400, "invalid_id")
 		return
 	}
-	b, e := s.store.GetBadge(r.Context(), n)
-	if e != nil {
-		s.problem(w, 404, "badge_unknown")
-		return
-	}
-	if e = s.store.Revoke(r.Context(), n); e != nil {
+	if e = s.store.RevokeBadgeWithAudit(r.Context(), n, remoteIP(r)); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			s.problem(w, 404, "badge_unknown")
+			return
+		}
 		s.problem(w, 500, "database_error")
 		return
 	}
-	s.store.Audit(r.Context(), "badge_revoked", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
 	w.WriteHeader(204)
 }
 func (s *Server) replace(w http.ResponseWriter, r *http.Request) {
@@ -723,12 +734,11 @@ func (s *Server) replace(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, 500, "token_generation_failed")
 		return
 	}
-	b, e := s.store.ReplaceBadgePending(r.Context(), n, badge.HashToken(t), "Replacement for "+old.BadgeCode)
+	b, e := s.store.ReplaceBadgePendingWithAudit(r.Context(), n, badge.HashToken(t), "Replacement for "+old.BadgeCode, remoteIP(r))
 	if e != nil {
 		s.problem(w, 500, "database_error")
 		return
 	}
-	s.store.Audit(r.Context(), "badge_replaced", old.BadgeCode, old.Username, "", true, remoteIP(r), "new_badge="+b.BadgeCode)
 	s.json(w, 201, map[string]any{"badge": b, "payload": badge.Payload(b.BadgeCode, t), "activation_notice": "The replacement remains disabled until its owner activates this one-time payload in self-service.", "token_notice": "This secret is shown once and is not stored."})
 }
 func (s *Server) qr(w http.ResponseWriter, r *http.Request) {
@@ -780,28 +790,34 @@ func (s *Server) auth(w http.ResponseWriter, r *http.Request) {
 		s.pinFailed(pinKey)
 	}
 	if reason != "" {
-		s.store.Audit(r.Context(), "auth_failed", in.BadgeID, "", in.ClientID, false, ip, reason)
+		s.audit(r.Context(), "auth_failed", in.BadgeID, "", in.ClientID, false, ip, reason)
 		s.log.Warn("badge authentication denied", "event", "auth_failed", "badge_id", in.BadgeID, "client_id", in.ClientID, "reason", reason)
 		s.json(w, 200, AuthResponse{Valid: false, Reason: reason})
 		return
 	}
-	_ = s.store.Used(r.Context(), b.ID)
-	s.pinSucceeded(pinKey)
-	s.store.Audit(r.Context(), "auth_success", b.BadgeCode, b.Username, in.ClientID, true, ip, "")
-	s.log.Info("badge authentication accepted", "event", "auth_success", "badge_id", b.BadgeCode, "client_id", in.ClientID, "username", b.Username)
-	grant, e := s.newLoginGrant(b.Username, in.ClientID)
+	grant, e := generateLoginGrantToken()
 	if e != nil {
 		s.problem(w, 500, "grant_error")
 		return
 	}
+	if e = s.store.RecordBadgeAuthenticationSuccess(r.Context(), b.ID, in.ClientID, ip); e != nil {
+		s.log.Error("badge authentication success audit failed", "component", "audit", "event_type", "auth_success")
+		s.problem(w, http.StatusServiceUnavailable, "authentication_unavailable")
+		return
+	}
+	s.saveLoginGrant(grant, b.Username, in.ClientID)
+	s.pinSucceeded(pinKey)
+	s.log.Info("badge authentication accepted", "event", "auth_success", "badge_id", b.BadgeCode, "client_id", in.ClientID, "username", b.Username)
 	s.json(w, 200, AuthResponse{Valid: true, Username: b.Username, DisplayName: b.DisplayName, BadgeID: b.BadgeCode, LoginGrant: grant})
 }
-func (s *Server) newLoginGrant(username, clientID string) (string, error) {
+func generateLoginGrantToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	token := base64.RawURLEncoding.EncodeToString(b)
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+func (s *Server) saveLoginGrant(token, username, clientID string) {
 	s.grantMu.Lock()
 	now := time.Now()
 	for k, v := range s.grants {
@@ -811,7 +827,6 @@ func (s *Server) newLoginGrant(username, clientID string) (string, error) {
 	}
 	s.grants[token] = loginGrant{Username: username, ClientID: clientID, Expires: now.Add(30 * time.Second)}
 	s.grantMu.Unlock()
-	return token, nil
 }
 func (s *Server) redeemLoginGrant(token, clientID string) (loginGrant, bool) {
 	s.grantMu.Lock()
@@ -848,6 +863,7 @@ var page = template.Must(template.New("page").Parse(webPageTemplate()))
 
 func webPageTemplate() string {
 	result := strings.Replace(webTemplate, `{{if .Enabled}}<span class="badge success">Active</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}`, `{{if .Enabled}}<span class="badge success">Active</span>{{else if .ActivationPending}}<span class="badge warning">Pending activation</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}`, 1)
+	result = strings.Replace(result, `<a href="/oidc-clients"><span>↗</span>OIDC clients</a>`, `<a href="/oidc-clients"><span>↗</span>OIDC clients</a><a href="/oidc-sessions"><span>◌</span>OIDC sessions</a>`, 1)
 	const revoke = `<form method="post" action="/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Revoke</button></form>`
 	return strings.Replace(result, revoke, revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>`, 1)
 }
@@ -868,7 +884,12 @@ func (s *Server) web(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie("swbadge_admin"); e == nil && s.sessions != nil {
 		csrf = s.sessions.CSRF(c.Value)
 	}
-	data := map[string]any{"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": s.store.Stats(r.Context()), "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload")}
+	stats, err := s.store.Counts(r.Context())
+	if err != nil {
+		s.log.Error("database counts failed", "component", "database")
+		stats = map[string]int64{}
+	}
+	data := map[string]any{"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": stats, "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload")}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = page.Execute(w, data)
@@ -881,9 +902,7 @@ func (s *Server) webCreateUser(w http.ResponseWriter, r *http.Request) {
 			d = u
 		}
 		if u != "" {
-			if x, e := s.store.CreateUser(r.Context(), u, d, ""); e == nil {
-				s.store.Audit(r.Context(), "user_created", "", x.Username, "", true, remoteIP(r), "")
-			}
+			_, _ = s.store.CreateUserWithAudit(r.Context(), u, d, "", "user_created", remoteIP(r))
 		}
 	}
 	http.Redirect(w, r, "/users", http.StatusSeeOther)
@@ -900,10 +919,7 @@ func (s *Server) webCreateBadge(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) webRevoke(w http.ResponseWriter, r *http.Request) {
 	n, _ := id(r)
-	if b, e := s.store.GetBadge(r.Context(), n); e == nil {
-		_ = s.store.Revoke(r.Context(), n)
-		s.store.Audit(r.Context(), "badge_revoked", b.BadgeCode, b.Username, "", true, remoteIP(r), "")
-	}
+	_ = s.store.RevokeBadgeWithAudit(r.Context(), n, remoteIP(r))
 	http.Redirect(w, r, "/badges", 303)
 }
 func (s *Server) webReplace(w http.ResponseWriter, r *http.Request) {
@@ -918,12 +934,11 @@ func (s *Server) webReplace(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/badges", http.StatusSeeOther)
 		return
 	}
-	replacement, err := s.store.ReplaceBadgePending(r.Context(), old.ID, badge.HashToken(token), "Replacement for "+old.BadgeCode)
+	replacement, err := s.store.ReplaceBadgePendingWithAudit(r.Context(), old.ID, badge.HashToken(token), "Replacement for "+old.BadgeCode, remoteIP(r))
 	if err != nil {
 		http.Redirect(w, r, "/badges", http.StatusSeeOther)
 		return
 	}
-	s.store.Audit(r.Context(), "badge_replaced", old.BadgeCode, old.Username, "", true, remoteIP(r), "new_badge="+replacement.BadgeCode)
 	http.Redirect(w, r, "/badges?payload="+badge.Payload(replacement.BadgeCode, token), http.StatusSeeOther)
 }
 func style(w http.ResponseWriter, r *http.Request) {
@@ -935,7 +950,7 @@ const selfServiceExtraTemplate = `{{if eq .Status "badge_activated"}}<div class=
 
 const selfServiceHistoryCSS = `.self-history,.self-activation,.self-sessions{margin:22px 0;padding:18px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.018)}.self-history-row,.self-session-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:18px;padding:12px 0;border-top:1px solid var(--line)}.self-history-row strong,.self-history-row small,.self-session-row strong,.self-session-row small{display:block}.self-history-row small,.self-session-row small{color:var(--muted);font-size:10px}.activation-form{display:grid;grid-template-columns:1fr auto;align-items:end;gap:12px}.activation-form label span{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}@media(max-width:680px){.self-history-row,.self-session-row,.activation-form{grid-template-columns:1fr}.self-history-row .badge,.self-session-row .badge{justify-self:start}}`
 
-const webTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>StumpfWorks Identity</title><link rel="stylesheet" href="/static/style.css"></head><body><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">S</span><span><strong>StumpfWorks</strong><small>Identity Platform</small></span></a><nav aria-label="Main navigation"><a class="{{if eq .Path "/"}}active{{end}}" href="/"><span>◈</span>Dashboard</a><a class="{{if eq .Path "/users"}}active{{end}}" href="/users"><span>◎</span>Users</a><a class="{{if eq .Path "/badges"}}active{{end}}" href="/badges"><span>◇</span>Badges</a><a class="{{if eq .Path "/audit"}}active{{end}}" href="/audit"><span>≡</span>Audit log</a><a class="{{if eq .Path "/status"}}active{{end}}" href="/status"><span>◉</span>System status</a></nav><div class="sidebar-foot"><div class="server-state"><i></i><span><strong>LOGIN01</strong><small>Operational</small></span></div><form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{.CSRF}}"><button class="ghost" type="submit">Sign out</button></form><small class="version">Identity v{{.Version}}</small></div></aside><main class="content"><header class="topbar"><div><p class="eyebrow">STUMPFWORKS / IDENTITY</p><h1>{{if eq .Path "/"}}Dashboard{{else if eq .Path "/users"}}Users{{else if eq .Path "/badges"}}Badges{{else if eq .Path "/audit"}}Audit log{{else}}System status{{end}}</h1></div><span class="status-chip"><i></i>All systems operational</span></header>{{if eq .Path "/"}}<section class="hero panel"><div><span class="kicker">Secure access, simplified</span><h2>Badge authentication gateway</h2><p>Manage short-lived physical credentials without storing Active Directory passwords.</p></div><div class="hero-icon">◇</div></section><section class="grid stats">{{range $k,$v:=.Stats}}<article><div class="stat-icon">◈</div><div><small>{{$k}}</small><strong>{{$v}}</strong></div></article>{{end}}</section>{{else if eq .Path "/users"}}{{if .ADUsers}}<section class="panel"><div class="panel-head"><div><h2>Active Directory users</h2><p>Import an account to make it available for badge assignment.</p></div><span class="count">{{len .ADUsers}} available</span></div><div class="table-wrap"><table><thead><tr><th>Username</th><th>Display name</th><th>Mail</th><th></th></tr></thead><tbody>{{range .ADUsers}}<tr><td><strong>{{.Username}}</strong></td><td>{{.DisplayName}}</td><td class="muted">{{.Mail}}</td><td class="actions"><form method="post" action="/directory/users/import"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><button class="small" type="submit">Import</button></form></td></tr>{{end}}</tbody></table></div></section>{{end}}<section class="panel"><div class="panel-head"><div><h2>Badge mappings</h2><p>Users currently managed by the identity gateway.</p></div><a class="button secondary" href="/pin">Manage PINs</a></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Username</th><th>Display name</th></tr></thead><tbody>{{range .Users}}<tr><td class="mono">#{{.ID}}</td><td><strong>{{.Username}}</strong></td><td>{{.DisplayName}}</td></tr>{{else}}<tr><td class="empty" colspan="3">No mappings yet.</td></tr>{{end}}</tbody></table></div></section>{{else if eq .Path "/badges"}}{{if .Payload}}<section class="panel secret"><div><span class="badge warning">One-time secret</span><h2>Badge created — save this now</h2><p>This QR secret cannot be recovered later.</p><code>{{.Payload}}</code></div><img alt="New badge QR code" src="/api/v1/badges/{{(index .Badges 0).ID}}/qr?payload={{urlquery .Payload}}"></section>{{end}}<section class="panel"><div class="panel-head"><div><h2>Issue a new badge</h2><p>Link a physical credential to an imported directory user.</p></div></div><form class="form-row" method="post" action="/badges"><input type="hidden" name="_csrf" value="{{.CSRF}}"><label><span>User</span><select name="user_id" required><option value="">Select user</option>{{range .Users}}<option value="{{.ID}}">{{.DisplayName}} ({{.Username}})</option>{{end}}</select></label><label><span>Description</span><input name="description" placeholder="e.g. Main badge"></label><button type="submit">Issue badge</button></form></section><section class="panel"><div class="panel-head"><div><h2>Issued badges</h2><p>Active and revoked physical credentials.</p></div></div><div class="table-wrap"><table><thead><tr><th>Badge</th><th>User</th><th>Status</th><th></th></tr></thead><tbody>{{range .Badges}}<tr><td class="mono">{{.BadgeCode}}</td><td><strong>{{.DisplayName}}</strong></td><td>{{if .Enabled}}<span class="badge success">Active</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}</td><td class="actions">{{if .Enabled}}<form method="post" action="/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Revoke</button></form>{{end}}</td></tr>{{else}}<tr><td class="empty" colspan="4">No badges issued yet.</td></tr>{{end}}</tbody></table></div></section>{{else if eq .Path "/audit"}}<section class="panel"><div class="panel-head"><div><h2>Security events</h2><p>Authentication and administration activity recorded by SWBA.</p></div></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Badge</th><th>User</th><th>Client</th><th>Result</th></tr></thead><tbody>{{range .Audits}}<tr><td class="muted">{{.Timestamp}}</td><td><strong>{{.EventType}}</strong></td><td class="mono">{{.BadgeID}}</td><td>{{.Username}}</td><td>{{.ClientID}}</td><td>{{if .Success}}<span class="badge success">Success</span>{{else}}<span class="badge danger-text">Denied</span>{{end}}</td></tr>{{else}}<tr><td class="empty" colspan="6">No audit events recorded.</td></tr>{{end}}</tbody></table></div></section>{{else}}<section class="grid status-grid"><article><span class="status-symbol">●</span><small>SERVER</small><strong>Online</strong><p>Authentication API is available.</p></article><article><span class="status-symbol">●</span><small>DATABASE</small><strong>SQLite ready</strong><p>Identity data store is available.</p></article><article><span class="status-symbol">●</span><small>DIRECTORY</small><strong>Connected</strong><p>Active Directory integration is ready.</p></article><article><span class="status-symbol">●</span><small>UPTIME</small><strong>{{.Uptime}}</strong><p>Current server process uptime.</p></article></section>{{end}}</main></body></html>`
+const webTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>StumpfWorks Identity</title><link rel="stylesheet" href="/static/style.css"></head><body><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">S</span><span><strong>StumpfWorks</strong><small>Identity Platform</small></span></a><nav aria-label="Main navigation"><a class="{{if eq .Path "/"}}active{{end}}" href="/"><span>◈</span>Dashboard</a><a class="{{if eq .Path "/users"}}active{{end}}" href="/users"><span>◎</span>Users</a><a class="{{if eq .Path "/badges"}}active{{end}}" href="/badges"><span>◇</span>Badges</a><a class="{{if eq .Path "/audit"}}active{{end}}" href="/audit"><span>≡</span>Audit log</a><a href="/oidc-clients"><span>↗</span>OIDC clients</a><a class="{{if eq .Path "/status"}}active{{end}}" href="/status"><span>◉</span>System status</a></nav><div class="sidebar-foot"><div class="server-state"><i></i><span><strong>LOGIN01</strong><small>Operational</small></span></div><form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{.CSRF}}"><button class="ghost" type="submit">Sign out</button></form><small class="version">Identity v{{.Version}}</small></div></aside><main class="content"><header class="topbar"><div><p class="eyebrow">STUMPFWORKS / IDENTITY</p><h1>{{if eq .Path "/"}}Dashboard{{else if eq .Path "/users"}}Users{{else if eq .Path "/badges"}}Badges{{else if eq .Path "/audit"}}Audit log{{else}}System status{{end}}</h1></div><span class="status-chip"><i></i>All systems operational</span></header>{{if eq .Path "/"}}<section class="hero panel"><div><span class="kicker">Secure access, simplified</span><h2>Badge authentication gateway</h2><p>Manage short-lived physical credentials without storing Active Directory passwords.</p></div><div class="hero-icon">◇</div></section><section class="grid stats">{{range $k,$v:=.Stats}}<article><div class="stat-icon">◈</div><div><small>{{$k}}</small><strong>{{$v}}</strong></div></article>{{end}}</section>{{else if eq .Path "/users"}}{{if .ADUsers}}<section class="panel"><div class="panel-head"><div><h2>Active Directory users</h2><p>Import an account to make it available for badge assignment.</p></div><span class="count">{{len .ADUsers}} available</span></div><div class="table-wrap"><table><thead><tr><th>Username</th><th>Display name</th><th>Mail</th><th></th></tr></thead><tbody>{{range .ADUsers}}<tr><td><strong>{{.Username}}</strong></td><td>{{.DisplayName}}</td><td class="muted">{{.Mail}}</td><td class="actions"><form method="post" action="/directory/users/import"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><button class="small" type="submit">Import</button></form></td></tr>{{end}}</tbody></table></div></section>{{end}}<section class="panel"><div class="panel-head"><div><h2>Badge mappings</h2><p>Users currently managed by the identity gateway.</p></div><a class="button secondary" href="/pin">Manage PINs</a></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Username</th><th>Display name</th></tr></thead><tbody>{{range .Users}}<tr><td class="mono">#{{.ID}}</td><td><strong>{{.Username}}</strong></td><td>{{.DisplayName}}</td></tr>{{else}}<tr><td class="empty" colspan="3">No mappings yet.</td></tr>{{end}}</tbody></table></div></section>{{else if eq .Path "/badges"}}{{if .Payload}}<section class="panel secret"><div><span class="badge warning">One-time secret</span><h2>Badge created — save this now</h2><p>This QR secret cannot be recovered later.</p><code>{{.Payload}}</code></div><img alt="New badge QR code" src="/api/v1/badges/{{(index .Badges 0).ID}}/qr?payload={{urlquery .Payload}}"></section>{{end}}<section class="panel"><div class="panel-head"><div><h2>Issue a new badge</h2><p>Link a physical credential to an imported directory user.</p></div></div><form class="form-row" method="post" action="/badges"><input type="hidden" name="_csrf" value="{{.CSRF}}"><label><span>User</span><select name="user_id" required><option value="">Select user</option>{{range .Users}}<option value="{{.ID}}">{{.DisplayName}} ({{.Username}})</option>{{end}}</select></label><label><span>Description</span><input name="description" placeholder="e.g. Main badge"></label><button type="submit">Issue badge</button></form></section><section class="panel"><div class="panel-head"><div><h2>Issued badges</h2><p>Active and revoked physical credentials.</p></div></div><div class="table-wrap"><table><thead><tr><th>Badge</th><th>User</th><th>Status</th><th></th></tr></thead><tbody>{{range .Badges}}<tr><td class="mono">{{.BadgeCode}}</td><td><strong>{{.DisplayName}}</strong></td><td>{{if .Enabled}}<span class="badge success">Active</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}</td><td class="actions">{{if .Enabled}}<form method="post" action="/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Revoke</button></form>{{end}}</td></tr>{{else}}<tr><td class="empty" colspan="4">No badges issued yet.</td></tr>{{end}}</tbody></table></div></section>{{else if eq .Path "/audit"}}<section class="panel"><div class="panel-head"><div><h2>Security events</h2><p>Authentication and administration activity recorded by SWBA.</p></div></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Badge</th><th>User</th><th>Client</th><th>Result</th></tr></thead><tbody>{{range .Audits}}<tr><td class="muted">{{.Timestamp}}</td><td><strong>{{.EventType}}</strong></td><td class="mono">{{.BadgeID}}</td><td>{{.Username}}</td><td>{{.ClientID}}</td><td>{{if .Success}}<span class="badge success">Success</span>{{else}}<span class="badge danger-text">Denied</span>{{end}}</td></tr>{{else}}<tr><td class="empty" colspan="6">No audit events recorded.</td></tr>{{end}}</tbody></table></div></section>{{else}}<section class="grid status-grid"><article><span class="status-symbol">●</span><small>SERVER</small><strong>Online</strong><p>Authentication API is available.</p></article><article><span class="status-symbol">●</span><small>DATABASE</small><strong>SQLite ready</strong><p>Identity data store is available.</p></article><article><span class="status-symbol">●</span><small>DIRECTORY</small><strong>Connected</strong><p>Active Directory integration is ready.</p></article><article><span class="status-symbol">●</span><small>UPTIME</small><strong>{{.Uptime}}</strong><p>Current server process uptime.</p></article></section>{{end}}</main></body></html>`
 const loginTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>Sign in — StumpfWorks Identity</title><link rel="stylesheet" href="/static/style.css"></head><body class="login-page"><main class="login-shell"><section class="login-brand"><a class="brand" href="/"><span class="brand-mark">S</span><span><strong>StumpfWorks</strong><small>Identity Platform</small></span></a><div><span class="kicker">Secure infrastructure access</span><h1>Identity you can hold in your hand.</h1><p>Badge-based authentication backed by Active Directory, Kerberos and short-lived credentials.</p></div><span class="login-foot">◉ &nbsp; LOGIN01 · EXAMPLE.TEST</span></section><section class="login-card"><div class="login-icon">◇</div><p class="eyebrow">ADMINISTRATION</p><h2>Welcome back</h2><p>Sign in with an authorized Active Directory account.</p><form class="login-form" method="post" action="/login"><label><span>AD username</span><input name="username" autocomplete="username" placeholder="alice-admin" required autofocus></label><label><span>Password</span><input type="password" name="password" autocomplete="current-password" placeholder="Enter your password" required></label><button type="submit">Sign in securely</button></form><p class="privacy">Credentials are verified over LDAPS and are never stored.</p></section></main></body></html>`
 const pinTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>PIN management — StumpfWorks Identity</title><link rel="stylesheet" href="/static/style.css"></head><body><main class="content standalone"><header class="topbar"><div><p class="eyebrow">STUMPFWORKS / IDENTITY</p><h1>PIN management</h1></div><a class="button secondary" href="/users">← Back to users</a></header><section class="panel"><div class="panel-head"><div><h2>User PINs</h2><p>PINs are stored exclusively as Argon2id hashes. An empty PIN disables authentication for that user.</p></div></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Status</th><th>Action</th></tr></thead><tbody>{{range .Users}}<tr><td><strong>{{.DisplayName}}</strong><small class="user-handle">{{.Username}}</small></td><td>{{if .PINEnabled}}<span class="badge success">Enabled</span>{{else}}<span class="badge neutral">Disabled</span>{{end}}</td><td><form class="pin-form" method="post" action="/users/{{.ID}}/pin"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="password" name="pin" inputmode="numeric" minlength="4" maxlength="32" placeholder="New PIN"><button type="submit">{{if .PINEnabled}}Change PIN{{else}}Enable PIN{{end}}</button>{{if .PINEnabled}}<button name="pin" value="" class="danger" formnovalidate>Disable</button>{{end}}</form></td></tr>{{end}}</tbody></table></div></section></main></body></html>`
 const selfServiceTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>Self-service — StumpfWorks Identity</title><link rel="stylesheet" href="/static/style.css"></head><body class="login-page"><main class="self-shell"><header class="self-header"><a class="brand" href="/self-service"><span class="brand-mark">S</span><span><strong>StumpfWorks</strong><small>Identity Self-Service</small></span></a><span class="status-chip"><i></i>Secure connection</span></header>{{if .Authenticated}}<section class="self-card"><div class="login-icon">◇</div><p class="eyebrow">YOUR BADGE ACCESS</p><h1>Hello, {{.User.DisplayName}}</h1><p class="self-intro">Choose a personal numeric PIN for badge authentication. Your Active Directory password remains unchanged.</p>{{if eq .Status "pin_updated"}}<div class="notice success-notice">PIN updated successfully. You can use it with your badge immediately.</div>{{else if eq .Status "badge_revoked"}}<div class="notice success-notice">The lost badge was disabled immediately.</div>{{end}}{{if .Error}}<div class="notice error-notice">{{if eq .Error "invalid_pin"}}PINs must match and contain 4 to 12 digits.{{else if eq .Error "session_expired"}}Your session expired. Please sign in again.{{else if eq .Error "badge_unavailable"}}That badge is unavailable or already disabled.{{else}}The request could not be completed. Please try again.{{end}}</div>{{end}}<div class="identity-row"><span class="avatar">◇</span><span><strong>{{.User.DisplayName}}</strong><small>{{.User.Username}}</small></span><span class="badge {{if .User.PINEnabled}}success{{else}}neutral{{end}}">PIN {{if .User.PINEnabled}}enabled{{else}}not set{{end}}</span></div><section class="self-badges"><div class="self-section-head"><div><h2>My active badges</h2><p>Only badges assigned to your account are shown.</p></div><span class="count">{{len .Badges}}</span></div>{{range .Badges}}<article class="self-badge-row"><span><strong>{{.BadgeCode}}</strong><small>{{if .Description}}{{.Description}}{{else}}Badge credential{{end}}</small></span><span><small>Issued {{.Created}}</small><small>Last used: {{.LastUsed}}</small></span><form method="post" action="/self-service/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Report lost</button></form></article>{{else}}<p class="self-empty">No active badges are assigned to your account.</p>{{end}}</section><form class="login-form" method="post" action="/self-service/pin"><input type="hidden" name="_csrf" value="{{.CSRF}}"><div class="pin-fields"><label><span>New PIN</span><input type="password" name="pin" inputmode="numeric" pattern="[0-9]{4,12}" minlength="4" maxlength="12" autocomplete="new-password" placeholder="4–12 digits" required></label><label><span>Confirm PIN</span><input type="password" name="pin_confirm" inputmode="numeric" pattern="[0-9]{4,12}" minlength="4" maxlength="12" autocomplete="new-password" placeholder="Repeat PIN" required></label></div><button type="submit">Save my PIN</button></form><div class="self-actions"><span>Your session expires automatically after 15 minutes.</span><form method="post" action="/self-service/logout"><input type="hidden" name="_csrf" value="{{.CSRF}}"><button class="link-button" type="submit">Sign out</button></form></div></section>{{else}}<section class="self-card"><div class="login-icon">◇</div><p class="eyebrow">BADGE SELF-SERVICE</p><h1>Manage your PIN</h1><p class="self-intro">Verify your identity with your Active Directory account, then set or change your personal badge PIN.</p>{{if .Error}}<div class="notice error-notice">{{if eq .Error "rate_limited"}}Too many attempts. Please wait ten minutes.{{else if eq .Error "unavailable"}}Self-service is temporarily unavailable.{{else}}Username or password was not accepted.{{end}}</div>{{end}}<form class="login-form" method="post" action="/self-service/login"><label><span>AD username</span><input name="username" autocomplete="username" placeholder="Your domain username" required autofocus></label><label><span>AD password</span><input type="password" name="password" autocomplete="current-password" placeholder="Your current password" required></label><button type="submit">Continue securely</button></form><p class="privacy">Your password is verified over LDAPS and is never stored.</p><a class="admin-link" href="/login">Administrator sign-in →</a></section>{{end}}</main></body></html>`
