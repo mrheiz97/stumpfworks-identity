@@ -68,6 +68,9 @@ Introspection und Revocation liegen unter `/oauth2/authorize`, `/oauth2/token`,
 
 ## Sitzungen und zentraler Widerruf
 
+**Status: P2.3 vollständig abgeschlossen und produktiv abgenommen am
+17. Oktober 2026.**
+
 Identity gibt fünf Minuten gültige, opaque Access-Tokens aus und persistiert
 ausschließlich deren SHA-256-Hash. Jede Ausgabe erzeugt eine zufällige
 serverseitige Session-ID (`sid`). Codeverbrauch, Session und Erfolgs-Audit
