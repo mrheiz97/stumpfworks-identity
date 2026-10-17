@@ -101,8 +101,11 @@ erneute Anmeldung erholen.
 
 Diese Access-Integration wurde am 17. Oktober 2026 produktiv ausgerollt. Der
 wiederholte Browserlogin und parallele Dashboard-Abrufe wurden erfolgreich
-abgenommen. Die gezielte produktive Abnahme eines zentral unter
-`/oidc-sessions` ausgelösten Widerrufs bleibt ein eigener kontrollierter Test.
+abgenommen. Anschließend wurde eine frische Sitzung zentral unter
+`/oidc-sessions` widerrufen: Access lehnte sie bei der nächsten Anfrage sofort
+ab und markierte die lokale Sitzung dauerhaft als widerrufen. Der erfolgreiche
+Identity-Auditeintrag sowie warnungsfreie Dienstjournale wurden ebenfalls
+bestätigt.
 
 ## Access als vertraulichen Client registrieren
 
