@@ -338,7 +338,7 @@ func (p *Provider) authenticateClient(r *http.Request) (string, bool) {
 }
 
 func (p *Provider) introspect(w http.ResponseWriter, r *http.Request) {
-	if !p.allowed("oidc-client-api:" + remoteIP(r)) {
+	if !p.allowedLimit("oidc-client-api:"+remoteIP(r), 600) {
 		p.oauthError(w, "temporarily_unavailable", http.StatusTooManyRequests)
 		return
 	}
@@ -366,7 +366,7 @@ func (p *Provider) introspect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Provider) revoke(w http.ResponseWriter, r *http.Request) {
-	if !p.allowed("oidc-client-api:" + remoteIP(r)) {
+	if !p.allowedLimit("oidc-client-api:"+remoteIP(r), 600) {
 		p.oauthError(w, "temporarily_unavailable", http.StatusTooManyRequests)
 		return
 	}
@@ -397,6 +397,9 @@ func (p *Provider) audit(r *http.Request, event, user, client string, success bo
 	}
 }
 func (p *Provider) allowed(key string) bool {
+	return p.allowedLimit(key, 10)
+}
+func (p *Provider) allowedLimit(key string, maximum int) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	now := p.now()
@@ -407,7 +410,7 @@ func (p *Provider) allowed(key string) bool {
 			kept = append(kept, t)
 		}
 	}
-	if len(kept) >= 10 {
+	if len(kept) >= maximum {
 		p.attempts[key] = kept
 		return false
 	}

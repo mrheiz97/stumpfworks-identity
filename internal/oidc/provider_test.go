@@ -289,6 +289,12 @@ func TestOpaqueAccessTokenIntrospectionAndRevocation(t *testing.T) {
 	if active.Code != http.StatusOK || !strings.Contains(active.Body.String(), `"active":true`) || strings.Contains(active.Body.String(), accessToken) {
 		t.Fatalf("active token introspection failed: %d %s", active.Code, active.Body.String())
 	}
+	for range 20 {
+		burst := clientTokenRequest(p, "/oauth2/introspect", accessToken, "client-secret")
+		if burst.Code != http.StatusOK || !strings.Contains(burst.Body.String(), `"active":true`) {
+			t.Fatalf("bounded dashboard introspection burst failed: %d", burst.Code)
+		}
+	}
 	if wrongClient := clientTokenRequest(p, "/oauth2/introspect", accessToken, "wrong"); wrongClient.Code != http.StatusUnauthorized {
 		t.Fatal("introspection accepted wrong client secret")
 	}
