@@ -91,8 +91,18 @@ kryptografisch prüfbar. Sofortiger zentraler Widerruf gilt deshalb für den
 opaque Access-Token bei Introspection. Eine Anwendung, die nach dem OIDC-Login
 eine eigene lokale Cookie-Sitzung anlegt, muss Introspection beziehungsweise
 später OIDC Back-Channel Logout integrieren, um diese lokale Sitzung sofort zu
-beenden. Die aktuelle Access-Integration muss vor einer produktiven
-Widerrufsabnahme entsprechend erweitert werden.
+beenden. Access bindet seine lokale Cookie-Sitzung deshalb an den verschlüsselt
+gespeicherten opaque Access-Token und introspektiert ihn bei jeder Verwendung.
+Eine ausdrücklich inaktive oder kryptografisch ungültig gebundene Sitzung wird
+lokal dauerhaft widerrufen. Ein vorübergehender Netzwerk-, Server- oder
+Rate-Limit-Fehler lehnt die aktuelle Anfrage fail-closed ab, zerstört die lokale
+Sitzung aber nicht; sie kann sich nach Wiederherstellung der Introspection ohne
+erneute Anmeldung erholen.
+
+Diese Access-Integration wurde am 17. Oktober 2026 produktiv ausgerollt. Der
+wiederholte Browserlogin und parallele Dashboard-Abrufe wurden erfolgreich
+abgenommen. Die gezielte produktive Abnahme eines zentral unter
+`/oidc-sessions` ausgelösten Widerrufs bleibt ein eigener kontrollierter Test.
 
 ## Access als vertraulichen Client registrieren
 
