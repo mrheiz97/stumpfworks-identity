@@ -59,7 +59,8 @@ post-install health gate succeeds or a controlled failure has been restored.
 left a marker behind, recovery validates the bounded marker, the complete
 rollback manifest, all hashes and every fixed component target before changing
 any file. It then restores the previous files, records a bounded failed update
-state, verifies the timer and LightDM, and allows the normal status report to
+state, starts the status timer if interrupted maintenance left it stopped,
+verifies LightDM, and allows the normal status report to
 continue. A failed recovery keeps the marker so the next service run can retry;
 it never accepts target paths or commands from the marker. The updater binary
 itself is an allowed signed component so existing clients can receive this
@@ -85,3 +86,15 @@ Before the mandatory service report, the updater atomically writes `/var/lib/stu
 The guided client installer installs the updater and the selected Ed25519 public key as `/etc/stumpfworks-badge/client-update.pub`. It never asks for or copies a private signing key. The installer verifies the updater version, NetworkManager availability and an immediate status report before optionally restarting LightDM.
 
 The first real WYSE01 update test on 27 August 2026 installed only `sw-badge-client-status` from `1.2.0-dev` to signed development release `1.2.0`. The installed payload hash matched the signed artifact, the timer and LightDM remained active, LOGIN01 received version `1.2.0` with all health fields `ok`, and the real rollback snapshot restored successfully in a local simulated root without changing WYSE01.
+
+On 20 October 2026, crash recovery was accepted on WYSE01 with a dedicated
+rollback. A controlled interruption marker was activated after the status
+reporter had been replaced by a failing executable and the status timer had
+been stopped. The next service start restored the exact previous reporter from
+the hash-validated rollback, removed the marker only after health recovery,
+restarted the timer, completed the normal report successfully, and recorded
+the attempted `1.4.1-dev` update as failed with rollback available. LOGIN01
+received that result while continuing to report version `1.2.1` and all four
+client health fields as `ok`. LightDM and the persistent VNC service remained
+active throughout. MOBILE01 was explicitly excluded from this acceptance and
+remains a separate future topic.
