@@ -98,3 +98,11 @@ received that result while continuing to report version `1.2.1` and all four
 client health fields as `ok`. LightDM and the persistent VNC service remained
 active throughout. MOBILE01 was explicitly excluded from this acceptance and
 remains a separate future topic.
+
+For a controlled full-client offline test, `scripts/test-client-offline-window.sh`
+accepts an explicit NetworkManager interface and defaults to a 20-minute
+window. It schedules and verifies a local systemd reconnect timer before it
+disconnects the interface. If the timer cannot be armed, the script refuses to
+change connectivity. Remote access is expected to disappear for the selected
+window; the interface, route and normal status report must be checked again
+after reconnection.
