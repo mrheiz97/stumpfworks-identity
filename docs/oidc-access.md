@@ -25,6 +25,24 @@ Für den aktuellen Development-Betrieb gelten:
 Issuer und Redirect-URI müssen bytegenau mit diesen Werten übereinstimmen; eine
 Wildcard ist nicht zulässig.
 
+## Mehrere Anwendungen und Redirects
+
+**Status: P2.4 vollständig abgeschlossen und produktiv abgenommen am
+20. Oktober 2026.**
+
+Jede Anwendung erhält eine eigene Client-ID, ein eigenes Secret und eine eigene
+exakte Redirect-Allowlist. Mehrere Redirects eines Clients werden zeilenweise
+verwaltet; Wildcards und HTTP-Redirects bleiben unzulässig. Für die produktive
+Abnahme wurde beim bestehenden Access-Client vorübergehend eine zweite
+HTTPS-Callback-URI ergänzt. Der reale Access-Login funktionierte weiterhin über
+den ursprünglichen Callback. Nach dem Entfernen der Test-URI lehnte der
+Authorization-Endpunkt sie mit HTTP 400 ab. Beide Änderungen wurden jeweils
+transaktional als `oidc_client_configuration_updated` auditiert.
+
+Es wurde kein künstlicher zweiter Produktivclient zurückgelassen. Eine weitere
+reale Anwendung wird erst bei ihrer Einführung mit getrennter Client-ID,
+Secretablage, Allowlist, Backup und eigener Ende-zu-Ende-Abnahme registriert.
+
 ## Signaturschlüssel vorbereiten
 
 Auf LOGIN01 einen ausschließlich für OIDC verwendeten Schlüssel erzeugen. Der
