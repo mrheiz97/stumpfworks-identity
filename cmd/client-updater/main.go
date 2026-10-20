@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/TheRealHZL/stumpfworks-identity/internal/clientupdate"
@@ -21,10 +22,24 @@ func main() {
 	install := flag.Bool("install", false, "install a verified package with automatic rollback")
 	rollbackDir := flag.String("rollback-dir", "", "new rollback directory required for installation")
 	allowLightDMMaintenance := flag.Bool("allow-lightdm-maintenance", false, "allow a greeter update to restart LightDM")
+	recoverPending := flag.Bool("recover-pending", false, "recover an interrupted installation from its validated rollback")
 	show := flag.Bool("version", false, "show version")
 	flag.Parse()
 	if *show {
 		fmt.Println("sw-badge-client-updater", version.Version)
+		return
+	}
+	if *recoverPending {
+		if flag.NArg() != 0 || *dryRun || *install || *packageFile != "" || *publicKeyFile != "" || *stageDir != "" || *rollbackDir != "" || *allowLightDMMaintenance {
+			fatal("recovery cannot be combined with package or installation options")
+		}
+		recovered, err := clientupdate.RecoverPendingUpdate(context.Background(), "/", clientupdate.DefaultTransactionPath, clientupdate.DefaultStatePath, clientupdate.ExecRunner{})
+		if err != nil {
+			fatal(err.Error())
+		}
+		if recovered {
+			fmt.Println("recovered interrupted client update")
+		}
 		return
 	}
 	if err := validateInvocation(*dryRun, *install, *stageDir, *rollbackDir, *allowLightDMMaintenance); err != nil {
@@ -45,7 +60,7 @@ func main() {
 		runner := clientupdate.ExecRunner{}
 		installedAt := time.Now().UTC()
 		health, recovery := clientupdate.UpdateHealthCallbacks(context.Background(), plan, runner, clientupdate.DefaultStatePath, installedAt)
-		if err = clientupdate.InstallStaged("/", *stageDir, *rollbackDir, installedAt, *allowLightDMMaintenance, health, recovery); err != nil {
+		if err = clientupdate.InstallStagedWithTransaction("/", *stageDir, *rollbackDir, clientupdate.DefaultTransactionPath, installedAt, *allowLightDMMaintenance, health, recovery); err != nil {
 			fatal(err.Error())
 		}
 		fmt.Printf("installed release=%s components=%d rollback=%s\n", plan.ReleaseVersion, len(plan.Components), *rollbackDir)
@@ -83,6 +98,10 @@ func validateInvocation(dryRun, install bool, stageDir, rollbackDir string, allo
 	}
 	if path.Clean(stageDir) == path.Clean(rollbackDir) {
 		return fmt.Errorf("stage and rollback directories must differ")
+	}
+	cleanRollback := path.Clean(rollbackDir)
+	if !strings.HasPrefix(cleanRollback, "/var/backups/stumpfworks-badge/") {
+		return fmt.Errorf("rollback directory must be below /var/backups/stumpfworks-badge")
 	}
 	return nil
 }

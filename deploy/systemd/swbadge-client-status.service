@@ -6,12 +6,14 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/stumpfworks-badge/client.conf
+ExecStartPre=/usr/local/sbin/sw-badge-client-updater --recover-pending
 ExecStart=/usr/local/libexec/sw-badge-client-status
 User=root
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
+ReadWritePaths=/usr/local/bin /usr/local/libexec /usr/local/sbin /etc/systemd/system /var/lib/stumpfworks-badge -/var/backups/stumpfworks-badge
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

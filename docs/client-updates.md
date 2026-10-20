@@ -48,6 +48,23 @@ The internal restore implementation validates the complete manifest and every ba
 
 The installation transaction revalidates the complete staged payload, creates the rollback snapshot, prepares replacement files and atomically replaces fixed targets. Any preparation or application error invokes rollback automatically. A successful transaction requires a non-optional post-install health callback; a failed health result restores the old files after proving that the new files were visible to the check. Failure-injection tests also prove that a tampered stage is rejected before a rollback directory or target change is created.
 
+Before the first target replacement, the updater atomically writes a root-only
+transaction marker under `/var/lib/stumpfworks-badge`. The marker contains only
+the release version, start time and absolute rollback directory; it contains no
+credentials, payload data or command output. It is removed only after the
+post-install health gate succeeds or a controlled failure has been restored.
+
+`swbadge-client-status.service` invokes `sw-badge-client-updater
+--recover-pending` before its normal report. If a process crash or power loss
+left a marker behind, recovery validates the bounded marker, the complete
+rollback manifest, all hashes and every fixed component target before changing
+any file. It then restores the previous files, records a bounded failed update
+state, verifies the timer and LightDM, and allows the normal status report to
+continue. A failed recovery keeps the marker so the next service run can retry;
+it never accepts target paths or commands from the marker. The updater binary
+itself is an allowed signed component so existing clients can receive this
+recovery behavior through the normal package format.
+
 Concrete orchestration requires an explicit maintenance-window flag for greeter components. Non-greeter updates reload systemd only when unit files changed, submit an immediate client-status report when relevant, require the status timer to remain active and always require LightDM to remain active. Command failures propagate into the mandatory health gate and therefore trigger automatic rollback. These commands are covered by a simulated runner and are now used by the guarded CLI installation mode.
 
 Installation requires fresh, distinct absolute directories. Neither directory may already exist:

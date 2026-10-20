@@ -29,6 +29,49 @@ func PostRollbackRecovery(parent context.Context, plan StagePlan, runner Command
 	return serviceHealthCheck(parent, plan, runner, RequiresLightDMMaintenance(plan))
 }
 
+// PostInterruptedRecovery runs from the status service's ExecStartPre. It must
+// not start that same service recursively; ExecStart proceeds after recovery.
+func PostInterruptedRecovery(parent context.Context, plan StagePlan, runner CommandRunner) func() error {
+	return func() error {
+		if runner == nil {
+			return errors.New("health-check command runner is required")
+		}
+		ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+		defer cancel()
+		hasSystemdUnit, hasStatusComponent := false, false
+		for _, component := range plan.Components {
+			switch component.Component {
+			case "swbadge-client-status.service", "swbadge-client-status.timer":
+				hasSystemdUnit = true
+			case "sw-badge-client-status":
+				hasStatusComponent = true
+			}
+		}
+		if hasSystemdUnit {
+			if err := runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
+				return fmt.Errorf("systemd daemon-reload: %w", err)
+			}
+		}
+		if hasSystemdUnit || hasStatusComponent {
+			if err := runner.Run(ctx, "systemctl", "is-active", "swbadge-client-status.timer"); err != nil {
+				return fmt.Errorf("client status timer: %w", err)
+			}
+		}
+		if RequiresLightDMMaintenance(plan) {
+			if err := runner.Run(ctx, "systemctl", "restart", "lightdm.service"); err != nil {
+				return fmt.Errorf("LightDM restart: %w", err)
+			}
+			if err := runner.Run(ctx, "systemctl", "try-restart", "swbadge-vnc.service"); err != nil {
+				return fmt.Errorf("VNC rebind: %w", err)
+			}
+		}
+		if err := runner.Run(ctx, "systemctl", "is-active", "lightdm.service"); err != nil {
+			return fmt.Errorf("LightDM health: %w", err)
+		}
+		return nil
+	}
+}
+
 // UpdateHealthCallbacks couples the transactional health checks to the bounded
 // state reported by the client-status agent. A failed installation records its
 // failure only after the previous files have been restored.

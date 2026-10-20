@@ -26,6 +26,7 @@ const maxPackageSize = 256 << 20
 var allowedComponents = map[string]bool{
 	"sw-badge-native-greeter": true, "sw-badge-pam-helper": true,
 	"sw-badge-client-status": true, "sw-badge-client-diagnostics": true,
+	"sw-badge-client-updater":         true,
 	"sw-badge-native-greeter-wrapper": true, "sw-badge-pam-helper-wrapper": true,
 	"swbadge-client-status.service": true, "swbadge-client-status.timer": true,
 }

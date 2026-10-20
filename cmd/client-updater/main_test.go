@@ -11,12 +11,13 @@ func TestValidateInvocation(t *testing.T) {
 		wantError               bool
 	}{
 		{"dry run", true, false, "", "", false, false},
-		{"install", false, true, "/var/lib/swbadge/stage", "/var/backups/swbadge/rollback", false, false},
+		{"install", false, true, "/var/lib/swbadge/stage", "/var/backups/stumpfworks-badge/rollback", false, false},
 		{"no mode", false, false, "", "", false, true},
 		{"both modes", true, true, "", "", false, true},
 		{"install missing rollback", false, true, "/var/lib/swbadge/stage", "", false, true},
 		{"relative install path", false, true, "stage", "/var/backups/swbadge/rollback", false, true},
 		{"same directories", false, true, "/var/lib/swbadge/update", "/var/lib/swbadge/update", false, true},
+		{"unmanaged rollback", false, true, "/var/lib/swbadge/stage", "/tmp/rollback", false, true},
 		{"maintenance during dry run", true, false, "", "", true, true},
 	}
 	for _, test := range tests {

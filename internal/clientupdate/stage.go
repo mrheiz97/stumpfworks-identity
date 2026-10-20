@@ -25,6 +25,7 @@ var componentSpecs = map[string]ComponentSpec{
 	"sw-badge-pam-helper":             {"/usr/local/libexec/sw-badge-pam-helper", 0755, false},
 	"sw-badge-client-status":          {"/usr/local/libexec/sw-badge-client-status", 0755, false},
 	"sw-badge-client-diagnostics":     {"/usr/local/sbin/sw-badge-client-diagnostics", 0755, false},
+	"sw-badge-client-updater":         {"/usr/local/sbin/sw-badge-client-updater", 0755, false},
 	"sw-badge-native-greeter-wrapper": {"/usr/local/bin/sw-badge-native-greeter-wrapper", 0755, true},
 	"sw-badge-pam-helper-wrapper":     {"/usr/local/libexec/sw-badge-pam-helper-wrapper", 0755, false},
 	"swbadge-client-status.service":   {"/etc/systemd/system/swbadge-client-status.service", 0644, false},
