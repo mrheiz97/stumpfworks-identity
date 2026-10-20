@@ -43,6 +43,24 @@ Es wurde kein künstlicher zweiter Produktivclient zurückgelassen. Eine weitere
 reale Anwendung wird erst bei ihrer Einführung mit getrennter Client-ID,
 Secretablage, Allowlist, Backup und eigener Ende-zu-Ende-Abnahme registriert.
 
+## OIDC-Betriebsstatus
+
+**Status: P2.5 vollständig abgeschlossen und produktiv abgenommen am
+20. Oktober 2026.**
+
+Die geschützte Seite `/oidc-clients` fasst den Providerzustand, die Anzahl der
+öffentlichen Verifikationsschlüssel, aktive und registrierte Clients sowie
+verknüpfte und unverknüpfte lokale Identitäten zusammen. Sie zeigt den
+öffentlichen aktiven `kid`, Clientstatus und die Anzahl der jeweils exakt
+erlaubten Redirect-URIs. Opaque Subjects, Client-Secrets, Secret-Hashes,
+private Schlüssel und Schlüsselpfade werden nicht an die Seite übergeben.
+
+Der produktive Rollout wurde mit SQLite-Integritätsprüfung, TLS- und
+Hostnamenprüfung, Discovery, JWKS, Introspection, Revocation, geschützter
+Adminroute und Dienstjournal abgenommen. Die Darstellung wurde danach im
+Browser bestätigt. Rollback:
+`/root/identity-p25-operations-status-rollback-20261020T185715Z`.
+
 ## Signaturschlüssel vorbereiten
 
 Auf LOGIN01 einen ausschließlich für OIDC verwendeten Schlüssel erzeugen. Der
