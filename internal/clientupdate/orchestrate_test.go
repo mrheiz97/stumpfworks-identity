@@ -90,7 +90,7 @@ func TestInterruptedRecoveryDoesNotStartStatusServiceRecursively(t *testing.T) {
 	if err := PostInterruptedRecovery(context.Background(), plan, runner)(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"systemctl daemon-reload", "systemctl is-active swbadge-client-status.timer", "systemctl is-active lightdm.service"}
+	want := []string{"systemctl daemon-reload", "systemctl start swbadge-client-status.timer", "systemctl is-active lightdm.service"}
 	if strings.Join(runner.calls, "|") != strings.Join(want, "|") {
 		t.Fatalf("unexpected commands: %v", runner.calls)
 	}

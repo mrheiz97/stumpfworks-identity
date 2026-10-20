@@ -48,7 +48,7 @@ func TestRecoverPendingUpdateRestoresInterruptedInstallation(t *testing.T) {
 	if err != nil || state == nil || state.Status != "failed" || state.Version != plan.ReleaseVersion || !state.RollbackAvailable {
 		t.Fatalf("unexpected recovered update state: %+v %v", state, err)
 	}
-	wantCalls := "systemctl is-active swbadge-client-status.timer|systemctl is-active lightdm.service"
+	wantCalls := "systemctl start swbadge-client-status.timer|systemctl is-active lightdm.service"
 	if strings.Join(runner.calls, "|") != wantCalls {
 		t.Fatalf("unexpected interrupted-recovery calls: %v", runner.calls)
 	}

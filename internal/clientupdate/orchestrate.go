@@ -53,8 +53,8 @@ func PostInterruptedRecovery(parent context.Context, plan StagePlan, runner Comm
 			}
 		}
 		if hasSystemdUnit || hasStatusComponent {
-			if err := runner.Run(ctx, "systemctl", "is-active", "swbadge-client-status.timer"); err != nil {
-				return fmt.Errorf("client status timer: %w", err)
+			if err := runner.Run(ctx, "systemctl", "start", "swbadge-client-status.timer"); err != nil {
+				return fmt.Errorf("client status timer recovery: %w", err)
 			}
 		}
 		if RequiresLightDMMaintenance(plan) {
