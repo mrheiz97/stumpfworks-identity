@@ -44,6 +44,15 @@ type Provider struct {
 	attempts map[string][]time.Time
 }
 
+// Status contains public operational metadata suitable for an authenticated
+// administrator view. Key IDs are already published by JWKS; private key
+// material and file paths are deliberately excluded.
+type Status struct {
+	Issuer      string
+	ActiveKeyID string
+	KeyIDs      []string
+}
+
 func New(issuer string, keyFiles []string, store providerStore, dir directory.Directory, sessions *adminauth.Sessions) (*Provider, error) {
 	issuer = strings.TrimSuffix(issuer, "/")
 	u, err := url.Parse(issuer)
@@ -71,6 +80,17 @@ func New(issuer string, keyFiles []string, store providerStore, dir directory.Di
 		}
 	}
 	return p, nil
+}
+
+func (p *Provider) Status() Status {
+	status := Status{Issuer: p.issuer, KeyIDs: make([]string, 0, len(p.keys))}
+	for _, key := range p.keys {
+		status.KeyIDs = append(status.KeyIDs, key.KeyID)
+	}
+	if len(status.KeyIDs) != 0 {
+		status.ActiveKeyID = status.KeyIDs[0]
+	}
+	return status
 }
 func loadRSAKey(path string) (*rsa.PrivateKey, error) {
 	b, err := os.ReadFile(path)

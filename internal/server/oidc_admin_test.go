@@ -13,6 +13,7 @@ import (
 
 	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
+	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -97,6 +98,50 @@ func postOIDCAdmin(t *testing.T, s *Server, cookie *http.Cookie, path string, va
 	response := httptest.NewRecorder()
 	s.Handler().ServeHTTP(response, req)
 	return response
+}
+
+func TestOIDCOperationsStatusIsUsefulAndDoesNotExposeSubjectsOrSecrets(t *testing.T) {
+	s, _, cookie := oidcAdminTestServer(t)
+	store := s.store.(*database.Store)
+	s.oidcStatus = oidcprovider.Status{Issuer: "https://identity.example.test", ActiveKeyID: "public-active-kid", KeyIDs: []string{"public-active-kid", "public-previous-kid"}}
+	linked, err := store.CreateUser(t.Context(), "linked-user", "Linked User", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject, err := store.EnsureOIDCSubject(t.Context(), linked.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateUser(t.Context(), "unlinked-user", "Unlinked User", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertOIDCClient(t.Context(), "active-app", "private-active-hash", "https://active.example.test/callback", "openid"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertOIDCClient(t.Context(), "disabled-app", "private-disabled-hash", "https://disabled.example.test/callback", "openid profile"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetOIDCClientEnabled(t.Context(), "disabled-app", false); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/oidc-clients", nil)
+	req.AddCookie(cookie)
+	page := httptest.NewRecorder()
+	s.Handler().ServeHTTP(page, req)
+	body := page.Body.String()
+	for _, expected := range []string{"OIDC operations", "https://identity.example.test", "public-active-kid", "Linked User", "Unlinked User", "1 / 2", "Linked", "Unlinked"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("OIDC operations page missing %q", expected)
+		}
+	}
+	if strings.Count(body, "1 / 2") < 2 {
+		t.Fatal("OIDC operations page did not show separate client and identity totals")
+	}
+	for _, sensitive := range []string{subject, "private-active-hash", "private-disabled-hash"} {
+		if strings.Contains(body, sensitive) {
+			t.Fatalf("OIDC operations page exposed sensitive value %q", sensitive)
+		}
+	}
 }
 
 func TestOIDCClientAdministration(t *testing.T) {

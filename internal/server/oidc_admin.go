@@ -18,10 +18,25 @@ var oidcClientIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$
 type oidcClientView struct {
 	ClientID, RedirectURIs, Scopes string
 	Enabled                        bool
+	RedirectCount                  int
+}
+
+type oidcUserView struct {
+	Username, DisplayName string
+	Linked                bool
+}
+
+type oidcOperationsView struct {
+	Enabled                                       bool
+	Issuer, ActiveKeyID                           string
+	VerificationKeys, TotalClients, ActiveClients int
+	TotalUsers, LinkedUsers, UnlinkedUsers        int
 }
 
 type oidcClientsPageData struct {
 	Clients                        []oidcClientView
+	Users                          []oidcUserView
+	Operations                     oidcOperationsView
 	CSRF, Secret, SecretID, Notice string
 }
 
@@ -111,8 +126,32 @@ func (s *Server) renderOIDCClients(w http.ResponseWriter, r *http.Request, secre
 		return
 	}
 	views := make([]oidcClientView, 0, len(clients))
+	activeClients := 0
 	for _, c := range clients {
-		views = append(views, oidcClientView{ClientID: c.ClientID, RedirectURIs: c.RedirectURIs, Scopes: c.Scopes, Enabled: c.Enabled})
+		views = append(views, oidcClientView{ClientID: c.ClientID, RedirectURIs: c.RedirectURIs, Scopes: c.Scopes, Enabled: c.Enabled, RedirectCount: len(strings.Split(c.RedirectURIs, "\n"))})
+		if c.Enabled {
+			activeClients++
+		}
+	}
+	users, err := s.store.Users(r.Context())
+	if err != nil {
+		s.problem(w, http.StatusServiceUnavailable, "oidc_users_unavailable")
+		return
+	}
+	userViews := make([]oidcUserView, 0, len(users))
+	linkedUsers := 0
+	for _, user := range users {
+		linked := user.OIDCSubject != ""
+		if linked {
+			linkedUsers++
+		}
+		userViews = append(userViews, oidcUserView{Username: user.Username, DisplayName: user.DisplayName, Linked: linked})
+	}
+	operations := oidcOperationsView{
+		Enabled: s.oidcStatus.Issuer != "", Issuer: s.oidcStatus.Issuer,
+		ActiveKeyID: s.oidcStatus.ActiveKeyID, VerificationKeys: len(s.oidcStatus.KeyIDs),
+		TotalClients: len(clients), ActiveClients: activeClients,
+		TotalUsers: len(users), LinkedUsers: linkedUsers, UnlinkedUsers: len(users) - linkedUsers,
 	}
 	csrf := ""
 	if cookie, err := r.Cookie("swbadge_admin"); err == nil {
@@ -120,7 +159,7 @@ func (s *Server) renderOIDCClients(w http.ResponseWriter, r *http.Request, secre
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := oidcClientsTemplate.Execute(w, oidcClientsPageData{Clients: views, CSRF: csrf, SecretID: secretID, Secret: secret, Notice: notice}); err != nil {
+	if err := oidcClientsTemplate.Execute(w, oidcClientsPageData{Clients: views, Users: userViews, Operations: operations, CSRF: csrf, SecretID: secretID, Secret: secret, Notice: notice}); err != nil {
 		s.log.Error("OIDC client page rendering failed", "error", err)
 	}
 }
@@ -169,4 +208,4 @@ func newOIDCClientSecret() (string, string, bool) {
 	return secret, string(hash), true
 }
 
-var oidcClientsTemplate = template.Must(template.New("oidc-clients").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>OIDC clients · StumpfWorks Identity</title><link rel="stylesheet" href="/static/style.css"></head><body><main class="content" style="max-width:1100px;margin:auto"><header class="topbar"><div><p class="eyebrow">STUMPFWORKS / IDENTITY</p><h1>OIDC clients</h1></div><a class="button secondary" href="/">Dashboard</a></header>{{if .Secret}}<section class="panel secret"><div><span class="badge warning">One-time secret</span><h2>{{.SecretID}}</h2><p>{{.Notice}}</p><code id="oidc-client-secret">{{.Secret}}</code></div></section>{{end}}<section class="panel"><div class="panel-head"><div><h2>Register client</h2><p>Redirect URIs must be exact HTTPS URLs. Secrets are displayed once.</p></div></div><form method="post" action="/oidc-clients"><input type="hidden" name="_csrf" value="{{.CSRF}}"><label><span>Client ID</span><input name="client_id" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}"></label><label><span>Redirect URIs (one per line)</span><textarea name="redirect_uris" required rows="3"></textarea></label><label><span>Scopes</span><input name="scopes" value="openid profile email" required></label><button type="submit">Register client</button></form></section><section class="panel"><div class="panel-head"><div><h2>Registered clients</h2><p>Each application has its own exact redirect allowlist. Secret hashes are never exposed.</p></div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Redirect URIs and scopes</th><th>Status</th><th></th></tr></thead><tbody>{{range .Clients}}<tr><td><strong>{{.ClientID}}</strong></td><td><form method="post" action="/oidc-clients/{{.ClientID}}/configure"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><label><span>Exact HTTPS redirect URIs (one per line)</span><textarea class="mono" name="redirect_uris" required rows="3">{{.RedirectURIs}}</textarea></label><label><span>Scopes</span><input name="scopes" value="{{.Scopes}}" required></label><button class="small" type="submit">Save configuration</button></form></td><td>{{if .Enabled}}<span class="badge success">Enabled</span>{{else}}<span class="badge neutral">Disabled</span>{{end}}</td><td class="actions"><form method="post" action="/oidc-clients/{{.ClientID}}/rotate-secret"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Rotate secret</button></form><form method="post" action="/oidc-clients/{{.ClientID}}/{{if .Enabled}}disable{{else}}enable{{end}}"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small {{if .Enabled}}danger{{end}}" type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button></form></td></tr>{{else}}<tr><td class="empty" colspan="4">No OIDC clients registered.</td></tr>{{end}}</tbody></table></div></section></main></body></html>`))
+var oidcClientsTemplate = template.Must(template.New("oidc-clients").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>OIDC operations · StumpfWorks Identity</title><link rel="stylesheet" href="/static/style.css"></head><body><main class="content" style="max-width:1100px;margin:auto"><header class="topbar"><div><p class="eyebrow">STUMPFWORKS / IDENTITY</p><h1>OIDC operations</h1></div><div><a class="button secondary" href="/oidc-sessions">Sessions</a> <a class="button secondary" href="/">Dashboard</a></div></header>{{if .Secret}}<section class="panel secret"><div><span class="badge warning">One-time secret</span><h2>{{.SecretID}}</h2><p>{{.Notice}}</p><code id="oidc-client-secret">{{.Secret}}</code></div></section>{{end}}<section class="grid status-grid"><article><span class="status-symbol">●</span><small>PROVIDER</small><strong>{{if .Operations.Enabled}}Enabled{{else}}Unavailable{{end}}</strong><p class="mono">{{if .Operations.Issuer}}{{.Operations.Issuer}}{{else}}OIDC provider metadata is unavailable.{{end}}</p></article><article><span class="status-symbol">●</span><small>SIGNING KEYS</small><strong>{{.Operations.VerificationKeys}}</strong><p>Active public kid: <span class="mono">{{if .Operations.ActiveKeyID}}{{.Operations.ActiveKeyID}}{{else}}Unavailable{{end}}</span>. Additional keys verify tokens during rotation.</p></article><article><span class="status-symbol">●</span><small>CLIENTS</small><strong>{{.Operations.ActiveClients}} / {{.Operations.TotalClients}}</strong><p>Active and total registered applications. Secrets and hashes are never displayed.</p></article><article><span class="status-symbol">●</span><small>IDENTITIES</small><strong>{{.Operations.LinkedUsers}} / {{.Operations.TotalUsers}}</strong><p>Users with an opaque OIDC subject. {{.Operations.UnlinkedUsers}} remain unlinked.</p></article></section><section class="panel"><div class="panel-head"><div><h2>Register client</h2><p>Redirect URIs must be exact HTTPS URLs. Secrets are displayed once.</p></div></div><form method="post" action="/oidc-clients"><input type="hidden" name="_csrf" value="{{.CSRF}}"><label><span>Client ID</span><input name="client_id" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}"></label><label><span>Redirect URIs (one per line)</span><textarea name="redirect_uris" required rows="3"></textarea></label><label><span>Scopes</span><input name="scopes" value="openid profile email" required></label><button type="submit">Register client</button></form></section><section class="panel"><div class="panel-head"><div><h2>Registered clients</h2><p>Each application has its own exact redirect allowlist. Secret hashes are never exposed.</p></div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Redirect URIs and scopes</th><th>Status</th><th></th></tr></thead><tbody>{{range .Clients}}<tr><td><strong>{{.ClientID}}</strong><small>{{.RedirectCount}} exact redirect{{if ne .RedirectCount 1}}s{{end}}</small></td><td><form method="post" action="/oidc-clients/{{.ClientID}}/configure"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><label><span>Exact HTTPS redirect URIs (one per line)</span><textarea class="mono" name="redirect_uris" required rows="3">{{.RedirectURIs}}</textarea></label><label><span>Scopes</span><input name="scopes" value="{{.Scopes}}" required></label><button class="small" type="submit">Save configuration</button></form></td><td>{{if .Enabled}}<span class="badge success">Enabled</span>{{else}}<span class="badge neutral">Disabled</span>{{end}}</td><td class="actions"><form method="post" action="/oidc-clients/{{.ClientID}}/rotate-secret"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Rotate secret</button></form><form method="post" action="/oidc-clients/{{.ClientID}}/{{if .Enabled}}disable{{else}}enable{{end}}"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small {{if .Enabled}}danger{{end}}" type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button></form></td></tr>{{else}}<tr><td class="empty" colspan="4">No OIDC clients registered.</td></tr>{{end}}</tbody></table></div></section><section class="panel"><div class="panel-head"><div><h2>OIDC identity status</h2><p>Only linkage state is shown. Opaque subjects are never rendered.</p></div><span class="count">{{.Operations.LinkedUsers}} linked</span></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Display name</th><th>OIDC status</th></tr></thead><tbody>{{range .Users}}<tr><td><strong>{{.Username}}</strong></td><td>{{.DisplayName}}</td><td>{{if .Linked}}<span class="badge success">Linked</span>{{else}}<span class="badge neutral">Unlinked</span>{{end}}</td></tr>{{else}}<tr><td class="empty" colspan="3">No local identities available.</td></tr>{{end}}</tbody></table></div></section></main></body></html>`))

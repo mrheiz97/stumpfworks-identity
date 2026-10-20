@@ -85,6 +85,18 @@ func serve(p *Provider, r *http.Request) *httptest.ResponseRecorder {
 	mux.ServeHTTP(w, r)
 	return w
 }
+
+func TestProviderStatusReturnsOnlyPublicKeyMetadata(t *testing.T) {
+	p, _, _, _ := testProvider(t)
+	status := p.Status()
+	if status.Issuer != "https://identity.example.test" || len(status.KeyIDs) != 1 || status.ActiveKeyID == "" || status.ActiveKeyID != status.KeyIDs[0] {
+		t.Fatalf("unexpected provider status: %+v", status)
+	}
+	status.KeyIDs[0] = "modified-copy"
+	if p.Status().ActiveKeyID == "modified-copy" {
+		t.Fatal("provider status exposed mutable internal key metadata")
+	}
+}
 func authValues(verifier string) url.Values {
 	sum := sha256.Sum256([]byte(verifier))
 	return url.Values{"response_type": {"code"}, "client_id": {"stumpfworks-access"}, "redirect_uri": {"https://access.example.test/api/v1/auth/oidc/callback"}, "scope": {"openid profile email"}, "state": {"state-1"}, "nonce": {"nonce-1"}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"}}

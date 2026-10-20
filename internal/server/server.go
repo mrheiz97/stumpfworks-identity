@@ -43,6 +43,7 @@ type Server struct {
 	grants              map[string]loginGrant
 	pkinit              *PKINITIssuer
 	clientTargetVersion string
+	oidcStatus          oidcprovider.Status
 }
 type loginGrant struct {
 	Username, ClientID string
@@ -100,7 +101,13 @@ func (s *Server) ConfigureClientTargetVersion(target string) error {
 	s.clientTargetVersion = target
 	return nil
 }
-func (s *Server) ConfigureOIDC(provider *oidcprovider.Provider) { provider.Register(s.mux) }
+func (s *Server) ConfigureOIDC(provider *oidcprovider.Provider) {
+	if provider == nil {
+		return
+	}
+	s.oidcStatus = provider.Status()
+	provider.Register(s.mux)
+}
 func NewProtected(st database.ApplicationStore, l *slog.Logger, d directory.Directory, sessions *adminauth.Sessions) *Server {
 	s := New(st, l)
 	s.dir = d
