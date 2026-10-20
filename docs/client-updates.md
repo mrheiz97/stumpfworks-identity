@@ -106,3 +106,14 @@ disconnects the interface. If the timer cannot be armed, the script refuses to
 change connectivity. Remote access is expected to disappear for the selected
 window; the interface, route and normal status report must be checked again
 after reconnection.
+
+The full 20-minute offline window was accepted on WYSE01 on 20 October 2026.
+During the window, LOGIN01 correctly treated the last report as stale and the
+native greeter kept the normal username/password fallback selectable. The
+reconnect timer restored `enp1s0`, its NetworkManager profile and the default
+route without remote intervention. The transient timer then disappeared as
+designed. LightDM, the native greeter, the client-status timer and persistent
+VNC were active after recovery; the next status run succeeded and LOGIN01
+again received all four health fields as `ok`. The observed delay before the
+greeter becomes ready remains a separate user-interface design topic and does
+not change the authentication fallback.
