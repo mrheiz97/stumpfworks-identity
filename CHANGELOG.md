@@ -4,6 +4,80 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-20
+
+### Added
+
+- Added a production-tested OpenID Connect provider with Authorization Code
+  Flow, PKCE S256, exact redirect allowlists, stable opaque subjects, Discovery,
+  JWKS and controlled signing-key rotation.
+- Added protected OIDC client administration for registration, activation,
+  deactivation, secret rotation, exact multi-redirect configuration and
+  per-client scopes.
+- Added server-side OIDC sessions with opaque access tokens, authenticated
+  introspection, revocation and immediate logout in StumpfWorks Access.
+- Added a protected OIDC operations view for public signing-key metadata,
+  client state, redirect counts and linked/unlinked identity status without
+  exposing subjects, secrets, hashes or private key paths.
+- Added a shared SQLite/PostgreSQL application-store contract, explicit
+  PostgreSQL schema migrations and guarded import/reconciliation tooling.
+
+### Changed
+
+- Identity now uses StumpfWorks Framework v1.0.0 for the shared integration
+  contracts while preserving existing Badge/PIN, PKINIT, Kerberos and AD
+  password fallback paths.
+- Successful authentication, credential issuance and administrative mutations
+  now use transactional, fail-closed audit boundaries on SQLite and PostgreSQL.
+- `identity-admin` now uses the same configured runtime store as the server.
+
+### Security
+
+- Badge authentication now commits its last-use marker and success audit
+  atomically before retaining or returning a login grant on both SQLite and
+  PostgreSQL.
+- PKINIT certificate responses now fail closed when their success audit cannot
+  be persisted; the consumed one-time grant remains non-reusable.
+- OIDC authorization codes are created atomically with login, consent and
+  issuance audit events. Token exchange commits code consumption together with
+  its success audit before returning any token material. First-login user and
+  stable-subject creation are transactionally audited as well.
+- Administrator and self-service login, PIN changes, user provisioning and
+  administrative badge lifecycle operations now fail closed or roll back when
+  their required success audit cannot be persisted.
+- `identity-admin` now uses the configured SQLite/PostgreSQL runtime store and
+  atomically audits OIDC client creation, secret rotation, enable/disable and
+  initial subject assignment before reporting success or revealing a new
+  one-time secret.
+- Added a guarded SQLite-to-PostgreSQL migration utility with read-only source
+  handling, explicit mutation confirmations, bounded import and exact
+  aggregate-only reconciliation, plus a stop-the-world cutover and rollback
+  runbook.
+- Added SQLite and PostgreSQL protocol coverage for OIDC client-secret
+  rotation: the old secret is rejected immediately, the replacement succeeds,
+  failed old-secret authentication does not consume the authorization code and
+  audit records contain no secret material.
+- Added end-to-end `identity-admin` command coverage on SQLite and PostgreSQL
+  for client creation, one-time secret output, secret rotation, disable/enable,
+  stable subject creation and the corresponding audit records.
+- Greeter-client registration, status-token rotation and credential state
+  changes now commit with their success audit on SQLite and PostgreSQL before a
+  one-time token or success result is returned.
+- PostgreSQL OIDC protocol tests now fail first-login user and subject creation
+  closed on audit rejection and require exactly one success audit across
+  competing token exchanges.
+- The protected administration interface can now list, register, rotate,
+  disable and enable OIDC clients. Mutations require CSRF validation, use the
+  existing transactional audit boundary and reveal a new secret only in the
+  immediate successful response; listings never expose secret hashes.
+- OIDC access tokens are now opaque, stored only as SHA-256 hashes and tied to
+  server-side sessions. Authenticated RFC 7662 introspection, RFC 7009
+  revocation and a protected administrative session view make active grants
+  centrally revocable on SQLite and PostgreSQL.
+- Token issuance now commits authorization-code consumption, the revocable
+  session and its audit event together. Revocation also fails closed with its
+  audit, and disabling a client permanently revokes all of its active sessions.
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

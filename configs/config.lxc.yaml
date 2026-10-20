@@ -9,6 +9,8 @@ database:
 # Deployment template. Copy to an ignored local file and replace every example value.
 directory:
   enabled: true
+  # Keep disabled until DC01 presents a CA-trusted certificate with a matching DNS SAN.
+  framework_read_enabled: false
   url: "ldaps://dc01.example.test:636"
   base_dn: "DC=example,DC=test"
   bind_dn: "svc-swbadge@example.test"
@@ -16,7 +18,7 @@ directory:
   bind_password_file: "/etc/stumpfworks-badge/ldap-password"
   domain: "example.test"
   admin_group_dn: "CN=SWBadge-Admins,CN=Users,DC=example,DC=test"
-  # Optional exact SHA-256 pin when a normal CA chain is unavailable.
+  # Legacy adapter only; the framework reader never accepts this SAN bypass.
   ca_file: ""
   cert_sha256: ""
 
@@ -24,6 +26,10 @@ auth:
   # Keep the real secret in the service environment, never in Git.
   session_secret: ""
   session_secret_file: "/etc/stumpfworks-badge/session-secret"
+
+metrics:
+  enabled: false
+  token_file: "/etc/stumpfworks-badge/metrics-token"
 
 pkinit:
   enabled: true

@@ -31,6 +31,14 @@ Replacement is a two-stage operation: the administrator atomically revokes the o
 
 Self-service cookies remain signed and short-lived but now also reference a random server-side session record. Every request verifies both layers. Users can list their own active records and revoke all other sessions; deployment of this migration intentionally invalidates older untracked self-service cookies.
 
+OIDC authorization codes remain short-lived and one-time. Their exchange now
+creates a server-side OIDC session and an opaque access token whose cleartext
+is returned once and whose SHA-256 hash is the only persisted token material.
+The ID token carries the random `sid`. Confidential clients can introspect or
+revoke only their own access tokens, while administrators can review bounded
+session metadata and revoke by `sid`. Token issuance and revocation are each
+atomic with their required audit record on SQLite and PostgreSQL.
+
 ## Trust boundaries
 
 - Homelab TLS CA: LOGIN01 HTTPS

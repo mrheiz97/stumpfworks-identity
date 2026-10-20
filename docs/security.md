@@ -21,6 +21,12 @@ SWBA combines a physical badge with a personal PIN and converts successful verif
 - Login and PIN attempts are rate-limited.
 - CSP, HSTS, frame denial and restrictive permissions headers are enabled.
 - Audit records exclude passwords, PINs, tokens, grants and private keys.
+- OIDC access tokens are opaque and persisted only as SHA-256 hashes in
+  short-lived server-side sessions. Introspection and revocation require the
+  owning confidential client's credentials; administrative revocation requires
+  an authenticated session and CSRF token. ID tokens remain valid until their
+  five-minute expiry unless the relying application also enforces session
+  introspection or back-channel logout.
 
 ## Operations
 

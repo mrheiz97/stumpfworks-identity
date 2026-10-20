@@ -2,22 +2,30 @@ package config
 
 import (
 	"bufio"
+	"errors"
+	"io"
 	"os"
 	"strings"
 )
 
 type Config struct {
-	Listen, TLSCertFile, TLSKeyFile, DatabasePath, DirectoryURL, BaseDN, BindDN, BindPassword string
-	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                     string
-	DirectoryBindPasswordFile, DirectoryCertSHA256                                            string
-	SessionSecret                                                                             string
-	SessionSecretFile                                                                         string
-	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                            string
-	ClientTargetVersion                                                                       string
-	DirectoryEnabled, PKINITEnabled, Demo                                                     bool
+	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile string
+	DirectoryURL, BaseDN, BindDN, BindPassword                                                   string
+	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                        string
+	DirectoryBindPasswordFile, DirectoryCertSHA256                                               string
+	SessionSecret                                                                                string
+	SessionSecretFile                                                                            string
+	MetricsToken, MetricsTokenFile                                                               string
+	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                               string
+	ClientTargetVersion                                                                          string
+	OIDCIssuer, OIDCSigningKeyFiles                                                              string
+	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled  bool
+	DatabaseAllowInsecure, Demo                                                                  bool
 }
 
-func Default() Config { return Config{Listen: "0.0.0.0:8080", DatabasePath: "./data/badges.db"} }
+func Default() Config {
+	return Config{Listen: "0.0.0.0:8080", DatabaseBackend: "sqlite", DatabasePath: "./data/badges.db"}
+}
 
 // Load supports the deliberately small YAML surface used by this project. Environment variables override it.
 func Load(path string) (Config, error) {
@@ -53,8 +61,16 @@ func Load(path string) (Config, error) {
 				c.TLSKeyFile = val
 			case "database.path":
 				c.DatabasePath = val
+			case "database.backend":
+				c.DatabaseBackend = val
+			case "database.url_file":
+				c.DatabaseURLFile = val
+			case "database.allow_insecure":
+				c.DatabaseAllowInsecure = val == "true"
 			case "directory.enabled":
 				c.DirectoryEnabled = val == "true"
+			case "directory.framework_read_enabled":
+				c.DirectoryFrameworkReadEnabled = val == "true"
 			case "directory.url":
 				c.DirectoryURL = val
 			case "directory.base_dn":
@@ -77,6 +93,10 @@ func Load(path string) (Config, error) {
 				c.SessionSecret = val
 			case "auth.session_secret_file":
 				c.SessionSecretFile = val
+			case "metrics.enabled":
+				c.MetricsEnabled = val == "true"
+			case "metrics.token_file":
+				c.MetricsTokenFile = val
 			case "pkinit.enabled":
 				c.PKINITEnabled = val == "true"
 			case "pkinit.ca_cert_file":
@@ -87,6 +107,12 @@ func Load(path string) (Config, error) {
 				c.PKINITRealm = val
 			case "updates.client_target_version":
 				c.ClientTargetVersion = val
+			case "oidc.enabled":
+				c.OIDCEnabled = val == "true"
+			case "oidc.issuer":
+				c.OIDCIssuer = val
+			case "oidc.signing_key_files":
+				c.OIDCSigningKeyFiles = val
 			}
 		}
 		if err := s.Err(); err != nil {
@@ -102,6 +128,9 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_TLS_CERT_FILE", &c.TLSCertFile)
 	set("SWBADGE_TLS_KEY_FILE", &c.TLSKeyFile)
 	set("SWBADGE_DATABASE_PATH", &c.DatabasePath)
+	set("SWBADGE_DATABASE_BACKEND", &c.DatabaseBackend)
+	set("SWBADGE_POSTGRES_URL", &c.DatabaseURL)
+	set("SWBADGE_POSTGRES_URL_FILE", &c.DatabaseURLFile)
 	set("SWBADGE_DIRECTORY_URL", &c.DirectoryURL)
 	set("SWBADGE_DIRECTORY_BASE_DN", &c.BaseDN)
 	set("SWBADGE_DIRECTORY_BIND_DN", &c.BindDN)
@@ -113,24 +142,49 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_DIRECTORY_CERT_SHA256", &c.DirectoryCertSHA256)
 	set("SWBADGE_SESSION_SECRET", &c.SessionSecret)
 	set("SWBADGE_SESSION_SECRET_FILE", &c.SessionSecretFile)
+	set("SWBADGE_METRICS_TOKEN", &c.MetricsToken)
+	set("SWBADGE_METRICS_TOKEN_FILE", &c.MetricsTokenFile)
 	set("SWBADGE_PKINIT_CA_CERT_FILE", &c.PKINITCACertFile)
 	set("SWBADGE_PKINIT_CA_KEY_FILE", &c.PKINITCAKeyFile)
 	set("SWBADGE_PKINIT_REALM", &c.PKINITRealm)
 	set("SWBADGE_CLIENT_TARGET_VERSION", &c.ClientTargetVersion)
+	set("SWBADGE_OIDC_ISSUER", &c.OIDCIssuer)
+	set("SWBADGE_OIDC_SIGNING_KEY_FILES", &c.OIDCSigningKeyFiles)
 	if v, ok := os.LookupEnv("SWBADGE_DIRECTORY_ENABLED"); ok {
 		c.DirectoryEnabled = v == "true"
 	}
+	if v, ok := os.LookupEnv("SWBADGE_DIRECTORY_FRAMEWORK_READ_ENABLED"); ok {
+		c.DirectoryFrameworkReadEnabled = v == "true"
+	}
 	if v, ok := os.LookupEnv("SWBADGE_PKINIT_ENABLED"); ok {
 		c.PKINITEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_METRICS_ENABLED"); ok {
+		c.MetricsEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_OIDC_ENABLED"); ok {
+		c.OIDCEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_POSTGRES_ALLOW_INSECURE"); ok {
+		c.DatabaseAllowInsecure = v == "true"
 	}
 	c.Demo = os.Getenv("SWBADGE_DEMO") == "true"
 	readSecret := func(path string, dst *string) error {
 		if path == "" || *dst != "" {
 			return nil
 		}
-		b, err := os.ReadFile(path)
+		file, err := os.Open(path)
 		if err != nil {
 			return err
+		}
+		defer file.Close()
+		const maxSecretBytes = 64 << 10
+		b, err := io.ReadAll(io.LimitReader(file, maxSecretBytes+1))
+		if err != nil {
+			return err
+		}
+		if len(b) > maxSecretBytes {
+			return errors.New("secret file exceeds 64 KiB limit")
 		}
 		*dst = strings.TrimSpace(string(b))
 		return nil
@@ -140,6 +194,16 @@ func Load(path string) (Config, error) {
 	}
 	if err := readSecret(c.SessionSecretFile, &c.SessionSecret); err != nil {
 		return c, err
+	}
+	if c.MetricsEnabled {
+		if err := readSecret(c.MetricsTokenFile, &c.MetricsToken); err != nil {
+			return c, err
+		}
+	}
+	if c.DatabaseBackend == "postgres" {
+		if err := readSecret(c.DatabaseURLFile, &c.DatabaseURL); err != nil {
+			return c, err
+		}
 	}
 	return c, nil
 }
