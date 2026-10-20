@@ -4,6 +4,33 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-20
+
+### Added
+
+- Added a production-tested OpenID Connect provider with Authorization Code
+  Flow, PKCE S256, exact redirect allowlists, stable opaque subjects, Discovery,
+  JWKS and controlled signing-key rotation.
+- Added protected OIDC client administration for registration, activation,
+  deactivation, secret rotation, exact multi-redirect configuration and
+  per-client scopes.
+- Added server-side OIDC sessions with opaque access tokens, authenticated
+  introspection, revocation and immediate logout in StumpfWorks Access.
+- Added a protected OIDC operations view for public signing-key metadata,
+  client state, redirect counts and linked/unlinked identity status without
+  exposing subjects, secrets, hashes or private key paths.
+- Added a shared SQLite/PostgreSQL application-store contract, explicit
+  PostgreSQL schema migrations and guarded import/reconciliation tooling.
+
+### Changed
+
+- Identity now uses StumpfWorks Framework v1.0.0 for the shared integration
+  contracts while preserving existing Badge/PIN, PKINIT, Kerberos and AD
+  password fallback paths.
+- Successful authentication, credential issuance and administrative mutations
+  now use transactional, fail-closed audit boundaries on SQLite and PostgreSQL.
+- `identity-admin` now uses the same configured runtime store as the server.
+
 ### Security
 
 - Badge authentication now commits its last-use marker and success audit
