@@ -4,6 +4,19 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-21
+
+### Added
+
+- Added a self-restoring offline-test helper that schedules and verifies its
+  reconnect before disconnecting a managed NetworkManager interface.
+- Added a read-only client release acceptance mode that verifies the signed
+  package, exact installed components, matching rollback and service health as
+  one operation.
+- Documented a staged device-certificate architecture with a dedicated client
+  API listener, per-client compatibility modes and explicit SQLite,
+  PostgreSQL, audit and rollback requirements.
+
 ### Security
 
 - Client release acceptance is now a single fail-closed updater mode covering
