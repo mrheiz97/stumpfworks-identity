@@ -16,6 +16,10 @@ All notable changes to StumpfWorks Identity are documented here.
   ceremony and write its data-minimal audit event, including fail-closed audit,
   counter-regression and concurrent-replay contracts. No public Passkey routes
   are enabled yet.
+- Added bounded discoverable-assertion verification to the pinned WebAuthn
+  adapter with exact saved RP/origin binding, opaque user-handle lookup,
+  required user verification, signature validation and fail-closed clone
+  warning handling.
 
 ## [1.4.1] - 2026-10-21
 

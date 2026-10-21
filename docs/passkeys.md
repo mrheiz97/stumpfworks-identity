@@ -99,8 +99,12 @@ creates the existing maximum-15-minute revocable self-service session, writes
 the data-minimal `passkey_login` audit event and consumes the ceremony in one
 commit. Parallel replay has one winner. Session, credential state and ceremony
 all remain unchanged when audit or persistence fails. Assertion parsing and
-cryptographic verification remain inside the pinned adapter and are not yet
-wired to an HTTP route.
+cryptographic verification remain inside the pinned adapter. The adapter now
+performs bounded parsing, exact saved RP-ID/origin/session validation,
+discoverable user-handle and credential resolution, public-key signature and
+user-verification checks, backup-state handling and fail-closed clone/counter
+warning rejection. It returns only the minimal verified state needed by the
+transaction boundary and is not yet wired to an HTTP route.
 
 ## Credential storage and lifecycle
 
