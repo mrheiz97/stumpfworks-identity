@@ -140,3 +140,17 @@ VNC were active after recovery; the next status run succeeded and LOGIN01
 again received all four health fields as `ok`. The observed delay before the
 greeter becomes ready remains a separate user-interface design topic and does
 not change the authentication fallback.
+
+On 21 October 2026, the unified acceptance mode was itself accepted on WYSE01.
+A temporary test key signed a package containing the exact already-installed
+status reporter; no production or development release key was used or changed.
+The command verified the signature, installed reporter hash and mode, exact
+`1.4.1-dev` release/component binding, complete recovery rollback and service
+health in one pass. The pre-check found that the manually created recovery-test
+rollback directory was mode `0755`; acceptance was tightened to reject that
+state and the directory was corrected to `0700` before the successful run.
+LightDM, VNC, NetworkManager and the status timer remained active, LOGIN01
+received a fresh report with all health fields `ok`, and no transaction marker
+remained. The temporary package, public key and private test key were deleted.
+The updater deployment can be reverted with
+`/root/swbadge-client-acceptance-rollback-20261021T071757Z`.
