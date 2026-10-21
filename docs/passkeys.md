@@ -104,7 +104,7 @@ performs bounded parsing, exact saved RP-ID/origin/session validation,
 discoverable user-handle and credential resolution, public-key signature and
 user-verification checks, backup-state handling and fail-closed clone/counter
 warning rejection. It returns only the minimal verified state needed by the
-transaction boundary and is not yet wired to an HTTP route.
+transaction boundary.
 
 Registration is now covered by the same pinned adapter boundary. It creates a
 five-minute ceremony bound to the exact RP ID, HTTPS origin and opaque user
@@ -115,7 +115,18 @@ attestation and the user/session binding before returning only the durable
 public credential projection used by the transactional store. Forged
 attestation and cross-user completion tests fail closed. Fresh AD-password
 confirmation and the HTTP feature switch remain deliberately outside this
-adapter and no route exposes it yet.
+adapter.
+
+The JSON Self-Service integration now exists behind the explicit
+`passkeys.enabled: true` switch, which defaults to false and therefore leaves
+all four endpoints unregistered. Enabling also requires protected directory
+mode plus an exact RP ID and HTTPS origin. Registration begin requires an
+active revocable Self-Service session, its CSRF token and a fresh successful
+AD-password check before the five-minute ceremony is stored. Discoverable
+login is rate limited, returns generic failures and creates the existing
+15-minute session only through the atomic store boundary. No browser
+JavaScript or controls are shipped yet, so the feature remains inactive even
+on an unchanged production configuration.
 
 ## Credential storage and lifecycle
 

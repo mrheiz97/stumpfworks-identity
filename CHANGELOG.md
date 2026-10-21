@@ -14,16 +14,19 @@ All notable changes to StumpfWorks Identity are documented here.
   backends. Successful authentication can atomically update credential state,
   create an existing revocable 15-minute self-service session, consume the
   ceremony and write its data-minimal audit event, including fail-closed audit,
-  counter-regression and concurrent-replay contracts. No public Passkey routes
-  are enabled yet.
+  counter-regression and concurrent-replay contracts.
 - Added bounded discoverable-assertion verification to the pinned WebAuthn
   adapter with exact saved RP/origin binding, opaque user-handle lookup,
   required user verification, signature validation and fail-closed clone
   warning handling.
 - Added bounded Passkey registration verification with exact RP/origin/user
   binding, discoverable credentials, required user verification, existing
-  credential exclusion and forged-attestation rejection. It remains
-  unreachable until the disabled Self-Service integration is completed.
+  credential exclusion and forged-attestation rejection.
+- Added explicitly opt-in Self-Service JSON endpoints for registration and
+  discoverable login. They are absent by default; registration requires the
+  current revocable session, CSRF and fresh AD-password confirmation, while
+  login uses rate limits, generic failures and the existing 15-minute session.
+  No browser controls or production configuration are enabled.
 
 ## [1.4.1] - 2026-10-21
 

@@ -14,6 +14,7 @@ import (
 type webAuthnFoundationStore interface {
 	EnsureWebAuthnUserHandle(context.Context, int64) ([]byte, error)
 	CreateWebAuthnCeremony(context.Context, WebAuthnCeremony) error
+	ActiveWebAuthnCeremony(context.Context, string, string, string, time.Time) (WebAuthnCeremony, error)
 	ConsumeWebAuthnCeremony(context.Context, string, string, string, time.Time) (WebAuthnCeremony, error)
 	WebAuthnUserByHandle(context.Context, []byte) (User, error)
 	WebAuthnCredentialsByUser(context.Context, int64) ([]WebAuthnCredential, error)
@@ -45,6 +46,9 @@ func testWebAuthnFoundationContract(t *testing.T, store webAuthnFoundationStore,
 	ceremony := WebAuthnCeremony{ID: "contract-ceremony", Kind: "authentication", Audience: "self-service", SessionData: []byte(`{"challenge":"synthetic"}`), CreatedAt: now, ExpiresAt: now.Add(2 * time.Minute)}
 	if err := store.CreateWebAuthnCeremony(ctx, ceremony); err != nil {
 		t.Fatal(err)
+	}
+	if active, err := store.ActiveWebAuthnCeremony(ctx, ceremony.ID, ceremony.Kind, ceremony.Audience, now); err != nil || string(active.SessionData) != string(ceremony.SessionData) {
+		t.Fatal("active WebAuthn ceremony lookup failed")
 	}
 	if _, err := store.ConsumeWebAuthnCeremony(ctx, ceremony.ID, ceremony.Kind, "admin", now); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("ceremony crossed audience")

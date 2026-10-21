@@ -45,6 +45,13 @@ func scanPostgresWebAuthnCeremony(row pgx.Row) (WebAuthnCeremony, error) {
 	return ceremony, postgresNotFound(err)
 }
 
+func (s *PostgresStore) ActiveWebAuthnCeremony(ctx context.Context, id, kind, audience string, now time.Time) (WebAuthnCeremony, error) {
+	if id == "" || len(id) > 128 || kind != "registration" && kind != "authentication" || audience != "self-service" && audience != "admin" || now.IsZero() {
+		return WebAuthnCeremony{}, sql.ErrNoRows
+	}
+	return scanPostgresWebAuthnCeremony(s.pool.Native().QueryRow(ctx, `SELECT id,kind,audience,user_id,session_data,created_at,expires_at,consumed_at FROM webauthn_ceremonies WHERE id=$1 AND kind=$2 AND audience=$3 AND consumed_at IS NULL AND expires_at>=$4`, id, kind, audience, now.UTC()))
+}
+
 func (s *PostgresStore) ConsumeWebAuthnCeremony(ctx context.Context, id, kind, audience string, now time.Time) (ceremony WebAuthnCeremony, resultErr error) {
 	if id == "" || len(id) > 128 || kind != "registration" && kind != "authentication" || audience != "self-service" && audience != "admin" || now.IsZero() {
 		return WebAuthnCeremony{}, sql.ErrNoRows

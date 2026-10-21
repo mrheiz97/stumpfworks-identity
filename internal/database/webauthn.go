@@ -95,6 +95,13 @@ func scanSQLiteWebAuthnCeremony(row *sql.Row) (WebAuthnCeremony, error) {
 	return ceremony, err
 }
 
+func (s *Store) ActiveWebAuthnCeremony(ctx context.Context, id, kind, audience string, now time.Time) (WebAuthnCeremony, error) {
+	if id == "" || len(id) > 128 || kind != "registration" && kind != "authentication" || audience != "self-service" && audience != "admin" || now.IsZero() {
+		return WebAuthnCeremony{}, sql.ErrNoRows
+	}
+	return scanSQLiteWebAuthnCeremony(s.DB.QueryRowContext(ctx, `SELECT id,kind,audience,user_id,session_data,created_at,expires_at,consumed_at FROM webauthn_ceremonies WHERE id=? AND kind=? AND audience=? AND consumed_at IS NULL AND expires_at>=?`, id, kind, audience, now.UTC()))
+}
+
 func (s *Store) ConsumeWebAuthnCeremony(ctx context.Context, id, kind, audience string, now time.Time) (WebAuthnCeremony, error) {
 	if id == "" || len(id) > 128 || kind != "registration" && kind != "authentication" || audience != "self-service" && audience != "admin" || now.IsZero() {
 		return WebAuthnCeremony{}, sql.ErrNoRows

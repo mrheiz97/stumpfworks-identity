@@ -19,7 +19,9 @@ type Config struct {
 	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                               string
 	ClientTargetVersion                                                                          string
 	OIDCIssuer, OIDCSigningKeyFiles                                                              string
+	PasskeyRPID, PasskeyOrigin                                                                   string
 	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled  bool
+	PasskeysEnabled                                                                              bool
 	DatabaseAllowInsecure, Demo                                                                  bool
 }
 
@@ -113,6 +115,12 @@ func Load(path string) (Config, error) {
 				c.OIDCIssuer = val
 			case "oidc.signing_key_files":
 				c.OIDCSigningKeyFiles = val
+			case "passkeys.enabled":
+				c.PasskeysEnabled = val == "true"
+			case "passkeys.rp_id":
+				c.PasskeyRPID = val
+			case "passkeys.origin":
+				c.PasskeyOrigin = val
 			}
 		}
 		if err := s.Err(); err != nil {
@@ -150,6 +158,8 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_CLIENT_TARGET_VERSION", &c.ClientTargetVersion)
 	set("SWBADGE_OIDC_ISSUER", &c.OIDCIssuer)
 	set("SWBADGE_OIDC_SIGNING_KEY_FILES", &c.OIDCSigningKeyFiles)
+	set("SWBADGE_PASSKEY_RP_ID", &c.PasskeyRPID)
+	set("SWBADGE_PASSKEY_ORIGIN", &c.PasskeyOrigin)
 	if v, ok := os.LookupEnv("SWBADGE_DIRECTORY_ENABLED"); ok {
 		c.DirectoryEnabled = v == "true"
 	}
@@ -164,6 +174,9 @@ func Load(path string) (Config, error) {
 	}
 	if v, ok := os.LookupEnv("SWBADGE_OIDC_ENABLED"); ok {
 		c.OIDCEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_PASSKEYS_ENABLED"); ok {
+		c.PasskeysEnabled = v == "true"
 	}
 	if v, ok := os.LookupEnv("SWBADGE_POSTGRES_ALLOW_INSECURE"); ok {
 		c.DatabaseAllowInsecure = v == "true"

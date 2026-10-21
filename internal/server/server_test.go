@@ -8,6 +8,7 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/badge"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	passkeyauth "github.com/TheRealHZL/stumpfworks-identity/internal/passkey"
 	userpin "github.com/TheRealHZL/stumpfworks-identity/internal/pin"
 	"io"
 	"log/slog"
@@ -80,6 +81,37 @@ func TestHealth(t *testing.T) {
 	s.Handler().ServeHTTP(w, r)
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte(`"status":"ok"`)) {
 		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestPasskeyRoutesAreAbsentByDefault(t *testing.T) {
+	s, _ := testServer(t)
+	for _, path := range []string{"/self-service/passkeys/registration/begin", "/self-service/passkeys/registration/complete", "/self-service/passkeys/login/begin", "/self-service/passkeys/login/complete"} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		response := httptest.NewRecorder()
+		s.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("disabled Passkey route %s returned %d", path, response.Code)
+		}
+	}
+}
+
+func TestConfiguredPasskeyRegistrationRequiresSelfServiceSession(t *testing.T) {
+	_, st := testServer(t)
+	sessions, err := adminauth.NewSessions("01234567890123456789012345678901", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewProtected(st, slog.New(slog.NewTextHandler(io.Discard, nil)), fakeDirectory{}, sessions)
+	adapter, err := passkeyauth.New("login.example.test", "https://login.example.test:8080")
+	if err != nil || server.ConfigurePasskeys(adapter) != nil {
+		t.Fatal("Passkey test configuration failed")
+	}
+	request := httptest.NewRequest(http.MethodPost, "/self-service/passkeys/registration/begin", strings.NewReader(`{"password":"correct"}`))
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("Passkey registration without session returned %d", response.Code)
 	}
 }
 

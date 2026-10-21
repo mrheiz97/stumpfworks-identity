@@ -23,6 +23,7 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
 	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
+	passkeyauth "github.com/TheRealHZL/stumpfworks-identity/internal/passkey"
 	userpin "github.com/TheRealHZL/stumpfworks-identity/internal/pin"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/version"
 	"github.com/skip2/go-qrcode"
@@ -44,6 +45,7 @@ type Server struct {
 	pkinit              *PKINITIssuer
 	clientTargetVersion string
 	oidcStatus          oidcprovider.Status
+	passkeys            *passkeyauth.Adapter
 }
 type loginGrant struct {
 	Username, ClientID string
