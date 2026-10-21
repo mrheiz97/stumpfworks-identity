@@ -94,6 +94,12 @@ func TestPasskeyRoutesAreAbsentByDefault(t *testing.T) {
 			t.Fatalf("disabled Passkey route %s returned %d", path, response.Code)
 		}
 	}
+	request := httptest.NewRequest(http.MethodGet, "/static/passkeys.js", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("disabled Passkey browser script returned %d", response.Code)
+	}
 }
 
 func TestConfiguredPasskeyRegistrationRequiresSelfServiceSession(t *testing.T) {
@@ -112,6 +118,63 @@ func TestConfiguredPasskeyRegistrationRequiresSelfServiceSession(t *testing.T) {
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("Passkey registration without session returned %d", response.Code)
+	}
+}
+
+func TestPasskeyControlsOnlyRenderWhenConfigured(t *testing.T) {
+	_, st := testServer(t)
+	sessions, err := adminauth.NewSessions("01234567890123456789012345678901", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewProtected(st, slog.New(slog.NewTextHandler(io.Discard, nil)), fakeDirectory{}, sessions)
+	request := httptest.NewRequest(http.MethodGet, "/self-service", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if strings.Contains(response.Body.String(), "passkey-login-button") || strings.Contains(response.Body.String(), "/static/passkeys.js") {
+		t.Fatal("disabled Passkey controls were rendered")
+	}
+	adapter, err := passkeyauth.New("login.example.test", "https://login.example.test:8080")
+	if err != nil || server.ConfigurePasskeys(adapter) != nil {
+		t.Fatal("Passkey test configuration failed")
+	}
+	request = httptest.NewRequest(http.MethodGet, "/self-service", nil)
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if !strings.Contains(response.Body.String(), `id="passkey-login-button"`) || !strings.Contains(response.Body.String(), `src="/static/passkeys.js"`) {
+		t.Fatalf("enabled Passkey login controls missing: %s", response.Body.String())
+	}
+
+	if _, err = st.CreateUser(t.Context(), "alice", "Alice Example", "CN=Alice Example,DC=example"); err != nil {
+		t.Fatal(err)
+	}
+	form := strings.NewReader("username=alice&password=correct")
+	request = httptest.NewRequest(http.MethodPost, "/self-service/login", form)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || len(response.Result().Cookies()) != 1 {
+		t.Fatalf("self-service login returned %d", response.Code)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/self-service", nil)
+	request.AddCookie(response.Result().Cookies()[0])
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	body := response.Body.String()
+	if !strings.Contains(body, `id="passkey-registration"`) || !strings.Contains(body, `data-csrf="`) || strings.Contains(body, "correct") {
+		t.Fatalf("enabled Passkey registration controls invalid: %s", body)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/static/passkeys.js", nil)
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "text/javascript; charset=utf-8" || !strings.Contains(response.Body.String(), "navigator.credentials") {
+		t.Fatalf("Passkey browser script unavailable: %d %s", response.Code, response.Header().Get("Content-Type"))
+	}
+	for _, forbidden := range []string{"console.log", "innerHTML", "localStorage", "sessionStorage"} {
+		if strings.Contains(response.Body.String(), forbidden) {
+			t.Fatalf("Passkey browser script contains forbidden browser sink %q", forbidden)
+		}
 	}
 }
 

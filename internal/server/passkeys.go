@@ -26,6 +26,7 @@ func (s *Server) ConfigurePasskeys(adapter *passkeyauth.Adapter) error {
 	s.mux.HandleFunc("POST /self-service/passkeys/registration/complete", s.passkeyRegistrationComplete)
 	s.mux.HandleFunc("POST /self-service/passkeys/login/begin", s.passkeyLoginBegin)
 	s.mux.HandleFunc("POST /self-service/passkeys/login/complete", s.passkeyLoginComplete)
+	s.mux.HandleFunc("GET /static/passkeys.js", passkeyBrowserScript)
 	return nil
 }
 

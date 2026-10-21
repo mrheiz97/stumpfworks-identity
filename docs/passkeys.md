@@ -176,6 +176,15 @@ routes without deleting credentials. Rollback requires only the previous
 binary/configuration and does not alter directory, Badge/PIN, PKINIT, PAM,
 LightDM, Kerberos or OIDC data.
 
+The opt-in Self-Service page uses an external same-origin browser script so
+the existing Content Security Policy does not require inline-script
+exceptions. Registration asks for a bounded credential name and a fresh AD
+password, clears the password field after ceremony creation and passes only
+public WebAuthn ceremony data to the browser API. Discoverable login remains a
+secondary choice beneath the unchanged AD-password form. Unsupported or
+insecure browser contexts disable only the Passkey control and leave password
+recovery available.
+
 Responses do not disclose whether a username, user handle or credential is
 registered. Rate limits apply to ceremony creation and completion in addition
 to existing login limits. Logs contain outcome, audience and bounded reason

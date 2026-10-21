@@ -31,6 +31,11 @@ All notable changes to StumpfWorks Identity are documented here.
   registration, a real signed P-256 WebAuthn credential, persisted credential
   and audit state, discoverable login, Self-Service cookie issuance and replay
   rejection.
+- Added opt-in Self-Service browser controls for Passkey registration and
+  discoverable login. The external CSP-compatible script performs only the
+  WebAuthn binary conversions, keeps AD-password login available, reports
+  cancellation without account disclosure and is not served while Passkeys
+  are disabled.
 
 ## [1.4.1] - 2026-10-21
 
