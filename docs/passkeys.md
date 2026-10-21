@@ -128,6 +128,14 @@ login is rate limited, returns generic failures and creates the existing
 JavaScript or controls are shipped yet, so the feature remains inactive even
 on an unchanged production configuration.
 
+The server integration test exercises that complete boundary with a real
+P-256 key pair and signed WebAuthn messages: password-confirmed and
+CSRF-protected registration, transactional credential/audit persistence,
+discoverable authentication, issuance of the existing revocable Self-Service
+cookie session, and rejection of the identical replay. It does not contact or
+modify LDAP, browsers, authenticators or production systems; the directory is
+a deterministic local test double.
+
 ## Credential storage and lifecycle
 
 SQLite and PostgreSQL use the same logical records:

@@ -27,6 +27,10 @@ All notable changes to StumpfWorks Identity are documented here.
   current revocable session, CSRF and fresh AD-password confirmation, while
   login uses rate limits, generic failures and the existing 15-minute session.
   No browser controls or production configuration are enabled.
+- Added a full local HTTP integration test covering fresh AD-password and CSRF
+  registration, a real signed P-256 WebAuthn credential, persisted credential
+  and audit state, discoverable login, Self-Service cookie issuance and replay
+  rejection.
 
 ## [1.4.1] - 2026-10-21
 
