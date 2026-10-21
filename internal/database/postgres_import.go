@@ -18,7 +18,7 @@ import (
 
 var ErrImportFailed = errors.New("Identity import failed; verify target state before retry")
 
-var importTables = []string{"users", "badges", "audit_log", "clients", "self_service_sessions", "oidc_clients", "oidc_codes", "oidc_sessions"}
+var importTables = []string{"users", "badges", "audit_log", "clients", "self_service_sessions", "oidc_clients", "oidc_codes", "oidc_sessions", "webauthn_users", "webauthn_credentials", "webauthn_ceremonies"}
 
 const maximumImportRowBytes = 256 << 10
 const maximumImportBytes = 128 << 20
@@ -224,9 +224,13 @@ func (s *PostgresStore) importTable(ctx context.Context, target pgx.Tx, snapshot
 		key = "code_hash"
 	} else if table == "oidc_sessions" {
 		key = "session_id"
+	} else if table == "webauthn_users" {
+		key = "user_id"
+	} else if table == "webauthn_credentials" {
+		key = "credential_id"
 	}
 	sourceOrder, targetOrder := pgx.Identifier{key}.Sanitize(), pgx.Identifier{key}.Sanitize()
-	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" || table == "oidc_sessions" {
+	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" || table == "oidc_sessions" || table == "webauthn_ceremonies" {
 		sourceOrder += " COLLATE BINARY"
 		targetOrder += ` COLLATE "C"`
 	}

@@ -4,6 +4,13 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Added a disabled-by-default WebAuthn foundation with strict RP/origin policy,
+  discoverable-login options requiring user verification, stable opaque user
+  handles, and short-lived single-use ceremony storage on SQLite and
+  PostgreSQL. No public Passkey routes are enabled yet.
+
 ## [1.4.1] - 2026-10-21
 
 ### Added

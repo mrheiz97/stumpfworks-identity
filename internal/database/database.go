@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS self_service_sessions (id TEXT PRIMARY KEY, username 
 CREATE TABLE IF NOT EXISTS oidc_clients (client_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, redirect_uris TEXT NOT NULL, scopes TEXT NOT NULL DEFAULT 'openid', enabled BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS oidc_codes (code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), redirect_uri TEXT NOT NULL, scope TEXT NOT NULL, nonce TEXT NOT NULL, code_challenge TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
 CREATE TABLE IF NOT EXISTS oidc_sessions (session_id TEXT PRIMARY KEY, access_token_hash TEXT NOT NULL UNIQUE, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), scope TEXT NOT NULL, issued_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, revoked_at DATETIME);
+CREATE TABLE IF NOT EXISTS webauthn_users (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, user_handle BLOB NOT NULL UNIQUE CHECK(length(user_handle) BETWEEN 32 AND 64), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS webauthn_credentials (credential_id BLOB PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES webauthn_users(user_id) ON DELETE CASCADE, public_key BLOB NOT NULL, rp_id TEXT NOT NULL, name TEXT NOT NULL, transports TEXT NOT NULL DEFAULT '', attestation_type TEXT NOT NULL DEFAULT '', attestation_format TEXT NOT NULL DEFAULT '', flags INTEGER NOT NULL DEFAULT 0, sign_count INTEGER NOT NULL DEFAULT 0 CHECK(sign_count>=0), backup_eligible BOOLEAN NOT NULL DEFAULT 0, backup_state BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_used_at DATETIME, revoked_at DATETIME);
+CREATE TABLE IF NOT EXISTS webauthn_ceremonies (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('registration','authentication')), audience TEXT NOT NULL CHECK(audience IN ('self-service','admin')), user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, session_data BLOB NOT NULL CHECK(length(session_data) BETWEEN 1 AND 65536), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
 CREATE INDEX IF NOT EXISTS idx_badges_code ON badges(badge_code); CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp); CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients(last_seen_at);`
 
 type Store struct{ DB *sql.DB }
@@ -82,6 +85,16 @@ type SelfServiceSession struct {
 	Username  string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+type WebAuthnCeremony struct {
+	ID          string
+	Kind        string
+	Audience    string
+	UserID      sql.NullInt64
+	SessionData []byte
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	ConsumedAt  sql.NullTime
 }
 type Audit struct {
 	ID                                     int64 `json:"id"`

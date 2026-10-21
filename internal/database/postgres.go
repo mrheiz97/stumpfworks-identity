@@ -33,9 +33,11 @@ func MigratePostgres(ctx context.Context, pool *frameworkpg.Pool) error {
 	}
 	sum := sha256.Sum256([]byte(postgresSchema))
 	sessionsSum := sha256.Sum256([]byte(postgresOIDCSessionsMigration))
+	webAuthnSum := sha256.Sum256([]byte(postgresWebAuthnMigration))
 	return migrate.Apply(ctx, pool.Native(), []migrate.Migration{
 		{Version: 1, Name: "001_identity.up.sql", SQL: postgresSchema, Checksum: hex.EncodeToString(sum[:])},
 		{Version: 2, Name: "002_oidc_sessions.up.sql", SQL: postgresOIDCSessionsMigration, Checksum: hex.EncodeToString(sessionsSum[:])},
+		{Version: 3, Name: "003_webauthn_foundation.up.sql", SQL: postgresWebAuthnMigration, Checksum: hex.EncodeToString(webAuthnSum[:])},
 	})
 }
 

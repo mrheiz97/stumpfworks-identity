@@ -5,6 +5,21 @@ Identity. It is an implementation and acceptance contract, not authorization
 to enable Passkeys on LOGIN01. Existing AD password authentication remains an
 available recovery path throughout the rollout.
 
+## Implementation status
+
+`development` contains the first disabled backend increment. It adds identical
+SQLite/PostgreSQL tables for opaque WebAuthn user handles, public credential
+records and bounded one-time ceremonies. Import, reconciliation and
+backup/restore treat those tables as part of the complete Identity dataset.
+
+The pinned `go-webauthn` adapter accepts one exact HTTPS origin and matching RP
+ID, rejects cross-origin operation, requires discoverable credentials and user
+verification, and serializes the library session atomically for server-side
+storage. Store contract tests require a stable random 32-byte user handle,
+audience/type/expiry binding and exactly one successful consumer under
+concurrency. No routes, browser JavaScript, configuration switch or production
+migration are present, so this foundation cannot alter a login yet.
+
 The design follows the W3C WebAuthn Level 3 recommendation and uses a pinned,
 reviewed version of `github.com/go-webauthn/webauthn` behind an
 Identity-owned adapter. The dependency remains pre-v1 and its credential and
