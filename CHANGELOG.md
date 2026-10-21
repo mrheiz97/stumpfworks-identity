@@ -6,6 +6,10 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ### Security
 
+- Client release acceptance is now a single fail-closed updater mode covering
+  the signed package, exact installed component hashes and modes, the matching
+  complete rollback, and non-disruptive service health checks. It cannot
+  install or restore files and does not restart LightDM or VNC.
 - Client updates now persist a root-only transaction marker before the first
   file replacement. The periodic status service recovers an interrupted
   installation from its fully validated, fixed-target rollback before sending

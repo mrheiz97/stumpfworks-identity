@@ -95,3 +95,15 @@ func TestInterruptedRecoveryDoesNotStartStatusServiceRecursively(t *testing.T) {
 		t.Fatalf("unexpected commands: %v", runner.calls)
 	}
 }
+
+func TestReleaseAcceptanceHealthCheckDoesNotRestartGreeter(t *testing.T) {
+	plan := StagePlan{Components: []StagedComponent{{Component: "sw-badge-client-status"}, {Component: "sw-badge-native-greeter", RestartLightDM: true}}}
+	runner := &fakeRunner{}
+	if err := ReleaseAcceptanceHealthCheck(context.Background(), plan, runner); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"systemctl start swbadge-client-status.service", "systemctl is-active swbadge-client-status.timer", "systemctl is-active lightdm.service", "systemctl is-active swbadge-vnc.service"}
+	if strings.Join(runner.calls, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected commands: %v", runner.calls)
+	}
+}

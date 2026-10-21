@@ -79,6 +79,27 @@ sw-badge-client-updater \
   --rollback-dir /var/backups/stumpfworks-badge/client-1.2.1
 ```
 
+After installation, one read-only acceptance command now joins the release,
+installed-state and restore evidence:
+
+```bash
+sw-badge-client-updater \
+  --accept \
+  --package stumpfworks-client-1.4.1-linux-amd64.zip \
+  --public-key /etc/stumpfworks-badge/update-development.pub \
+  --rollback-dir /var/backups/stumpfworks-badge/client-1.4.1
+```
+
+Acceptance verifies the Ed25519 signature and complete package, requires every
+installed component to match the signed size, SHA-256 digest, fixed target and
+Linux mode, and verifies the complete rollback manifest and every saved file.
+The rollback release and component set must exactly match the accepted package.
+It then submits one normal status report when the package contains status
+components and checks the status timer, LightDM and, for greeter releases, the
+persistent VNC service. It neither installs nor restores files and never
+restarts LightDM or VNC. The rollback directory remains restricted to
+`/var/backups/stumpfworks-badge`.
+
 The install mode stages and revalidates the package, creates the complete rollback snapshot before replacing files, and runs component-aware systemd checks. If installation or health validation fails, all files are restored and systemd health recovery runs against the restored state. A greeter component is rejected unless `--allow-lightdm-maintenance` is supplied; with that explicit authorization LightDM is restarted after installation and again after any automatic rollback. The persistent `swbadge-vnc.service` is rebound to the new X display with `try-restart`; an inactive service remains inactive. The normal password fallback must be checked during a separately approved production maintenance test.
 
 Before the mandatory service report, the updater atomically writes `/var/lib/stumpfworks-badge/update-state.json`. The bounded state contains only the target release, `success` or `failed`, the UTC timestamp and whether the rollback snapshot exists. The client status reporter sends this optional object with its normal health report. LOGIN01 rejects malformed versions, unknown results and unreasonable timestamps, stores the last accepted outcome and displays it in the registered-client overview. Clients without updater state remain compatible and show “No update reported”.
