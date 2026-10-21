@@ -62,6 +62,21 @@ func VerifyReleaseAcceptance(root string, result Result, rollbackDir string) (St
 
 // VerifyRollback validates a rollback without preparing or applying it.
 func VerifyRollback(root, rollbackDir string) (RollbackManifest, error) {
+	dirInfo, err := os.Lstat(rollbackDir)
+	if err != nil {
+		return RollbackManifest{}, err
+	}
+	if !dirInfo.IsDir() || runtime.GOOS != "windows" && dirInfo.Mode().Perm() != 0700 {
+		return RollbackManifest{}, errors.New("rollback directory is not a root-only directory")
+	}
+	manifestPath := filepath.Join(rollbackDir, "rollback.json")
+	manifestInfo, err := os.Lstat(manifestPath)
+	if err != nil {
+		return RollbackManifest{}, err
+	}
+	if !manifestInfo.Mode().IsRegular() || runtime.GOOS != "windows" && manifestInfo.Mode().Perm() != 0600 {
+		return RollbackManifest{}, errors.New("rollback manifest is not a root-only regular file")
+	}
 	manifest, err := loadRollbackManifest(rollbackDir)
 	if err != nil {
 		return RollbackManifest{}, err
@@ -93,7 +108,8 @@ func VerifyRollback(root, rollbackDir string) (RollbackManifest, error) {
 		if statErr != nil {
 			return RollbackManifest{}, fmt.Errorf("rollback file %s: %w", file.Component, statErr)
 		}
-		if !info.Mode().IsRegular() || info.Size() != file.Size {
+		modeMismatch := runtime.GOOS != "windows" && info.Mode().Perm() != 0600
+		if !info.Mode().IsRegular() || modeMismatch || info.Size() != file.Size {
 			return RollbackManifest{}, fmt.Errorf("rollback file %s metadata mismatch", file.Component)
 		}
 		hash, hashErr := hashRegularFile(backup, file.Size)

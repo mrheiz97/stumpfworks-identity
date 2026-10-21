@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -79,5 +80,18 @@ func TestVerifyReleaseAcceptanceRejectsWrongRollbackRelease(t *testing.T) {
 	result.Manifest.ReleaseVersion = "1.4.2"
 	if _, err := VerifyReleaseAcceptance(root, result, rollbackDir); err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("wrong rollback release accepted: %v", err)
+	}
+}
+
+func TestVerifyRollbackRejectsBroadDirectoryPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose POSIX rollback permissions")
+	}
+	root, rollbackDir, _ := acceptanceFixture(t)
+	if err := os.Chmod(rollbackDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyRollback(root, rollbackDir); err == nil || !strings.Contains(err.Error(), "root-only") {
+		t.Fatalf("broad rollback permissions accepted: %v", err)
 	}
 }

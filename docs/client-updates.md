@@ -94,6 +94,8 @@ Acceptance verifies the Ed25519 signature and complete package, requires every
 installed component to match the signed size, SHA-256 digest, fixed target and
 Linux mode, and verifies the complete rollback manifest and every saved file.
 The rollback release and component set must exactly match the accepted package.
+Rollback directories must be mode `0700`; manifests and saved files must use
+mode `0600`.
 It then submits one normal status report when the package contains status
 components and checks the status timer, LightDM and, for greeter releases, the
 persistent VNC service. It neither installs nor restores files and never
