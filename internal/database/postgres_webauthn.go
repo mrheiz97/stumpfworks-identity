@@ -67,3 +67,69 @@ func (s *PostgresStore) ConsumeWebAuthnCeremony(ctx context.Context, id, kind, a
 	})
 	return ceremony, resultErr
 }
+
+func (s *PostgresStore) WebAuthnUserByHandle(ctx context.Context, handle []byte) (User, error) {
+	if len(handle) < 32 || len(handle) > 64 {
+		return User{}, sql.ErrNoRows
+	}
+	return scanPostgresUser(s.pool.Native().QueryRow(ctx, `SELECT u.id,u.username,u.display_name,u.directory_dn,u.pin_hash,u.pin_hash<>'',u.oidc_subject,u.created_at FROM webauthn_users w JOIN users u ON u.id=w.user_id WHERE w.user_handle=$1`, handle))
+}
+
+func scanPostgresWebAuthnCredential(row pgx.Row) (WebAuthnCredential, error) {
+	var credential WebAuthnCredential
+	err := row.Scan(&credential.CredentialID, &credential.UserID, &credential.PublicKey, &credential.RPID, &credential.Name, &credential.Transports, &credential.AttestationType, &credential.AttestationFormat, &credential.Flags, &credential.SignCount, &credential.BackupEligible, &credential.BackupState, &credential.CreatedAt, &credential.LastUsedAt, &credential.RevokedAt)
+	credential.CredentialID = append([]byte(nil), credential.CredentialID...)
+	credential.PublicKey = append([]byte(nil), credential.PublicKey...)
+	return credential, postgresNotFound(err)
+}
+
+func (s *PostgresStore) WebAuthnCredentialsByUser(ctx context.Context, userID int64) ([]WebAuthnCredential, error) {
+	if userID < 1 {
+		return nil, errors.New("invalid WebAuthn user")
+	}
+	rows, err := s.pool.Native().Query(ctx, `SELECT credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at,last_used_at,revoked_at FROM webauthn_credentials WHERE user_id=$1 AND revoked_at IS NULL ORDER BY created_at,credential_id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	credentials := []WebAuthnCredential{}
+	for rows.Next() {
+		credential, err := scanPostgresWebAuthnCredential(rows)
+		if err != nil {
+			return nil, err
+		}
+		credentials = append(credentials, credential)
+	}
+	return credentials, rows.Err()
+}
+
+func (s *PostgresStore) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, audience string, now time.Time, credential WebAuthnCredential, username, ip string) error {
+	if ceremonyID == "" || len(ceremonyID) > 128 || audience != "self-service" && audience != "admin" || now.IsZero() || !validWebAuthnCredential(credential) {
+		return errors.New("invalid WebAuthn registration")
+	}
+	credential.CreatedAt = now.UTC()
+	return s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		var userID int64
+		var storedUsername string
+		if err := tx.QueryRow(ctx, `SELECT c.user_id,u.username FROM webauthn_ceremonies c JOIN users u ON u.id=c.user_id WHERE c.id=$1 AND c.kind='registration' AND c.audience=$2 AND c.consumed_at IS NULL AND c.expires_at>=$3 FOR UPDATE OF c`, ceremonyID, audience, now.UTC()).Scan(&userID, &storedUsername); err != nil {
+			return postgresNotFound(err)
+		}
+		if userID != credential.UserID || storedUsername != username {
+			return sql.ErrNoRows
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, credential.CredentialID, credential.UserID, credential.PublicKey, credential.RPID, credential.Name, credential.Transports, credential.AttestationType, credential.AttestationFormat, credential.Flags, credential.SignCount, credential.BackupEligible, credential.BackupState, credential.CreatedAt.UTC()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES($1,$2,$3,$4)`, "passkey_registered", username, true, ip); err != nil {
+			return err
+		}
+		result, err := tx.Exec(ctx, `UPDATE webauthn_ceremonies SET consumed_at=$1 WHERE id=$2 AND consumed_at IS NULL`, now.UTC(), ceremonyID)
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected() != 1 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
+}

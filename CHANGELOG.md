@@ -9,7 +9,9 @@ All notable changes to StumpfWorks Identity are documented here.
 - Added a disabled-by-default WebAuthn foundation with strict RP/origin policy,
   discoverable-login options requiring user verification, stable opaque user
   handles, and short-lived single-use ceremony storage on SQLite and
-  PostgreSQL. No public Passkey routes are enabled yet.
+  PostgreSQL. Credential registration now commits public credential data,
+  ceremony consumption and a data-minimal audit event atomically on both
+  backends. No public Passkey routes are enabled yet.
 
 ## [1.4.1] - 2026-10-21
 

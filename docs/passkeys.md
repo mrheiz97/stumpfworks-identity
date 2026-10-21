@@ -83,6 +83,14 @@ counter/backup-state changes, the new self-service session and
 returns no authenticated cookie and leaves no partially usable credential or
 session. Replaying a successful response always fails.
 
+The disabled backend foundation now implements that registration transaction
+on SQLite and PostgreSQL. It validates bounded credential fields and the exact
+RP ID, locks the intended registration ceremony, preserves the user binding,
+stores only public credential material, writes a data-minimal audit event and
+consumes the ceremony in one commit. Audit failure rolls the credential and
+ceremony consumption back together. These store operations are not reachable
+through HTTP and do not enable Passkeys.
+
 ## Credential storage and lifecycle
 
 SQLite and PostgreSQL use the same logical records:

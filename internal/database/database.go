@@ -96,6 +96,23 @@ type WebAuthnCeremony struct {
 	ExpiresAt   time.Time
 	ConsumedAt  sql.NullTime
 }
+type WebAuthnCredential struct {
+	CredentialID      []byte
+	UserID            int64
+	PublicKey         []byte
+	RPID              string
+	Name              string
+	Transports        string
+	AttestationType   string
+	AttestationFormat string
+	Flags             int64
+	SignCount         uint32
+	BackupEligible    bool
+	BackupState       bool
+	CreatedAt         time.Time
+	LastUsedAt        sql.NullTime
+	RevokedAt         sql.NullTime
+}
 type Audit struct {
 	ID                                     int64 `json:"id"`
 	EventType, BadgeID, Username, ClientID string

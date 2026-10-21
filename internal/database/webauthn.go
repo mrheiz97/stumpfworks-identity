@@ -5,10 +5,38 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"errors"
+	"net"
+	"strings"
 	"time"
 )
 
 const webAuthnHandleBytes = 32
+
+func validWebAuthnRPID(value string) bool {
+	if value == "" || len(value) > 253 || value != strings.ToLower(value) || net.ParseIP(value) != nil || strings.ContainsAny(value, ":/ \\") {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, char := range label {
+			if char != '-' && (char < 'a' || char > 'z') && (char < '0' || char > '9') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validWebAuthnCredential(credential WebAuthnCredential) bool {
+	name := strings.TrimSpace(credential.Name)
+	return len(credential.CredentialID) >= 1 && len(credential.CredentialID) <= 4096 &&
+		credential.UserID > 0 && len(credential.PublicKey) >= 1 && len(credential.PublicKey) <= 8192 &&
+		validWebAuthnRPID(credential.RPID) && len(name) >= 1 && len(name) <= 64 && name == credential.Name &&
+		len(credential.Transports) <= 256 && len(credential.AttestationType) <= 64 && len(credential.AttestationFormat) <= 64 &&
+		credential.Flags >= 0 && credential.Flags <= 255 && !credential.LastUsedAt.Valid && !credential.RevokedAt.Valid
+}
 
 func validWebAuthnCeremony(c WebAuthnCeremony) bool {
 	if c.ID == "" || len(c.ID) > 128 || c.Kind != "registration" && c.Kind != "authentication" || c.Audience != "self-service" && c.Audience != "admin" {
@@ -92,4 +120,74 @@ func (s *Store) ConsumeWebAuthnCeremony(ctx context.Context, id, kind, audience 
 		return WebAuthnCeremony{}, err
 	}
 	return ceremony, nil
+}
+
+func (s *Store) WebAuthnUserByHandle(ctx context.Context, handle []byte) (u User, err error) {
+	if len(handle) < 32 || len(handle) > 64 {
+		return User{}, sql.ErrNoRows
+	}
+	err = s.DB.QueryRowContext(ctx, `SELECT u.id,u.username,u.display_name,u.directory_dn,u.pin_hash,u.pin_hash!='',u.oidc_subject,u.created_at FROM webauthn_users w JOIN users u ON u.id=w.user_id WHERE w.user_handle=?`, handle).Scan(&u.ID, &u.Username, &u.DisplayName, &u.DirectoryDN, &u.PINHash, &u.PINEnabled, &u.OIDCSubject, &u.CreatedAt)
+	return u, err
+}
+
+func scanSQLiteWebAuthnCredential(rows *sql.Rows) (WebAuthnCredential, error) {
+	var credential WebAuthnCredential
+	err := rows.Scan(&credential.CredentialID, &credential.UserID, &credential.PublicKey, &credential.RPID, &credential.Name, &credential.Transports, &credential.AttestationType, &credential.AttestationFormat, &credential.Flags, &credential.SignCount, &credential.BackupEligible, &credential.BackupState, &credential.CreatedAt, &credential.LastUsedAt, &credential.RevokedAt)
+	credential.CredentialID = append([]byte(nil), credential.CredentialID...)
+	credential.PublicKey = append([]byte(nil), credential.PublicKey...)
+	return credential, err
+}
+
+func (s *Store) WebAuthnCredentialsByUser(ctx context.Context, userID int64) ([]WebAuthnCredential, error) {
+	if userID < 1 {
+		return nil, errors.New("invalid WebAuthn user")
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at,last_used_at,revoked_at FROM webauthn_credentials WHERE user_id=? AND revoked_at IS NULL ORDER BY created_at,credential_id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	credentials := []WebAuthnCredential{}
+	for rows.Next() {
+		credential, err := scanSQLiteWebAuthnCredential(rows)
+		if err != nil {
+			return nil, err
+		}
+		credentials = append(credentials, credential)
+	}
+	return credentials, rows.Err()
+}
+
+func (s *Store) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, audience string, now time.Time, credential WebAuthnCredential, username, ip string) error {
+	if ceremonyID == "" || len(ceremonyID) > 128 || audience != "self-service" && audience != "admin" || now.IsZero() || !validWebAuthnCredential(credential) {
+		return errors.New("invalid WebAuthn registration")
+	}
+	credential.CreatedAt = now.UTC()
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var userID int64
+	var storedUsername string
+	if err = tx.QueryRowContext(ctx, `SELECT c.user_id,u.username FROM webauthn_ceremonies c JOIN users u ON u.id=c.user_id WHERE c.id=? AND c.kind='registration' AND c.audience=? AND c.consumed_at IS NULL AND c.expires_at>=?`, ceremonyID, audience, now.UTC()).Scan(&userID, &storedUsername); err != nil {
+		return err
+	}
+	if userID != credential.UserID || storedUsername != username {
+		return sql.ErrNoRows
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, credential.CredentialID, credential.UserID, credential.PublicKey, credential.RPID, credential.Name, credential.Transports, credential.AttestationType, credential.AttestationFormat, credential.Flags, credential.SignCount, credential.BackupEligible, credential.BackupState, credential.CreatedAt.UTC()); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES(?,?,?,?)`, "passkey_registered", username, true, ip); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE webauthn_ceremonies SET consumed_at=? WHERE id=? AND consumed_at IS NULL`, now.UTC(), ceremonyID)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
 }

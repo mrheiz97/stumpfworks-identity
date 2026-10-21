@@ -45,6 +45,9 @@ type ApplicationStore interface {
 	EnsureWebAuthnUserHandle(context.Context, int64) ([]byte, error)
 	CreateWebAuthnCeremony(context.Context, WebAuthnCeremony) error
 	ConsumeWebAuthnCeremony(context.Context, string, string, string, time.Time) (WebAuthnCeremony, error)
+	WebAuthnUserByHandle(context.Context, []byte) (User, error)
+	WebAuthnCredentialsByUser(context.Context, int64) ([]WebAuthnCredential, error)
+	CompleteWebAuthnRegistration(context.Context, string, string, time.Time, WebAuthnCredential, string, string) error
 	Counts(context.Context) (map[string]int64, error)
 	ClientByID(context.Context, string) (Client, error)
 	Clients(context.Context) ([]Client, error)
