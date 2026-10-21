@@ -54,7 +54,7 @@ func TestInstallFailureAutomaticallyRestoresAllTargets(t *testing.T) {
 	}
 	rollbackDir := filepath.Join(t.TempDir(), "rollback")
 	recovered := false
-	err := installStaged(root, stageDir, rollbackDir, time.Now(), false, func(_ int, _ StagedComponent) error { return errors.New("injected installation failure") }, func() error { return nil }, func() error { recovered = true; return nil })
+	err := installStaged(root, stageDir, rollbackDir, "", time.Now(), false, func(_ int, _ StagedComponent) error { return errors.New("injected installation failure") }, func() error { return nil }, func() error { recovered = true; return nil })
 	if err == nil || !strings.Contains(err.Error(), "rolled back") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -115,5 +115,33 @@ func TestFailedPostInstallHealthCheckRestoresInstalledFile(t *testing.T) {
 	restored, readErr := os.ReadFile(target)
 	if readErr != nil || string(restored) != "old status binary" {
 		t.Fatalf("health rollback failed: %q, %v", restored, readErr)
+	}
+}
+
+func TestCrashSafeInstallPersistsMarkerBeforeApplyAndClearsItAfterHealth(t *testing.T) {
+	root, stageDir := installFixture(t)
+	target := rootedTarget(root, componentSpecs["sw-badge-client-status"].Target)
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("old status binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	rollbackDir := filepath.Join(t.TempDir(), "rollback")
+	transactionPath := filepath.Join(t.TempDir(), "update-transaction.json")
+	markerSeen := false
+	err := installStaged(root, stageDir, rollbackDir, transactionPath, time.Now(), false, func(_ int, _ StagedComponent) error {
+		transaction, readErr := ReadUpdateTransaction(transactionPath)
+		markerSeen = readErr == nil && transaction != nil && transaction.RollbackDir == rollbackDir
+		return readErr
+	}, func() error { return nil }, func() error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !markerSeen {
+		t.Fatal("transaction marker was not durable before the first file replacement")
+	}
+	if _, err = os.Stat(transactionPath); !os.IsNotExist(err) {
+		t.Fatalf("successful transaction marker remained: %v", err)
 	}
 }

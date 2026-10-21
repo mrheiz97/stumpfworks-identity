@@ -4,6 +4,34 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-21
+
+### Added
+
+- Added a self-restoring offline-test helper that schedules and verifies its
+  reconnect before disconnecting a managed NetworkManager interface.
+- Added a read-only client release acceptance mode that verifies the signed
+  package, exact installed components, matching rollback and service health as
+  one operation.
+- Documented a staged device-certificate architecture with a dedicated client
+  API listener, per-client compatibility modes and explicit SQLite,
+  PostgreSQL, audit and rollback requirements.
+
+### Security
+
+- Client release acceptance is now a single fail-closed updater mode covering
+  the signed package, exact installed component hashes and modes, the matching
+  complete rollback, and non-disruptive service health checks. It cannot
+  install or restore files and does not restart LightDM or VNC.
+- Client updates now persist a root-only transaction marker before the first
+  file replacement. The periodic status service recovers an interrupted
+  installation from its fully validated, fixed-target rollback before sending
+  another report, records the recovered failure and retains the marker when
+  recovery itself cannot be completed safely.
+- The signed update allowlist now includes the updater binary so deployed
+  clients can receive the crash-recovery implementation through the same
+  verified package format.
+
 ## [1.4.0] - 2026-10-20
 
 ### Added

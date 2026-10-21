@@ -18,7 +18,7 @@ func RestoreRollback(root, rollbackDir string) error {
 }
 
 func restoreRollback(root, rollbackDir string, beforeApply func(int, RollbackFile) error) error {
-	manifest, err := loadRollbackManifest(rollbackDir)
+	manifest, err := VerifyRollback(root, rollbackDir)
 	if err != nil {
 		return err
 	}
@@ -30,36 +30,11 @@ func restoreRollback(root, rollbackDir string, beforeApply func(int, RollbackFil
 		return err
 	}
 	defer os.RemoveAll(preparedDir)
-	seen := map[string]bool{}
 	for _, file := range manifest.Files {
-		spec, ok := componentSpecs[file.Component]
-		if !ok || file.Target != spec.Target || seen[file.Component] {
-			return fmt.Errorf("invalid rollback component %q", file.Component)
-		}
-		seen[file.Component] = true
-		target := rootedTarget(root, file.Target)
-		if info, statErr := os.Lstat(target); statErr == nil && !info.Mode().IsRegular() {
-			return fmt.Errorf("restore target for %s is not a regular file", file.Component)
-		} else if statErr != nil && !os.IsNotExist(statErr) {
-			return statErr
-		}
 		if !file.Existed {
-			if file.Mode != 0 || file.Size != 0 || file.SHA256 != "" {
-				return fmt.Errorf("invalid absent-file record for %s", file.Component)
-			}
 			continue
 		}
-		if file.Mode == 0 || file.Mode&^0777 != 0 || file.Size < 0 || file.Size > maxFileSize {
-			return fmt.Errorf("invalid rollback metadata for %s", file.Component)
-		}
 		backup := filepath.Join(rollbackDir, "files", file.Component)
-		info, statErr := os.Lstat(backup)
-		if statErr != nil {
-			return fmt.Errorf("rollback file %s: %w", file.Component, statErr)
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("rollback file %s is not regular", file.Component)
-		}
 		prepared := filepath.Join(preparedDir, file.Component)
 		if err = copyAndVerify(backup, prepared, file.Size, file.SHA256, os.FileMode(file.Mode)); err != nil {
 			return fmt.Errorf("rollback file %s: %w", file.Component, err)
