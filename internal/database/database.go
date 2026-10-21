@@ -113,6 +113,12 @@ type WebAuthnCredential struct {
 	LastUsedAt        sql.NullTime
 	RevokedAt         sql.NullTime
 }
+type WebAuthnAuthenticationUpdate struct {
+	CredentialID []byte
+	UserID       int64
+	SignCount    uint32
+	BackupState  bool
+}
 type Audit struct {
 	ID                                     int64 `json:"id"`
 	EventType, BadgeID, Username, ClientID string

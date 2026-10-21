@@ -91,7 +91,17 @@ func TestPostgresIdentityAdapter(t *testing.T) {
 	testAtomicWebAuthnRegistration(t, store, user, func(reject bool) {
 		query := "DROP TRIGGER IF EXISTS fail_webauthn_audit ON audit_log; DROP FUNCTION IF EXISTS fail_webauthn_audit()"
 		if reject {
-			query = `CREATE FUNCTION fail_webauthn_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='passkey_registered' THEN RAISE EXCEPTION 'synthetic audit rejection'; END IF; RETURN NEW; END $$;
+			query = `CREATE FUNCTION fail_webauthn_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type LIKE 'passkey_%' THEN RAISE EXCEPTION 'synthetic audit rejection'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_webauthn_audit()`
+		}
+		if _, err := pool.Native().Exec(ctx, query); err != nil {
+			t.Fatal(err)
+		}
+	})
+	testAtomicWebAuthnAuthentication(t, store, user, func(reject bool) {
+		query := "DROP TRIGGER IF EXISTS fail_webauthn_audit ON audit_log; DROP FUNCTION IF EXISTS fail_webauthn_audit()"
+		if reject {
+			query = `CREATE FUNCTION fail_webauthn_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type LIKE 'passkey_%' THEN RAISE EXCEPTION 'synthetic audit rejection'; END IF; RETURN NEW; END $$;
 CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_webauthn_audit()`
 		}
 		if _, err := pool.Native().Exec(ctx, query); err != nil {

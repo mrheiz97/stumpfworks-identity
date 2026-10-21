@@ -11,7 +11,11 @@ All notable changes to StumpfWorks Identity are documented here.
   handles, and short-lived single-use ceremony storage on SQLite and
   PostgreSQL. Credential registration now commits public credential data,
   ceremony consumption and a data-minimal audit event atomically on both
-  backends. No public Passkey routes are enabled yet.
+  backends. Successful authentication can atomically update credential state,
+  create an existing revocable 15-minute self-service session, consume the
+  ceremony and write its data-minimal audit event, including fail-closed audit,
+  counter-regression and concurrent-replay contracts. No public Passkey routes
+  are enabled yet.
 
 ## [1.4.1] - 2026-10-21
 

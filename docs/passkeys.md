@@ -91,6 +91,17 @@ consumes the ceremony in one commit. Audit failure rolls the credential and
 ceremony consumption back together. These store operations are not reachable
 through HTTP and do not enable Passkeys.
 
+The same inactive store boundary now completes successful discoverable
+self-service authentication atomically. It locks the one-time ceremony and
+active credential, enforces the resolved user binding and non-regressing
+signature counter, updates the counter, backup state and last-use timestamp,
+creates the existing maximum-15-minute revocable self-service session, writes
+the data-minimal `passkey_login` audit event and consumes the ceremony in one
+commit. Parallel replay has one winner. Session, credential state and ceremony
+all remain unchanged when audit or persistence fails. Assertion parsing and
+cryptographic verification remain inside the pinned adapter and are not yet
+wired to an HTTP route.
+
 ## Credential storage and lifecycle
 
 SQLite and PostgreSQL use the same logical records:

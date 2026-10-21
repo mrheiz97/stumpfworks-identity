@@ -162,6 +162,9 @@ func (s *Store) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, au
 	if ceremonyID == "" || len(ceremonyID) > 128 || audience != "self-service" && audience != "admin" || now.IsZero() || !validWebAuthnCredential(credential) {
 		return errors.New("invalid WebAuthn registration")
 	}
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
 	credential.CreatedAt = now.UTC()
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -183,6 +186,65 @@ func (s *Store) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, au
 		return err
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE webauthn_ceremonies SET consumed_at=? WHERE id=? AND consumed_at IS NULL`, now.UTC(), ceremonyID)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
+}
+
+func validWebAuthnAuthentication(ceremonyID string, now time.Time, update WebAuthnAuthenticationUpdate, session SelfServiceSession) bool {
+	return ceremonyID != "" && len(ceremonyID) <= 128 && !now.IsZero() &&
+		len(update.CredentialID) >= 1 && len(update.CredentialID) <= 4096 && update.UserID > 0 &&
+		session.ID != "" && len(session.ID) <= 128 && session.Username != "" && len(session.Username) <= 256 &&
+		session.ExpiresAt.After(now) && !session.ExpiresAt.After(now.Add(15*time.Minute))
+}
+
+func validWebAuthnSignCount(previous, next uint32) bool {
+	return previous == 0 && next == 0 || next > previous
+}
+
+func (s *Store) CompleteWebAuthnAuthentication(ctx context.Context, ceremonyID string, now time.Time, update WebAuthnAuthenticationUpdate, session SelfServiceSession, ip string) error {
+	if !validWebAuthnAuthentication(ceremonyID, now, update, session) {
+		return errors.New("invalid WebAuthn authentication")
+	}
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var ceremonyUserID sql.NullInt64
+	if err = tx.QueryRowContext(ctx, `SELECT user_id FROM webauthn_ceremonies WHERE id=? AND kind='authentication' AND audience='self-service' AND consumed_at IS NULL AND expires_at>=?`, ceremonyID, now.UTC()).Scan(&ceremonyUserID); err != nil {
+		return err
+	}
+	var credentialUserID int64
+	var username string
+	var previousSignCount uint32
+	if err = tx.QueryRowContext(ctx, `SELECT c.user_id,u.username,c.sign_count FROM webauthn_credentials c JOIN users u ON u.id=c.user_id WHERE c.credential_id=? AND c.revoked_at IS NULL`, update.CredentialID).Scan(&credentialUserID, &username, &previousSignCount); err != nil {
+		return err
+	}
+	if credentialUserID != update.UserID || ceremonyUserID.Valid && ceremonyUserID.Int64 != update.UserID || username != session.Username || !validWebAuthnSignCount(previousSignCount, update.SignCount) {
+		return sql.ErrNoRows
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE webauthn_credentials SET sign_count=?,backup_state=?,last_used_at=? WHERE credential_id=? AND user_id=? AND revoked_at IS NULL AND sign_count=?`, update.SignCount, update.BackupState, now.UTC(), update.CredentialID, update.UserID, previousSignCount)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO self_service_sessions(id,username,created_at,expires_at) VALUES(?,?,?,?)`, session.ID, username, now.UTC(), session.ExpiresAt.UTC()); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES(?,?,?,?)`, "passkey_login", username, true, ip); err != nil {
+		return err
+	}
+	result, err = tx.ExecContext(ctx, `UPDATE webauthn_ceremonies SET consumed_at=? WHERE id=? AND consumed_at IS NULL`, now.UTC(), ceremonyID)
 	if err != nil {
 		return err
 	}
