@@ -3,6 +3,7 @@ package passkey
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 
 const maximumSessionBytes = 64 << 10
 const maximumAssertionBytes = 64 << 10
+const maximumRegistrationBytes = 64 << 10
 
 type Adapter struct {
 	rpID   string
@@ -76,10 +78,22 @@ type AuthenticationResult struct {
 	BackupState  bool
 }
 
+type RegistrationResult struct {
+	CredentialID      []byte
+	PublicKey         []byte
+	AttestationType   string
+	AttestationFormat string
+	Transports        []protocol.AuthenticatorTransport
+	Flags             byte
+	SignCount         uint32
+	BackupEligible    bool
+	BackupState       bool
+}
+
 type DiscoverableUserLookup func(rawCredentialID, userHandle []byte) (*User, error)
 
-func validStoredUser(user *User) bool {
-	if user == nil || user.LocalID < 1 || len(user.Handle) < 32 || len(user.Handle) > 64 || user.Name == "" || len(user.Name) > 256 || len(user.DisplayName) > 256 || len(user.Credentials) < 1 || len(user.Credentials) > 64 {
+func validStoredUser(user *User, requireCredential bool) bool {
+	if user == nil || user.LocalID < 1 || len(user.Handle) < 32 || len(user.Handle) > 64 || user.Name == "" || len(user.Name) > 256 || len(user.DisplayName) > 256 || len(user.Credentials) > 64 || requireCredential && len(user.Credentials) < 1 {
 		return false
 	}
 	for _, credential := range user.Credentials {
@@ -97,6 +111,76 @@ func validStoredUser(user *User) bool {
 		}
 	}
 	return true
+}
+
+func (a *Adapter) BeginRegistration(user *User) (*protocol.CredentialCreation, []byte, error) {
+	if a == nil || a.inner == nil || !validStoredUser(user, false) {
+		return nil, nil, errors.New("Passkey registration user is invalid")
+	}
+	options, session, err := a.inner.BeginRegistration(user,
+		wa.WithExclusions(wa.Credentials(user.WebAuthnCredentials()).CredentialDescriptors()),
+		wa.WithAuthenticatorSelection(protocol.AuthenticatorSelection{ResidentKey: protocol.ResidentKeyRequirementRequired, UserVerification: protocol.VerificationRequired}),
+		wa.WithConveyancePreference(protocol.PreferNoAttestation),
+		wa.WithRegistrationRelyingPartyID(a.rpID),
+		wa.WithRegistrationOrigin(a.origin),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	encoded, err := json.Marshal(session)
+	if err != nil || len(encoded) == 0 || len(encoded) > maximumSessionBytes {
+		return nil, nil, errors.New("Passkey session could not be encoded safely")
+	}
+	return options, encoded, nil
+}
+
+func (a *Adapter) ValidateRegistration(user *User, encodedSession, response []byte) (RegistrationResult, error) {
+	if a == nil || a.inner == nil || !validStoredUser(user, false) {
+		return RegistrationResult{}, errors.New("Passkey registration user is invalid")
+	}
+	if len(response) == 0 || len(response) > maximumRegistrationBytes {
+		return RegistrationResult{}, errors.New("invalid Passkey registration size")
+	}
+	session, err := DecodeSession(encodedSession)
+	if err != nil || session.RelyingPartyID != a.rpID || session.Origin != a.origin || session.UserVerification != protocol.VerificationRequired || !equalBytes(session.UserID, user.Handle) {
+		return RegistrationResult{}, errors.New("Passkey session boundary mismatch")
+	}
+	parsed, err := protocol.ParseCredentialCreationResponseBytes(response)
+	if err != nil {
+		return RegistrationResult{}, errors.New("invalid Passkey registration response")
+	}
+	credential, err := a.inner.CreateCredential(user, session, parsed)
+	if err != nil {
+		return RegistrationResult{}, fmt.Errorf("Passkey registration verification failed: %w", err)
+	}
+	if credential == nil || len(credential.ID) == 0 || len(credential.PublicKey) == 0 {
+		return RegistrationResult{}, errors.New("Passkey registration verification failed")
+	}
+	if credential.Authenticator.CloneWarning {
+		return RegistrationResult{}, errors.New("Passkey credential counter rejected")
+	}
+	return RegistrationResult{
+		CredentialID:      append([]byte(nil), credential.ID...),
+		PublicKey:         append([]byte(nil), credential.PublicKey...),
+		AttestationType:   credential.AttestationType,
+		AttestationFormat: credential.AttestationFormat,
+		Transports:        append([]protocol.AuthenticatorTransport(nil), credential.Transport...),
+		Flags:             credential.Flags.MsgpByte(),
+		SignCount:         credential.Authenticator.SignCount,
+		BackupEligible:    credential.Flags.BackupEligible,
+		BackupState:       credential.Flags.BackupState,
+	}, nil
+}
+
+func equalBytes(left, right []byte) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	var difference byte
+	for index := range left {
+		difference |= left[index] ^ right[index]
+	}
+	return difference == 0
 }
 
 func New(rpID, origin string) (*Adapter, error) {
@@ -181,7 +265,7 @@ func (a *Adapter) ValidateDiscoverableLogin(encodedSession, assertion []byte, lo
 	var resolved *User
 	user, verified, err := a.inner.ValidatePasskeyLogin(func(rawID, userHandle []byte) (wa.User, error) {
 		candidate, lookupErr := lookup(append([]byte(nil), rawID...), append([]byte(nil), userHandle...))
-		if lookupErr != nil || !validStoredUser(candidate) {
+		if lookupErr != nil || !validStoredUser(candidate, true) {
 			return nil, errors.New("Passkey account unavailable")
 		}
 		resolved = candidate

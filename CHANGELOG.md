@@ -20,6 +20,10 @@ All notable changes to StumpfWorks Identity are documented here.
   adapter with exact saved RP/origin binding, opaque user-handle lookup,
   required user verification, signature validation and fail-closed clone
   warning handling.
+- Added bounded Passkey registration verification with exact RP/origin/user
+  binding, discoverable credentials, required user verification, existing
+  credential exclusion and forged-attestation rejection. It remains
+  unreachable until the disabled Self-Service integration is completed.
 
 ## [1.4.1] - 2026-10-21
 

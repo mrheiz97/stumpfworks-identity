@@ -106,6 +106,17 @@ user-verification checks, backup-state handling and fail-closed clone/counter
 warning rejection. It returns only the minimal verified state needed by the
 transaction boundary and is not yet wired to an HTTP route.
 
+Registration is now covered by the same pinned adapter boundary. It creates a
+five-minute ceremony bound to the exact RP ID, HTTPS origin and opaque user
+handle, requires discoverable credentials and user verification, excludes
+already registered credentials and requests no attestation conveyance. The
+bounded completion verifies client data, authenticator data, public-key
+attestation and the user/session binding before returning only the durable
+public credential projection used by the transactional store. Forged
+attestation and cross-user completion tests fail closed. Fresh AD-password
+confirmation and the HTTP feature switch remain deliberately outside this
+adapter and no route exposes it yet.
+
 ## Credential storage and lifecycle
 
 SQLite and PostgreSQL use the same logical records:
