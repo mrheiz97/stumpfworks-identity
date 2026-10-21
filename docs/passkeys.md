@@ -185,6 +185,13 @@ secondary choice beneath the unchanged AD-password form. Unsupported or
 insecure browser contexts disable only the Passkey control and leave password
 recovery available.
 
+Authenticated users can list their own active Passkeys by bounded name,
+creation and last-use time, plus the coarse device-bound or sync-capable
+classification. Credential IDs, public keys, user handles, signature counters
+and attestation data are not passed to the page. Revocation requires a separate
+random management identifier; the cryptographic credential ID must not be
+embedded in HTML, form values or request URLs.
+
 Responses do not disclose whether a username, user handle or credential is
 registered. Rate limits apply to ceremony creation and completion in addition
 to existing login limits. Logs contain outcome, audience and bounded reason

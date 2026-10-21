@@ -145,7 +145,14 @@ func TestPasskeyControlsOnlyRenderWhenConfigured(t *testing.T) {
 		t.Fatalf("enabled Passkey login controls missing: %s", response.Body.String())
 	}
 
-	if _, err = st.CreateUser(t.Context(), "alice", "Alice Example", "CN=Alice Example,DC=example"); err != nil {
+	user, err := st.CreateUser(t.Context(), "alice", "Alice Example", "CN=Alice Example,DC=example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.DB.ExecContext(t.Context(), `INSERT INTO webauthn_users(user_id,user_handle) VALUES(?,?)`, user.ID, []byte("01234567890123456789012345678901")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.DB.ExecContext(t.Context(), `INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,backup_eligible,backup_state) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, []byte("credential-id-must-not-leak"), user.ID, []byte("public-key-must-not-leak"), "login.example.test", "Laptop Passkey", "internal", "none", "none", 5, true, true); err != nil {
 		t.Fatal(err)
 	}
 	form := strings.NewReader("username=alice&password=correct")
@@ -161,8 +168,13 @@ func TestPasskeyControlsOnlyRenderWhenConfigured(t *testing.T) {
 	response = httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	body := response.Body.String()
-	if !strings.Contains(body, `id="passkey-registration"`) || !strings.Contains(body, `data-csrf="`) || strings.Contains(body, "correct") {
+	if !strings.Contains(body, `id="passkey-registration"`) || !strings.Contains(body, `data-csrf="`) || !strings.Contains(body, "Laptop Passkey") || !strings.Contains(body, "Synced") || strings.Contains(body, "correct") {
 		t.Fatalf("enabled Passkey registration controls invalid: %s", body)
+	}
+	for _, secret := range []string{"credential-id-must-not-leak", "public-key-must-not-leak", "01234567890123456789012345678901"} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("Passkey metadata view exposed %q", secret)
+		}
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "/static/passkeys.js", nil)

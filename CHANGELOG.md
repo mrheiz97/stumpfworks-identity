@@ -36,6 +36,10 @@ All notable changes to StumpfWorks Identity are documented here.
   WebAuthn binary conversions, keeps AD-password login available, reports
   cancellation without account disclosure and is not served while Passkeys
   are disabled.
+- Added an opt-in metadata-only view of the current user's active Passkeys.
+  It shows only the bounded name, creation/last-use time and whether the
+  authenticator is device-bound or sync-capable; credential IDs, public keys,
+  user handles and counters never reach the template.
 
 ## [1.4.1] - 2026-10-21
 
