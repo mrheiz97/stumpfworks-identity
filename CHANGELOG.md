@@ -2,7 +2,7 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
-## [Unreleased]
+## [1.5.0] - 2026-10-25
 
 ### Added
 
