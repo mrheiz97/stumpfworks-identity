@@ -101,6 +101,7 @@ docs/                Architecture, API, security and operations guides
 - [Installation](docs/installation.md)
 - [Security model](docs/security.md)
 - [Client device authentication plan](docs/client-device-authentication.md)
+- [Passkey and WebAuthn plan](docs/passkeys.md)
 - [Operations and recovery](docs/operations.md)
 - [Development](docs/development.md)
 - [API](docs/api.md)

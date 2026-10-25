@@ -36,3 +36,10 @@ oidc:
   issuer: "https://login01.example.test:8080"
   # First key signs; subsequent comma-separated keys remain published during rotation.
   signing_key_files: "/etc/stumpfworks-badge/oidc/signing-current.pem"
+
+passkeys:
+  # Disabled by default. Enabling requires protected directory self-service.
+  enabled: false
+  # RP ID is the exact external hostname; origin additionally includes HTTPS port.
+  rp_id: "login01.example.test"
+  origin: "https://login01.example.test:8080"

@@ -11,6 +11,7 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
 	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
+	passkeyauth "github.com/TheRealHZL/stumpfworks-identity/internal/passkey"
 	app "github.com/TheRealHZL/stumpfworks-identity/internal/server"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/version"
 	frameworkldap "github.com/mrheiz97/stumpfworks-framework/directory/ldap"
@@ -173,6 +174,21 @@ func main() {
 			os.Exit(1)
 		}
 		srv.ConfigureOIDC(provider)
+	}
+	if cfg.PasskeysEnabled {
+		if !cfg.DirectoryEnabled {
+			slog.Error("Passkeys require the protected directory authentication mode")
+			os.Exit(1)
+		}
+		adapter, err := passkeyauth.New(cfg.PasskeyRPID, cfg.PasskeyOrigin)
+		if err != nil {
+			slog.Error("Passkey configuration failed", "error", err)
+			os.Exit(1)
+		}
+		if err = srv.ConfigurePasskeys(adapter); err != nil {
+			slog.Error("Passkey server configuration failed", "error", err)
+			os.Exit(1)
+		}
 	}
 	applicationHandler := srv.Handler()
 	if cfg.MetricsEnabled {

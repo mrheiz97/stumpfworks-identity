@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS self_service_sessions (id TEXT PRIMARY KEY, username 
 CREATE TABLE IF NOT EXISTS oidc_clients (client_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, redirect_uris TEXT NOT NULL, scopes TEXT NOT NULL DEFAULT 'openid', enabled BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS oidc_codes (code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), redirect_uri TEXT NOT NULL, scope TEXT NOT NULL, nonce TEXT NOT NULL, code_challenge TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
 CREATE TABLE IF NOT EXISTS oidc_sessions (session_id TEXT PRIMARY KEY, access_token_hash TEXT NOT NULL UNIQUE, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), scope TEXT NOT NULL, issued_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, revoked_at DATETIME);
+CREATE TABLE IF NOT EXISTS webauthn_users (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, user_handle BLOB NOT NULL UNIQUE CHECK(length(user_handle) BETWEEN 32 AND 64), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS webauthn_credentials (credential_id BLOB PRIMARY KEY, management_id TEXT NOT NULL UNIQUE CHECK(length(management_id) BETWEEN 16 AND 128), user_id INTEGER NOT NULL REFERENCES webauthn_users(user_id) ON DELETE CASCADE, public_key BLOB NOT NULL, rp_id TEXT NOT NULL, name TEXT NOT NULL, transports TEXT NOT NULL DEFAULT '', attestation_type TEXT NOT NULL DEFAULT '', attestation_format TEXT NOT NULL DEFAULT '', flags INTEGER NOT NULL DEFAULT 0, sign_count INTEGER NOT NULL DEFAULT 0 CHECK(sign_count>=0), backup_eligible BOOLEAN NOT NULL DEFAULT 0, backup_state BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_used_at DATETIME, revoked_at DATETIME);
+CREATE TABLE IF NOT EXISTS webauthn_ceremonies (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('registration','authentication')), audience TEXT NOT NULL CHECK(audience IN ('self-service','admin')), user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, session_data BLOB NOT NULL CHECK(length(session_data) BETWEEN 1 AND 65536), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
 CREATE INDEX IF NOT EXISTS idx_badges_code ON badges(badge_code); CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp); CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients(last_seen_at);`
 
 type Store struct{ DB *sql.DB }
@@ -82,6 +85,40 @@ type SelfServiceSession struct {
 	Username  string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+type WebAuthnCeremony struct {
+	ID          string
+	Kind        string
+	Audience    string
+	UserID      sql.NullInt64
+	SessionData []byte
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	ConsumedAt  sql.NullTime
+}
+type WebAuthnCredential struct {
+	CredentialID      []byte
+	ManagementID      string
+	UserID            int64
+	PublicKey         []byte
+	RPID              string
+	Name              string
+	Transports        string
+	AttestationType   string
+	AttestationFormat string
+	Flags             int64
+	SignCount         uint32
+	BackupEligible    bool
+	BackupState       bool
+	CreatedAt         time.Time
+	LastUsedAt        sql.NullTime
+	RevokedAt         sql.NullTime
+}
+type WebAuthnAuthenticationUpdate struct {
+	CredentialID []byte
+	UserID       int64
+	SignCount    uint32
+	BackupState  bool
 }
 type Audit struct {
 	ID                                     int64 `json:"id"`
@@ -164,7 +201,59 @@ func Open(path string) (*Store, error) {
 			return nil, err
 		}
 	}
+	var managementColumns int
+	if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('webauthn_credentials') WHERE name='management_id'`).Scan(&managementColumns); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if managementColumns == 0 {
+		if _, err = db.Exec(`ALTER TABLE webauthn_credentials ADD COLUMN management_id TEXT`); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	rows, err := db.Query(`SELECT credential_id FROM webauthn_credentials WHERE management_id IS NULL OR management_id=''`)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	var credentialIDs [][]byte
+	for rows.Next() {
+		var credentialID []byte
+		if err = rows.Scan(&credentialID); err != nil {
+			rows.Close()
+			db.Close()
+			return nil, err
+		}
+		credentialIDs = append(credentialIDs, append([]byte(nil), credentialID...))
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		db.Close()
+		return nil, err
+	}
+	rows.Close()
+	for _, credentialID := range credentialIDs {
+		managementID, generateErr := newWebAuthnManagementID()
+		if generateErr != nil {
+			db.Close()
+			return nil, generateErr
+		}
+		if _, err = db.Exec(`UPDATE webauthn_credentials SET management_id=? WHERE credential_id=? AND (management_id IS NULL OR management_id='')`, managementID, credentialID); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
 	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_subject ON users(oidc_subject) WHERE oidc_subject<>''; CREATE INDEX IF NOT EXISTS idx_oidc_codes_expiry ON oidc_codes(expires_at); CREATE INDEX IF NOT EXISTS idx_oidc_sessions_expiry ON oidc_sessions(expires_at); CREATE INDEX IF NOT EXISTS idx_oidc_sessions_user ON oidc_sessions(user_id,issued_at)`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_webauthn_credentials_management ON webauthn_credentials(management_id)`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err = db.Exec(`CREATE TRIGGER IF NOT EXISTS validate_webauthn_management_insert BEFORE INSERT ON webauthn_credentials WHEN NEW.management_id IS NULL OR length(NEW.management_id) NOT BETWEEN 16 AND 128 BEGIN SELECT RAISE(ABORT,'invalid WebAuthn management identifier'); END;
+CREATE TRIGGER IF NOT EXISTS validate_webauthn_management_update BEFORE UPDATE OF management_id ON webauthn_credentials WHEN NEW.management_id IS NULL OR length(NEW.management_id) NOT BETWEEN 16 AND 128 BEGIN SELECT RAISE(ABORT,'invalid WebAuthn management identifier'); END;`); err != nil {
 		db.Close()
 		return nil, err
 	}

@@ -2,7 +2,59 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
-## [Unreleased]
+## [1.5.0] - 2026-10-25
+
+### Added
+
+- Added a disabled-by-default WebAuthn foundation with strict RP/origin policy,
+  discoverable-login options requiring user verification, stable opaque user
+  handles, and short-lived single-use ceremony storage on SQLite and
+  PostgreSQL. Credential registration now commits public credential data,
+  ceremony consumption and a data-minimal audit event atomically on both
+  backends. Successful authentication can atomically update credential state,
+  create an existing revocable 15-minute self-service session, consume the
+  ceremony and write its data-minimal audit event, including fail-closed audit,
+  counter-regression and concurrent-replay contracts.
+- Added bounded discoverable-assertion verification to the pinned WebAuthn
+  adapter with exact saved RP/origin binding, opaque user-handle lookup,
+  required user verification, signature validation and fail-closed clone
+  warning handling.
+- Added bounded Passkey registration verification with exact RP/origin/user
+  binding, discoverable credentials, required user verification, existing
+  credential exclusion and forged-attestation rejection.
+- Added explicitly opt-in Self-Service JSON endpoints for registration and
+  discoverable login. They are absent by default; registration requires the
+  current revocable session, CSRF and fresh AD-password confirmation, while
+  login uses rate limits, generic failures and the existing 15-minute session.
+  No browser controls or production configuration are enabled.
+- Added a full local HTTP integration test covering fresh AD-password and CSRF
+  registration, a real signed P-256 WebAuthn credential, persisted credential
+  and audit state, discoverable login, Self-Service cookie issuance and replay
+  rejection.
+- Added opt-in Self-Service browser controls for Passkey registration and
+  discoverable login. The external CSP-compatible script performs only the
+  WebAuthn binary conversions, keeps AD-password login available, reports
+  cancellation without account disclosure and is not served while Passkeys
+  are disabled.
+- Added an opt-in metadata-only view of the current user's active Passkeys.
+  It shows only the bounded name, creation/last-use time and whether the
+  authenticator is device-bound or sync-capable; credential IDs, public keys,
+  user handles and counters never reach the template.
+- Added random Passkey management identifiers and transactional Self-Service
+  revocation on SQLite and PostgreSQL. Revocation requires the active session,
+  CSRF and a fresh AD-password check; credential state and the data-minimal
+  `passkey_revoked` audit event commit together or both roll back.
+- Added the guarded LOGIN01 rollout and rollback procedure plus the real
+  Chromium, platform-authenticator, optional security-key and fallback
+  acceptance checklist. The procedure does not enable the feature.
+
+### Operations
+
+- Completed a guarded LOGIN01 Self-Service pilot with Chrome and Windows Hello.
+  Registration, discoverable login, cancellation, wrong-password rejection,
+  transactional revocation, revoked-credential rejection and AD-password
+  recovery passed with matching data-minimal audit events. The pilot retained
+  a verified root-only rollback and ended with no active test Passkey.
 
 ## [1.4.1] - 2026-10-21
 

@@ -40,6 +40,23 @@ func TestOIDCConfigIsOptInAndEnvironmentOverrides(t *testing.T) {
 	}
 }
 
+func TestPasskeysAreOptInAndEnvironmentOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("passkeys:\n  enabled: false\n  rp_id: login.example.test\n  origin: https://login.example.test:8080\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || loaded.PasskeysEnabled || loaded.PasskeyRPID != "login.example.test" || loaded.PasskeyOrigin != "https://login.example.test:8080" {
+		t.Fatalf("unexpected Passkey config: %+v %v", loaded, err)
+	}
+	t.Setenv("SWBADGE_PASSKEYS_ENABLED", "true")
+	t.Setenv("SWBADGE_PASSKEY_RP_ID", "identity.example.test")
+	loaded, err = Load(path)
+	if err != nil || !loaded.PasskeysEnabled || loaded.PasskeyRPID != "identity.example.test" {
+		t.Fatalf("Passkey environment override failed: %+v %v", loaded, err)
+	}
+}
+
 func TestFrameworkDirectoryReadsAreSeparatelyOptIn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("directory:\n  enabled: true\n  framework_read_enabled: false\n"), 0600); err != nil {

@@ -42,6 +42,15 @@ type ApplicationStore interface {
 	RevokeOtherSelfServiceSessions(context.Context, string, string) (int64, error)
 	RevokeOtherSelfServiceSessionsWithAudit(context.Context, string, string, string) (int64, error)
 	RevokeSelfServiceSession(context.Context, string, string) error
+	EnsureWebAuthnUserHandle(context.Context, int64) ([]byte, error)
+	CreateWebAuthnCeremony(context.Context, WebAuthnCeremony) error
+	ActiveWebAuthnCeremony(context.Context, string, string, string, time.Time) (WebAuthnCeremony, error)
+	ConsumeWebAuthnCeremony(context.Context, string, string, string, time.Time) (WebAuthnCeremony, error)
+	WebAuthnUserByHandle(context.Context, []byte) (User, error)
+	WebAuthnCredentialsByUser(context.Context, int64) ([]WebAuthnCredential, error)
+	CompleteWebAuthnRegistration(context.Context, string, string, time.Time, WebAuthnCredential, string, string) error
+	CompleteWebAuthnAuthentication(context.Context, string, time.Time, WebAuthnAuthenticationUpdate, SelfServiceSession, string) error
+	RevokeWebAuthnCredentialWithAudit(context.Context, string, int64, string, string, time.Time) error
 	Counts(context.Context) (map[string]int64, error)
 	ClientByID(context.Context, string) (Client, error)
 	Clients(context.Context) ([]Client, error)
