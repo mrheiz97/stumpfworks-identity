@@ -246,6 +246,8 @@ one platform Passkey and one external security key if available. Registration,
 login, cancellation, device loss, credential revocation and AD-password
 recovery are exercised before production enablement. Private or biometric
 authenticator material must never appear in screenshots, logs or test fixtures.
+The exact preflight, rollback boundary and interactive sequence are maintained
+in [passkey-rollout.md](passkey-rollout.md).
 
 ## Framework boundary
 

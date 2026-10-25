@@ -44,6 +44,9 @@ All notable changes to StumpfWorks Identity are documented here.
   revocation on SQLite and PostgreSQL. Revocation requires the active session,
   CSRF and a fresh AD-password check; credential state and the data-minimal
   `passkey_revoked` audit event commit together or both roll back.
+- Added the guarded LOGIN01 rollout and rollback procedure plus the real
+  Chromium, platform-authenticator, optional security-key and fallback
+  acceptance checklist. The procedure does not enable the feature.
 
 ## [1.4.1] - 2026-10-21
 
