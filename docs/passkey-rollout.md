@@ -125,3 +125,28 @@ OIDC, Badge/PIN, PKINIT or Kerberos.
 
 Keep the rollback until the browser, audit and fallback acceptance has been
 reviewed and a later release decision is made.
+
+## Production pilot on 25 October 2026
+
+The controlled Self-Service pilot completed on LOGIN01 using the unchanged
+`development` commit `b903e00` (`1.5.0-dev`). The transferred binary hash was
+verified before installation and after the final start. A stopped-service,
+root-only rollback containing the previous binary, configuration, systemd
+files and an integrity-checked SQLite copy is retained at
+`/root/identity-passkey-rollback-20261025T094454Z`.
+
+The first start kept Passkeys disabled. Schema, SQLite integrity, TLS,
+Identity health, Self-Service, OIDC Discovery/JWKS and Access readiness passed
+before the separate activation. Chrome with Windows Hello then confirmed one
+platform-Passkey registration, discoverable login, the revocable 15-minute
+session, generic cancellation responses, wrong-AD-password rejection,
+transactional revocation, rejection of the locally retained revoked credential
+and successful AD-password recovery. Audit counts matched each successful
+registration, login and revocation. No credential identifier, public key, user
+handle, ceremony body or secret was printed during acceptance.
+
+The test ended with zero active Passkeys, an integral SQLite database, an
+active service and no warning-level journal entries during the window. An
+external FIDO2 security key was not available and remains an optional separate
+hardware acceptance. Badge/PIN, Greeter, PKINIT and Kerberos configuration was
+not changed during this window.

@@ -48,6 +48,14 @@ All notable changes to StumpfWorks Identity are documented here.
   Chromium, platform-authenticator, optional security-key and fallback
   acceptance checklist. The procedure does not enable the feature.
 
+### Operations
+
+- Completed a guarded LOGIN01 Self-Service pilot with Chrome and Windows Hello.
+  Registration, discoverable login, cancellation, wrong-password rejection,
+  transactional revocation, revoked-credential rejection and AD-password
+  recovery passed with matching data-minimal audit events. The pilot retained
+  a verified root-only rollback and ended with no active test Passkey.
+
 ## [1.4.1] - 2026-10-21
 
 ### Added
