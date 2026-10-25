@@ -108,6 +108,16 @@ CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECU
 			t.Fatal(err)
 		}
 	})
+	testAtomicWebAuthnRevocation(t, store, user, func(reject bool) {
+		query := "DROP TRIGGER IF EXISTS fail_webauthn_audit ON audit_log; DROP FUNCTION IF EXISTS fail_webauthn_audit()"
+		if reject {
+			query = `CREATE FUNCTION fail_webauthn_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type LIKE 'passkey_%' THEN RAISE EXCEPTION 'synthetic audit rejection'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_webauthn_audit()`
+		}
+		if _, err := pool.Native().Exec(ctx, query); err != nil {
+			t.Fatal(err)
+		}
+	})
 	if _, err := store.GetUser(ctx, 999999); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("missing-user error contract changed")
 	}
@@ -231,7 +241,7 @@ CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECU
 		if _, err := source.EnsureWebAuthnUserHandle(ctx, user.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := source.DB.ExecContext(ctx, `INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, []byte("synthetic-credential-id"), user.ID, []byte("synthetic-public-key"), "login01.example.test", "Synthetic passkey", "internal", "none", "none", 3, 7, true, true); err != nil {
+		if _, err := source.DB.ExecContext(ctx, `INSERT INTO webauthn_credentials(credential_id,management_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, []byte("synthetic-credential-id"), "synthetic-management-id", user.ID, []byte("synthetic-public-key"), "login01.example.test", "Synthetic passkey", "internal", "none", "none", 3, 7, true, true); err != nil {
 			t.Fatal(err)
 		}
 		ceremonyNow := time.Now().UTC()

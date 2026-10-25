@@ -86,7 +86,7 @@ func TestHealth(t *testing.T) {
 
 func TestPasskeyRoutesAreAbsentByDefault(t *testing.T) {
 	s, _ := testServer(t)
-	for _, path := range []string{"/self-service/passkeys/registration/begin", "/self-service/passkeys/registration/complete", "/self-service/passkeys/login/begin", "/self-service/passkeys/login/complete"} {
+	for _, path := range []string{"/self-service/passkeys/registration/begin", "/self-service/passkeys/registration/complete", "/self-service/passkeys/login/begin", "/self-service/passkeys/login/complete", "/self-service/passkeys/revoke"} {
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
 		response := httptest.NewRecorder()
 		s.Handler().ServeHTTP(response, request)
@@ -152,7 +152,7 @@ func TestPasskeyControlsOnlyRenderWhenConfigured(t *testing.T) {
 	if _, err = st.DB.ExecContext(t.Context(), `INSERT INTO webauthn_users(user_id,user_handle) VALUES(?,?)`, user.ID, []byte("01234567890123456789012345678901")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = st.DB.ExecContext(t.Context(), `INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,backup_eligible,backup_state) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, []byte("credential-id-must-not-leak"), user.ID, []byte("public-key-must-not-leak"), "login.example.test", "Laptop Passkey", "internal", "none", "none", 5, true, true); err != nil {
+	if _, err = st.DB.ExecContext(t.Context(), `INSERT INTO webauthn_credentials(credential_id,management_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,backup_eligible,backup_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, []byte("credential-id-must-not-leak"), "management-id-for-tests", user.ID, []byte("public-key-must-not-leak"), "login.example.test", "Laptop Passkey", "internal", "none", "none", 5, true, true); err != nil {
 		t.Fatal(err)
 	}
 	form := strings.NewReader("username=alice&password=correct")
@@ -163,8 +163,9 @@ func TestPasskeyControlsOnlyRenderWhenConfigured(t *testing.T) {
 	if response.Code != http.StatusSeeOther || len(response.Result().Cookies()) != 1 {
 		t.Fatalf("self-service login returned %d", response.Code)
 	}
+	selfServiceCookie := response.Result().Cookies()[0]
 	request = httptest.NewRequest(http.MethodGet, "/self-service", nil)
-	request.AddCookie(response.Result().Cookies()[0])
+	request.AddCookie(selfServiceCookie)
 	response = httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	body := response.Body.String()
@@ -175,6 +176,36 @@ func TestPasskeyControlsOnlyRenderWhenConfigured(t *testing.T) {
 		if strings.Contains(body, secret) {
 			t.Fatalf("Passkey metadata view exposed %q", secret)
 		}
+	}
+
+	revoke := func(password string) *httptest.ResponseRecorder {
+		payload, marshalErr := json.Marshal(map[string]string{"management_id": "management-id-for-tests", "password": password})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		revokeRequest := httptest.NewRequest(http.MethodPost, "/self-service/passkeys/revoke", bytes.NewReader(payload))
+		revokeRequest.Header.Set("Content-Type", "application/json")
+		revokeRequest.Header.Set("X-CSRF-Token", sessions.CSRF(selfServiceCookie.Value))
+		revokeRequest.AddCookie(selfServiceCookie)
+		revokeResponse := httptest.NewRecorder()
+		server.Handler().ServeHTTP(revokeResponse, revokeRequest)
+		return revokeResponse
+	}
+	if denied := revoke("wrong"); denied.Code != http.StatusUnauthorized {
+		t.Fatalf("Passkey revocation accepted wrong AD password: %d", denied.Code)
+	}
+	if credentials, queryErr := st.WebAuthnCredentialsByUser(t.Context(), user.ID); queryErr != nil || len(credentials) != 1 {
+		t.Fatal("denied Passkey revocation changed credential")
+	}
+	if revoked := revoke("correct"); revoked.Code != http.StatusOK {
+		t.Fatalf("Passkey revocation returned %d: %s", revoked.Code, revoked.Body.String())
+	}
+	if credentials, queryErr := st.WebAuthnCredentialsByUser(t.Context(), user.ID); queryErr != nil || len(credentials) != 0 {
+		t.Fatal("Passkey revocation did not hide revoked credential")
+	}
+	audits, auditErr := st.Audits(t.Context())
+	if auditErr != nil || len(audits) == 0 || audits[0].EventType != "passkey_revoked" || audits[0].Username != "alice" || audits[0].Details != "" {
+		t.Fatalf("Passkey revocation audit invalid: %+v", audits)
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "/static/passkeys.js", nil)

@@ -26,3 +26,9 @@ CREATE TABLE webauthn_credentials (credential_id BYTEA PRIMARY KEY, user_id BIGI
 CREATE TABLE webauthn_ceremonies (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('registration','authentication')), audience TEXT NOT NULL CHECK(audience IN ('self-service','admin')), user_id BIGINT REFERENCES users(id) ON DELETE CASCADE, session_data BYTEA NOT NULL CHECK(octet_length(session_data) BETWEEN 1 AND 65536), created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, consumed_at TIMESTAMPTZ);
 CREATE INDEX idx_webauthn_credentials_user ON webauthn_credentials(user_id,created_at);
 CREATE INDEX idx_webauthn_ceremonies_expiry ON webauthn_ceremonies(expires_at);`
+
+const postgresWebAuthnManagementMigration = `ALTER TABLE webauthn_credentials ADD COLUMN management_id TEXT;
+UPDATE webauthn_credentials SET management_id=gen_random_uuid()::text WHERE management_id IS NULL;
+ALTER TABLE webauthn_credentials ALTER COLUMN management_id SET NOT NULL;
+ALTER TABLE webauthn_credentials ADD CONSTRAINT webauthn_management_id_length CHECK(length(management_id) BETWEEN 16 AND 128);
+CREATE UNIQUE INDEX idx_webauthn_credentials_management ON webauthn_credentials(management_id);`

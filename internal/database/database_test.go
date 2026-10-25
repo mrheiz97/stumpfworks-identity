@@ -35,6 +35,50 @@ func TestOpenUpgradesExistingClientTable(t *testing.T) {
 	}
 }
 
+func TestOpenBackfillsStableWebAuthnManagementID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-webauthn.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT NOT NULL UNIQUE,display_name TEXT NOT NULL,directory_dn TEXT NOT NULL DEFAULT '',pin_hash TEXT NOT NULL DEFAULT '',oidc_subject TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE webauthn_users (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,user_handle BLOB NOT NULL UNIQUE,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE webauthn_credentials (credential_id BLOB PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES webauthn_users(user_id) ON DELETE CASCADE,public_key BLOB NOT NULL,rp_id TEXT NOT NULL,name TEXT NOT NULL,transports TEXT NOT NULL DEFAULT '',attestation_type TEXT NOT NULL DEFAULT '',attestation_format TEXT NOT NULL DEFAULT '',flags INTEGER NOT NULL DEFAULT 0,sign_count INTEGER NOT NULL DEFAULT 0,backup_eligible BOOLEAN NOT NULL DEFAULT 0,backup_state BOOLEAN NOT NULL DEFAULT 0,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_used_at DATETIME,revoked_at DATETIME);
+INSERT INTO users(id,username,display_name) VALUES(1,'legacy-passkey','Legacy Passkey');
+INSERT INTO webauthn_users(user_id,user_handle) VALUES(1,x'3031323334353637383930313233343536373839303132333435363738393031');
+INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name) VALUES(x'010203',1,x'040506','login.example.test','Legacy key')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentials, err := store.WebAuthnCredentialsByUser(t.Context(), 1)
+	if err != nil || len(credentials) != 1 || len(credentials[0].ManagementID) < 16 {
+		t.Fatalf("legacy management ID missing: %+v, %v", credentials, err)
+	}
+	managementID := credentials[0].ManagementID
+	if err = store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	credentials, err = store.WebAuthnCredentialsByUser(t.Context(), 1)
+	if err != nil || len(credentials) != 1 || credentials[0].ManagementID != managementID {
+		t.Fatal("management ID changed after reopen")
+	}
+	if _, err = store.DB.ExecContext(t.Context(), `UPDATE webauthn_credentials SET management_id='' WHERE credential_id=?`, []byte{1, 2, 3}); err == nil {
+		t.Fatal("upgraded SQLite accepted an invalid management ID")
+	}
+}
+
 func TestOIDCSubjectAndClientSafety(t *testing.T) {
 	s, err := Open(":memory:")
 	if err != nil {

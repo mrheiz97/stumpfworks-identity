@@ -84,7 +84,7 @@ func (s *PostgresStore) WebAuthnUserByHandle(ctx context.Context, handle []byte)
 
 func scanPostgresWebAuthnCredential(row pgx.Row) (WebAuthnCredential, error) {
 	var credential WebAuthnCredential
-	err := row.Scan(&credential.CredentialID, &credential.UserID, &credential.PublicKey, &credential.RPID, &credential.Name, &credential.Transports, &credential.AttestationType, &credential.AttestationFormat, &credential.Flags, &credential.SignCount, &credential.BackupEligible, &credential.BackupState, &credential.CreatedAt, &credential.LastUsedAt, &credential.RevokedAt)
+	err := row.Scan(&credential.CredentialID, &credential.ManagementID, &credential.UserID, &credential.PublicKey, &credential.RPID, &credential.Name, &credential.Transports, &credential.AttestationType, &credential.AttestationFormat, &credential.Flags, &credential.SignCount, &credential.BackupEligible, &credential.BackupState, &credential.CreatedAt, &credential.LastUsedAt, &credential.RevokedAt)
 	credential.CredentialID = append([]byte(nil), credential.CredentialID...)
 	credential.PublicKey = append([]byte(nil), credential.PublicKey...)
 	return credential, postgresNotFound(err)
@@ -94,7 +94,7 @@ func (s *PostgresStore) WebAuthnCredentialsByUser(ctx context.Context, userID in
 	if userID < 1 {
 		return nil, errors.New("invalid WebAuthn user")
 	}
-	rows, err := s.pool.Native().Query(ctx, `SELECT credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at,last_used_at,revoked_at FROM webauthn_credentials WHERE user_id=$1 AND revoked_at IS NULL ORDER BY created_at,credential_id`, userID)
+	rows, err := s.pool.Native().Query(ctx, `SELECT credential_id,management_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at,last_used_at,revoked_at FROM webauthn_credentials WHERE user_id=$1 AND revoked_at IS NULL ORDER BY created_at,credential_id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +111,13 @@ func (s *PostgresStore) WebAuthnCredentialsByUser(ctx context.Context, userID in
 }
 
 func (s *PostgresStore) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, audience string, now time.Time, credential WebAuthnCredential, username, ip string) error {
+	if credential.ManagementID == "" {
+		var err error
+		credential.ManagementID, err = newWebAuthnManagementID()
+		if err != nil {
+			return err
+		}
+	}
 	if ceremonyID == "" || len(ceremonyID) > 128 || audience != "self-service" && audience != "admin" || now.IsZero() || !validWebAuthnCredential(credential) {
 		return errors.New("invalid WebAuthn registration")
 	}
@@ -127,7 +134,7 @@ func (s *PostgresStore) CompleteWebAuthnRegistration(ctx context.Context, ceremo
 		if userID != credential.UserID || storedUsername != username {
 			return sql.ErrNoRows
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, credential.CredentialID, credential.UserID, credential.PublicKey, credential.RPID, credential.Name, credential.Transports, credential.AttestationType, credential.AttestationFormat, credential.Flags, credential.SignCount, credential.BackupEligible, credential.BackupState, credential.CreatedAt.UTC()); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO webauthn_credentials(credential_id,management_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, credential.CredentialID, credential.ManagementID, credential.UserID, credential.PublicKey, credential.RPID, credential.Name, credential.Transports, credential.AttestationType, credential.AttestationFormat, credential.Flags, credential.SignCount, credential.BackupEligible, credential.BackupState, credential.CreatedAt.UTC()); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES($1,$2,$3,$4)`, "passkey_registered", username, true, ip); err != nil {
@@ -141,6 +148,33 @@ func (s *PostgresStore) CompleteWebAuthnRegistration(ctx context.Context, ceremo
 			return sql.ErrNoRows
 		}
 		return nil
+	})
+}
+
+func (s *PostgresStore) RevokeWebAuthnCredentialWithAudit(ctx context.Context, managementID string, userID int64, username, ip string, now time.Time) error {
+	if len(managementID) < 16 || len(managementID) > 128 || userID < 1 || username == "" || len(username) > 256 || now.IsZero() {
+		return errors.New("invalid WebAuthn revocation")
+	}
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	return s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		var storedUsername string
+		if err := tx.QueryRow(ctx, `SELECT u.username FROM webauthn_credentials c JOIN users u ON u.id=c.user_id WHERE c.management_id=$1 AND c.user_id=$2 AND c.revoked_at IS NULL FOR UPDATE OF c`, managementID, userID).Scan(&storedUsername); err != nil {
+			return postgresNotFound(err)
+		}
+		if storedUsername != username {
+			return sql.ErrNoRows
+		}
+		result, err := tx.Exec(ctx, `UPDATE webauthn_credentials SET revoked_at=$1 WHERE management_id=$2 AND user_id=$3 AND revoked_at IS NULL`, now.UTC(), managementID, userID)
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected() != 1 {
+			return sql.ErrNoRows
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES($1,$2,$3,$4)`, "passkey_revoked", username, true, ip)
+		return err
 	})
 }
 

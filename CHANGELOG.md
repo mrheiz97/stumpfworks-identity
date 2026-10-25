@@ -40,6 +40,10 @@ All notable changes to StumpfWorks Identity are documented here.
   It shows only the bounded name, creation/last-use time and whether the
   authenticator is device-bound or sync-capable; credential IDs, public keys,
   user handles and counters never reach the template.
+- Added random Passkey management identifiers and transactional Self-Service
+  revocation on SQLite and PostgreSQL. Revocation requires the active session,
+  CSRF and a fresh AD-password check; credential state and the data-minimal
+  `passkey_revoked` audit event commit together or both roll back.
 
 ## [1.4.1] - 2026-10-21
 

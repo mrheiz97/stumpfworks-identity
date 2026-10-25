@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"net"
 	"strings"
@@ -11,6 +12,14 @@ import (
 )
 
 const webAuthnHandleBytes = 32
+
+func newWebAuthnManagementID() (string, error) {
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
 
 func validWebAuthnRPID(value string) bool {
 	if value == "" || len(value) > 253 || value != strings.ToLower(value) || net.ParseIP(value) != nil || strings.ContainsAny(value, ":/ \\") {
@@ -32,6 +41,7 @@ func validWebAuthnRPID(value string) bool {
 func validWebAuthnCredential(credential WebAuthnCredential) bool {
 	name := strings.TrimSpace(credential.Name)
 	return len(credential.CredentialID) >= 1 && len(credential.CredentialID) <= 4096 &&
+		len(credential.ManagementID) >= 16 && len(credential.ManagementID) <= 128 &&
 		credential.UserID > 0 && len(credential.PublicKey) >= 1 && len(credential.PublicKey) <= 8192 &&
 		validWebAuthnRPID(credential.RPID) && len(name) >= 1 && len(name) <= 64 && name == credential.Name &&
 		len(credential.Transports) <= 256 && len(credential.AttestationType) <= 64 && len(credential.AttestationFormat) <= 64 &&
@@ -139,7 +149,7 @@ func (s *Store) WebAuthnUserByHandle(ctx context.Context, handle []byte) (u User
 
 func scanSQLiteWebAuthnCredential(rows *sql.Rows) (WebAuthnCredential, error) {
 	var credential WebAuthnCredential
-	err := rows.Scan(&credential.CredentialID, &credential.UserID, &credential.PublicKey, &credential.RPID, &credential.Name, &credential.Transports, &credential.AttestationType, &credential.AttestationFormat, &credential.Flags, &credential.SignCount, &credential.BackupEligible, &credential.BackupState, &credential.CreatedAt, &credential.LastUsedAt, &credential.RevokedAt)
+	err := rows.Scan(&credential.CredentialID, &credential.ManagementID, &credential.UserID, &credential.PublicKey, &credential.RPID, &credential.Name, &credential.Transports, &credential.AttestationType, &credential.AttestationFormat, &credential.Flags, &credential.SignCount, &credential.BackupEligible, &credential.BackupState, &credential.CreatedAt, &credential.LastUsedAt, &credential.RevokedAt)
 	credential.CredentialID = append([]byte(nil), credential.CredentialID...)
 	credential.PublicKey = append([]byte(nil), credential.PublicKey...)
 	return credential, err
@@ -149,7 +159,7 @@ func (s *Store) WebAuthnCredentialsByUser(ctx context.Context, userID int64) ([]
 	if userID < 1 {
 		return nil, errors.New("invalid WebAuthn user")
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at,last_used_at,revoked_at FROM webauthn_credentials WHERE user_id=? AND revoked_at IS NULL ORDER BY created_at,credential_id`, userID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT credential_id,management_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at,last_used_at,revoked_at FROM webauthn_credentials WHERE user_id=? AND revoked_at IS NULL ORDER BY created_at,credential_id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +176,13 @@ func (s *Store) WebAuthnCredentialsByUser(ctx context.Context, userID int64) ([]
 }
 
 func (s *Store) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, audience string, now time.Time, credential WebAuthnCredential, username, ip string) error {
+	if credential.ManagementID == "" {
+		var err error
+		credential.ManagementID, err = newWebAuthnManagementID()
+		if err != nil {
+			return err
+		}
+	}
 	if ceremonyID == "" || len(ceremonyID) > 128 || audience != "self-service" && audience != "admin" || now.IsZero() || !validWebAuthnCredential(credential) {
 		return errors.New("invalid WebAuthn registration")
 	}
@@ -186,7 +203,7 @@ func (s *Store) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, au
 	if userID != credential.UserID || storedUsername != username {
 		return sql.ErrNoRows
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO webauthn_credentials(credential_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, credential.CredentialID, credential.UserID, credential.PublicKey, credential.RPID, credential.Name, credential.Transports, credential.AttestationType, credential.AttestationFormat, credential.Flags, credential.SignCount, credential.BackupEligible, credential.BackupState, credential.CreatedAt.UTC()); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO webauthn_credentials(credential_id,management_id,user_id,public_key,rp_id,name,transports,attestation_type,attestation_format,flags,sign_count,backup_eligible,backup_state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, credential.CredentialID, credential.ManagementID, credential.UserID, credential.PublicKey, credential.RPID, credential.Name, credential.Transports, credential.AttestationType, credential.AttestationFormat, credential.Flags, credential.SignCount, credential.BackupEligible, credential.BackupState, credential.CreatedAt.UTC()); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES(?,?,?,?)`, "passkey_registered", username, true, ip); err != nil {
@@ -198,6 +215,38 @@ func (s *Store) CompleteWebAuthnRegistration(ctx context.Context, ceremonyID, au
 	}
 	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
 		return sql.ErrNoRows
+	}
+	return tx.Commit()
+}
+
+func (s *Store) RevokeWebAuthnCredentialWithAudit(ctx context.Context, managementID string, userID int64, username, ip string, now time.Time) error {
+	if len(managementID) < 16 || len(managementID) > 128 || userID < 1 || username == "" || len(username) > 256 || now.IsZero() {
+		return errors.New("invalid WebAuthn revocation")
+	}
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var storedUsername string
+	if err = tx.QueryRowContext(ctx, `SELECT u.username FROM webauthn_credentials c JOIN users u ON u.id=c.user_id WHERE c.management_id=? AND c.user_id=? AND c.revoked_at IS NULL`, managementID, userID).Scan(&storedUsername); err != nil {
+		return err
+	}
+	if storedUsername != username {
+		return sql.ErrNoRows
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE webauthn_credentials SET revoked_at=? WHERE management_id=? AND user_id=? AND revoked_at IS NULL`, now.UTC(), managementID, userID)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES(?,?,?,?)`, "passkey_revoked", username, true, ip); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

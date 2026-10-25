@@ -78,7 +78,7 @@ type selfServiceSessionView struct {
 	Current          bool
 }
 type selfServicePasskeyView struct {
-	Name, Created, LastUsed, Kind string
+	ManagementID, Name, Created, LastUsed, Kind string
 }
 
 func New(st database.ApplicationStore, l *slog.Logger) *Server {
@@ -426,7 +426,7 @@ func (s *Server) selfServicePage(w http.ResponseWriter, r *http.Request) {
 					if credential.BackupEligible {
 						kind = "Synced"
 					}
-					passkeyViews = append(passkeyViews, selfServicePasskeyView{Name: credential.Name, Created: credential.CreatedAt.UTC().Format("02 Jan 2006"), LastUsed: lastUsed, Kind: kind})
+					passkeyViews = append(passkeyViews, selfServicePasskeyView{ManagementID: credential.ManagementID, Name: credential.Name, Created: credential.CreatedAt.UTC().Format("02 Jan 2006"), LastUsed: lastUsed, Kind: kind})
 				}
 				data["Passkeys"] = passkeyViews
 				data["CSRF"] = s.sessions.CSRF(token)

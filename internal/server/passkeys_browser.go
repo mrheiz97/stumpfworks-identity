@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-const passkeyRegistrationTemplate = `<section class="passkey-panel" id="passkey-registration" data-csrf="{{.CSRF}}"><div class="self-section-head"><div><h2>My Passkeys</h2><p>Only public, non-identifying device metadata is shown.</p></div><span class="count">{{len .Passkeys}}</span></div>{{range .Passkeys}}<article class="passkey-row"><span><strong>{{.Name}}</strong><small>Added {{.Created}} · last used {{.LastUsed}}</small></span><span class="badge neutral">{{.Kind}}</span></article>{{else}}<p class="self-empty">No Passkeys are registered for your account.</p>{{end}}<div class="passkey-add"><div class="self-section-head"><div><h2>Add a Passkey</h2><p>Confirm your current AD password, then use this device or a security key.</p></div></div><form class="login-form" id="passkey-registration-form"><label><span>Passkey name</span><input name="name" maxlength="64" autocomplete="off" placeholder="e.g. Laptop or security key" required></label><label><span>Current AD password</span><input type="password" name="password" autocomplete="current-password" placeholder="Confirm your identity" required></label><button type="submit">Register Passkey</button></form><p class="passkey-status" id="passkey-registration-status" role="status" aria-live="polite"></p></div></section>`
+const passkeyRegistrationTemplate = `<section class="passkey-panel" id="passkey-registration" data-csrf="{{.CSRF}}"><div class="self-section-head"><div><h2>My Passkeys</h2><p>Only public, non-identifying device metadata is shown.</p></div><span class="count">{{len .Passkeys}}</span></div>{{range .Passkeys}}<article class="passkey-row"><span><strong>{{.Name}}</strong><small>Added {{.Created}} · last used {{.LastUsed}}</small><span class="badge neutral">{{.Kind}}</span></span><form class="passkey-revoke-form" data-management-id="{{.ManagementID}}"><label><span>Current AD password</span><input type="password" name="password" autocomplete="current-password" required></label><button class="danger small" type="submit">Remove</button></form><p class="passkey-status" role="status" aria-live="polite"></p></article>{{else}}<p class="self-empty">No Passkeys are registered for your account.</p>{{end}}<div class="passkey-add"><div class="self-section-head"><div><h2>Add a Passkey</h2><p>Confirm your current AD password, then use this device or a security key.</p></div></div><form class="login-form" id="passkey-registration-form"><label><span>Passkey name</span><input name="name" maxlength="64" autocomplete="off" placeholder="e.g. Laptop or security key" required></label><label><span>Current AD password</span><input type="password" name="password" autocomplete="current-password" placeholder="Confirm your identity" required></label><button type="submit">Register Passkey</button></form><p class="passkey-status" id="passkey-registration-status" role="status" aria-live="polite"></p></div></section>`
 
 const passkeyLoginTemplate = `<section class="passkey-panel passkey-login"><div class="passkey-divider"><span>or</span></div><button type="button" id="passkey-login-button">Continue with a Passkey</button><p class="passkey-status" id="passkey-login-status" role="status" aria-live="polite"></p></section>`
 
@@ -84,6 +84,18 @@ const passkeyBrowserJS = `"use strict";
       finally { button.disabled = false; }
     });
   }
+  document.querySelectorAll(".passkey-revoke-form").forEach(form => {
+    const button = form.querySelector("button");
+    const status = form.parentElement.querySelector(".passkey-status");
+    form.addEventListener("submit", async event => {
+      event.preventDefault(); button.disabled = true; show(status, "Removing Passkey…", false);
+      try {
+        await request("/self-service/passkeys/revoke", {management_id: form.dataset.managementId, password: form.elements.password.value}, registrationPanel.dataset.csrf);
+        form.elements.password.value = "";
+        location.reload();
+      } catch (_) { form.elements.password.value = ""; show(status, "The Passkey could not be removed.", true); button.disabled = false; }
+    });
+  });
 })();`
 
 func passkeyBrowserScript(w http.ResponseWriter, _ *http.Request) {

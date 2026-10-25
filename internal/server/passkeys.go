@@ -26,8 +26,46 @@ func (s *Server) ConfigurePasskeys(adapter *passkeyauth.Adapter) error {
 	s.mux.HandleFunc("POST /self-service/passkeys/registration/complete", s.passkeyRegistrationComplete)
 	s.mux.HandleFunc("POST /self-service/passkeys/login/begin", s.passkeyLoginBegin)
 	s.mux.HandleFunc("POST /self-service/passkeys/login/complete", s.passkeyLoginComplete)
+	s.mux.HandleFunc("POST /self-service/passkeys/revoke", s.passkeyRevoke)
 	s.mux.HandleFunc("GET /static/passkeys.js", passkeyBrowserScript)
 	return nil
+}
+
+func (s *Server) passkeyRevoke(w http.ResponseWriter, r *http.Request) {
+	username, _, token, ok := s.selfServiceSession(r)
+	if !ok || !s.sessions.VerifyCSRF(token, r.Header.Get("X-CSRF-Token")) {
+		s.problem(w, http.StatusForbidden, "authentication_required")
+		return
+	}
+	var request struct {
+		ManagementID string `json:"management_id"`
+		Password     string `json:"password"`
+	}
+	if decode(w, r, &request) != nil || request.Password == "" || len(request.ManagementID) < 16 || len(request.ManagementID) > 128 {
+		s.problem(w, http.StatusBadRequest, "revocation_failed")
+		return
+	}
+	ip := remoteIP(r)
+	if !s.loginAllowed("passkey-revocation:" + ip) {
+		s.problem(w, http.StatusTooManyRequests, "rate_limited")
+		return
+	}
+	directoryUser, err := s.dir.AuthenticateUser(r.Context(), username, request.Password)
+	request.Password = ""
+	if err != nil || directoryUser == nil || !strings.EqualFold(directoryUser.Username, username) {
+		s.loginFailed("passkey-revocation:" + ip)
+		s.audit(r.Context(), "passkey_revocation_denied", "", username, "", false, ip, "invalid_credentials")
+		s.problem(w, http.StatusUnauthorized, "revocation_failed")
+		return
+	}
+	user, err := s.store.UserByUsername(r.Context(), username)
+	if err != nil || s.store.RevokeWebAuthnCredentialWithAudit(r.Context(), request.ManagementID, user.ID, username, ip, time.Now().UTC()) != nil {
+		s.loginFailed("passkey-revocation:" + ip)
+		s.problem(w, http.StatusBadRequest, "revocation_failed")
+		return
+	}
+	s.loginSucceeded("passkey-revocation:" + ip)
+	s.json(w, http.StatusOK, map[string]string{"status": "revoked"})
 }
 
 func (s *Server) passkeyRegistrationBegin(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +88,7 @@ func (s *Server) passkeyRegistrationBegin(w http.ResponseWriter, r *http.Request
 	}
 	directoryUser, err := s.dir.AuthenticateUser(r.Context(), username, request.Password)
 	request.Password = ""
-	if err != nil || !strings.EqualFold(directoryUser.Username, username) {
+	if err != nil || directoryUser == nil || !strings.EqualFold(directoryUser.Username, username) {
 		s.loginFailed("passkey-registration:" + ip)
 		s.audit(r.Context(), "passkey_registration_denied", "", username, "", false, ip, "invalid_credentials")
 		s.problem(w, http.StatusUnauthorized, "invalid_credentials")

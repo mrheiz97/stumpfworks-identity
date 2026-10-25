@@ -192,6 +192,16 @@ and attestation data are not passed to the page. Revocation requires a separate
 random management identifier; the cryptographic credential ID must not be
 embedded in HTML, form values or request URLs.
 
+Each credential therefore receives a separate random management identifier.
+Existing SQLite credentials are assigned one during the local schema upgrade;
+PostgreSQL migration 4 adds and backfills the same contract. Self-service
+revocation accepts only this identifier, requires the active revocable session,
+CSRF and a fresh AD-password verification, and commits `revoked_at` together
+with a data-minimal `passkey_revoked` event. Wrong-user identifiers, replay and
+audit failure leave the credential active. The management identifier is never
+used for WebAuthn verification and the cryptographic credential ID remains out
+of HTML, URLs and audit records.
+
 Responses do not disclose whether a username, user handle or credential is
 registered. Rate limits apply to ceremony creation and completion in addition
 to existing login limits. Logs contain outcome, audience and bounded reason

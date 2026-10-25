@@ -20,6 +20,7 @@ type webAuthnFoundationStore interface {
 	WebAuthnCredentialsByUser(context.Context, int64) ([]WebAuthnCredential, error)
 	CompleteWebAuthnRegistration(context.Context, string, string, time.Time, WebAuthnCredential, string, string) error
 	CompleteWebAuthnAuthentication(context.Context, string, time.Time, WebAuthnAuthenticationUpdate, SelfServiceSession, string) error
+	RevokeWebAuthnCredentialWithAudit(context.Context, string, int64, string, string, time.Time) error
 	ActiveSelfServiceSession(context.Context, string, string, time.Time) (SelfServiceSession, error)
 	Audits(context.Context) ([]Audit, error)
 }
@@ -111,7 +112,7 @@ func testWebAuthnFoundationContract(t *testing.T, store webAuthnFoundationStore,
 		t.Fatalf("registered WebAuthn credential missing: %v", err)
 	}
 	stored := credentials[0]
-	if string(stored.CredentialID) != string(credential.CredentialID) || string(stored.PublicKey) != string(credential.PublicKey) || stored.RPID != credential.RPID || stored.Name != credential.Name || stored.Transports != credential.Transports || stored.AttestationType != credential.AttestationType || stored.AttestationFormat != credential.AttestationFormat || stored.Flags != credential.Flags || stored.SignCount != credential.SignCount || !stored.BackupEligible || !stored.BackupState {
+	if len(stored.ManagementID) < 16 || string(stored.CredentialID) != string(credential.CredentialID) || string(stored.PublicKey) != string(credential.PublicKey) || stored.RPID != credential.RPID || stored.Name != credential.Name || stored.Transports != credential.Transports || stored.AttestationType != credential.AttestationType || stored.AttestationFormat != credential.AttestationFormat || stored.Flags != credential.Flags || stored.SignCount != credential.SignCount || !stored.BackupEligible || !stored.BackupState {
 		t.Fatal("registered WebAuthn credential changed")
 	}
 	if err := store.CompleteWebAuthnRegistration(ctx, registration.ID, registration.Audience, now, credential, user.Username, "192.0.2.10"); !errors.Is(err, sql.ErrNoRows) {
@@ -278,6 +279,51 @@ func testAtomicWebAuthnAuthentication(t *testing.T, store webAuthnFoundationStor
 	}
 }
 
+func testAtomicWebAuthnRevocation(t *testing.T, store webAuthnFoundationStore, user User, setAuditFailure func(bool)) {
+	t.Helper()
+	ctx := t.Context()
+	credentials, err := store.WebAuthnCredentialsByUser(ctx, user.ID)
+	if err != nil || len(credentials) == 0 || credentials[0].ManagementID == "" {
+		t.Fatal("revocation fixture credential missing")
+	}
+	credential := credentials[0]
+	now := time.Now().UTC()
+	setAuditFailure(true)
+	if err := store.RevokeWebAuthnCredentialWithAudit(ctx, credential.ManagementID, user.ID, user.Username, "192.0.2.22", now); err == nil {
+		t.Fatal("Passkey revocation survived audit failure")
+	}
+	setAuditFailure(false)
+	credentials, err = store.WebAuthnCredentialsByUser(ctx, user.ID)
+	if err != nil || len(credentials) == 0 {
+		t.Fatal("Passkey was revoked despite audit failure")
+	}
+	if err := store.RevokeWebAuthnCredentialWithAudit(ctx, credential.ManagementID, user.ID+1, user.Username, "192.0.2.22", now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("Passkey revocation crossed user ownership")
+	}
+	if err := store.RevokeWebAuthnCredentialWithAudit(ctx, credential.ManagementID, user.ID, user.Username, "192.0.2.22", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RevokeWebAuthnCredentialWithAudit(ctx, credential.ManagementID, user.ID, user.Username, "192.0.2.22", now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("Passkey revocation replay accepted")
+	}
+	audits, err := store.Audits(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revocationAudits int
+	for _, audit := range audits {
+		if audit.EventType == "passkey_revoked" {
+			revocationAudits++
+			if audit.Username != user.Username || !audit.Success || audit.IPAddress != "192.0.2.22" || audit.Details != "" {
+				t.Fatal("Passkey revocation audit exposed or changed data")
+			}
+		}
+	}
+	if revocationAudits != 1 {
+		t.Fatalf("Passkey revocation audit count=%d, want 1", revocationAudits)
+	}
+}
+
 func TestSQLiteWebAuthnFoundation(t *testing.T) {
 	store, err := Open(":memory:")
 	if err != nil {
@@ -299,6 +345,15 @@ func TestSQLiteWebAuthnFoundation(t *testing.T) {
 		}
 	})
 	testAtomicWebAuthnAuthentication(t, store, user, func(reject bool) {
+		query := "DROP TRIGGER IF EXISTS fail_webauthn_audit"
+		if reject {
+			query = "CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log WHEN NEW.event_type LIKE 'passkey_%' BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END"
+		}
+		if _, err := store.DB.ExecContext(t.Context(), query); err != nil {
+			t.Fatal(err)
+		}
+	})
+	testAtomicWebAuthnRevocation(t, store, user, func(reject bool) {
 		query := "DROP TRIGGER IF EXISTS fail_webauthn_audit"
 		if reject {
 			query = "CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log WHEN NEW.event_type LIKE 'passkey_%' BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END"
