@@ -59,12 +59,18 @@ func TestPasskeysAreOptInAndEnvironmentOverrides(t *testing.T) {
 
 func TestEmergencyAdministratorIsOptIn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("emergency_admin:\n  enabled: false\n"), 0600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(path, []byte("emergency_admin:\n  enabled: false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	loaded, err := Load(path)
-	if err != nil || loaded.EmergencyAdminEnabled { t.Fatalf("unsafe emergency default: %+v %v", loaded, err) }
+	if err != nil || loaded.EmergencyAdminEnabled {
+		t.Fatalf("unsafe emergency default: %+v %v", loaded, err)
+	}
 	t.Setenv("SWBADGE_EMERGENCY_ADMIN_ENABLED", "true")
 	loaded, err = Load(path)
-	if err != nil || !loaded.EmergencyAdminEnabled { t.Fatalf("emergency opt-in failed: %+v %v", loaded, err) }
+	if err != nil || !loaded.EmergencyAdminEnabled {
+		t.Fatalf("emergency opt-in failed: %+v %v", loaded, err)
+	}
 }
 
 func TestFrameworkDirectoryReadsAreSeparatelyOptIn(t *testing.T) {
@@ -97,6 +103,27 @@ func TestAdministrativeRoleGroupsAreOptionalAndEnvironmentOverrides(t *testing.T
 	loaded, err = Load(path)
 	if err != nil || loaded.DirectoryAuditorGroup != "CN=Security Reviewers,DC=example,DC=test" {
 		t.Fatalf("role group environment override failed: %+v %v", loaded, err)
+	}
+}
+
+func TestIndentedEmptyValueDoesNotChangeSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "directory:\n  enabled: true\n  cert_sha256:\n  identity_auditor_group_dn: CN=Auditors,DC=example,DC=test\noidc:\n  signing_key_files:\n  issuer: https://identity.example.test\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.DirectoryCertSHA256 != "" {
+		t.Fatalf("empty certificate pin was not preserved: %q", loaded.DirectoryCertSHA256)
+	}
+	if loaded.DirectoryAuditorGroup != "CN=Auditors,DC=example,DC=test" {
+		t.Fatalf("key after empty value left directory section: %q", loaded.DirectoryAuditorGroup)
+	}
+	if loaded.OIDCSigningKeyFiles != "" || loaded.OIDCIssuer != "https://identity.example.test" {
+		t.Fatalf("empty OIDC value changed section: keys=%q issuer=%q", loaded.OIDCSigningKeyFiles, loaded.OIDCIssuer)
 	}
 }
 

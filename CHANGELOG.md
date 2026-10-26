@@ -2,6 +2,18 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [1.7.1] - 2026-10-26
+
+### Fixed
+
+- Fixed the deliberately small YAML reader treating an indented empty value
+  such as `cert_sha256:` as a new top-level section. Keys following such a
+  value now remain in their actual section, preventing optional administrative
+  role mappings from being silently skipped.
+- Added regression coverage for empty values in the directory and OIDC
+  sections. Existing quoted empty values and non-empty configuration remain
+  compatible.
+
 ## [1.7.0] - 2026-10-26
 
 ### Added

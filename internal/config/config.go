@@ -45,11 +45,15 @@ func Load(path string) (Config, error) {
 		section := ""
 		s := bufio.NewScanner(f)
 		for s.Scan() {
-			line := strings.TrimSpace(strings.SplitN(s.Text(), "#", 2)[0])
+			rawLine := strings.SplitN(s.Text(), "#", 2)[0]
+			line := strings.TrimSpace(rawLine)
 			if line == "" {
 				continue
 			}
-			if strings.HasSuffix(line, ":") {
+			// This deliberately small YAML reader supports only top-level
+			// sections. An indented empty value such as "cert_sha256:" is a
+			// key in the current section, not a new section.
+			if len(rawLine) == len(strings.TrimLeft(rawLine, " \t")) && strings.HasSuffix(line, ":") {
 				section = strings.TrimSuffix(line, ":")
 				continue
 			}
