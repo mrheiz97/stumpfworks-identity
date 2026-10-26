@@ -20,6 +20,10 @@ import (
 // runtime constructors never execute DDL. SQLite remains the default backend.
 type PostgresStore struct{ pool *frameworkpg.Pool }
 
+// FrameworkPool exposes the already-owned pool only for registration with
+// Framework observability. Runtime lifecycle remains owned by OpenRuntime.
+func (s *PostgresStore) FrameworkPool() *frameworkpg.Pool { return s.pool }
+
 func NewPostgresStore(pool *frameworkpg.Pool) (*PostgresStore, error) {
 	if pool == nil {
 		return nil, errors.New("Identity PostgreSQL pool required")

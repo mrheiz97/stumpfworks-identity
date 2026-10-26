@@ -49,6 +49,7 @@ type Server struct {
 	oidcStatus            oidcprovider.Status
 	passkeys              *passkeyauth.Adapter
 	emergencyAdminEnabled bool
+	auditObserver         interface{ ObserveAuditFailure() }
 }
 type loginGrant struct {
 	Username, ClientID string
@@ -95,8 +96,15 @@ func New(st database.ApplicationStore, l *slog.Logger) *Server {
 // sensitive mutations use explicit fail-closed store methods instead.
 func (s *Server) audit(ctx context.Context, event, badge, user, client string, success bool, ip, details string) {
 	if err := s.store.WriteAudit(ctx, database.Audit{EventType: event, BadgeID: badge, Username: user, ClientID: client, Success: success, IPAddress: ip, Details: details}); err != nil {
+		if s.auditObserver != nil {
+			s.auditObserver.ObserveAuditFailure()
+		}
 		s.log.Error("security audit write failed", "component", "audit", "event_type", event)
 	}
+}
+
+func (s *Server) ConfigureObservability(observer interface{ ObserveAuditFailure() }) {
+	s.auditObserver = observer
 }
 func (s *Server) ConfigureClientTargetVersion(target string) error {
 	if target == "" {

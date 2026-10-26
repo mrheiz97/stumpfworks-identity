@@ -40,6 +40,19 @@ jobs:
           fi
           echo "IDENTITY_TEST_PG_DUMP=$(command -v pg_dump)" >> "$GITHUB_ENV"
           echo "IDENTITY_TEST_PG_RESTORE=$(command -v pg_restore)" >> "$GITHUB_ENV"
+      - name: Prometheus tooling
+        run: |
+          if ! command -v promtool >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends prometheus
+          fi
+          sudo install -d -m 0700 /etc/prometheus/secrets /etc/prometheus/pki
+          printf '%s\n' 'ci-placeholder-not-a-secret' | sudo tee /etc/prometheus/secrets/identity-metrics-token >/dev/null
+          sudo chown -R "$(id -u):$(id -g)" /etc/prometheus/secrets /etc/prometheus/pki
+          chmod 0600 /etc/prometheus/secrets/identity-metrics-token
+          sudo cp /etc/ssl/certs/ca-certificates.crt /etc/prometheus/pki/stumpfworks-homelab-ca.crt
+          promtool check config deploy/prometheus/identity-scrape.yml
+          promtool check rules deploy/prometheus/identity-rules.yml
       - name: Go tests
         env:
           # Synthetic service credentials, never production credentials.

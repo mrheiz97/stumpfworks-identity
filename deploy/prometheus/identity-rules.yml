@@ -1,0 +1,57 @@
+groups:
+  - name: stumpfworks-identity
+    rules:
+      - alert: StumpfWorksIdentityDown
+        expr: up{job="stumpfworks-identity"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: StumpfWorks Identity is unavailable
+      - alert: StumpfWorksIdentityCollectorErrors
+        expr: increase(sw_identity_collection_errors_total[10m]) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: Identity aggregate metric collection is failing
+      - alert: StumpfWorksIdentityAuditWriteFailure
+        expr: increase(sw_identity_audit_write_failures_total[10m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Identity security audit writes are failing
+      - alert: StumpfWorksIdentityDirectoryUnavailable
+        expr: increase(swf_directory_lookups_total{outcome=~"timeout|unavailable"}[10m]) > 2
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: Identity directory lookups are unavailable
+      - alert: StumpfWorksIdentityDatabasePoolExhausted
+        expr: swf_postgres_connections{state="acquired"} >= swf_postgres_connections{state="max"}
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Identity PostgreSQL pool is exhausted
+      - alert: StumpfWorksIdentityClientStale
+        expr: (sw_identity_clients{state=~"stale|unhealthy"} > 0) unless on() (sw_identity_maintenance_mode == 1)
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: One or more Identity clients are stale or unhealthy
+      - alert: StumpfWorksIdentityCertificateExpiring
+        expr: sw_identity_certificate_not_after_seconds - time() < 30 * 24 * 60 * 60
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: The Identity HTTPS certificate expires within 30 days
+      - alert: StumpfWorksIdentityBackupOld
+        expr: (time() - sw_identity_backup_timestamp_seconds > 26 * 60 * 60) unless on() (sw_identity_maintenance_mode == 1)
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: The latest verified Identity backup is too old
+      - alert: StumpfWorksIdentityOperationFailures
+        expr: sum(rate(sw_identity_operations_total{outcome="failure"}[10m])) / clamp_min(sum(rate(sw_identity_operations_total[10m])), 0.001) > 0.2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: Identity operation failure ratio is elevated

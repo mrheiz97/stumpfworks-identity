@@ -144,13 +144,16 @@ func TestMetricsAreOptInAndTokenComesFromProtectedInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := "metrics:\n  enabled: true\n  token_file: \"" + secretFile + "\"\n"
+	contents := "metrics:\n  enabled: true\n  token_file: \"" + secretFile + "\"\n  backup_path: /protected/latest.db\n  maintenance_file: /run/identity-maintenance\n"
 	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := Load(path)
 	if err != nil || !loaded.MetricsEnabled || loaded.MetricsToken != "synthetic-metrics-token-at-least-32-bytes" {
 		t.Fatalf("metrics secret file was not loaded: enabled=%t token_length=%d err=%v", loaded.MetricsEnabled, len(loaded.MetricsToken), err)
+	}
+	if loaded.MetricsBackupPath != "/protected/latest.db" || loaded.MetricsMaintenanceFile != "/run/identity-maintenance" {
+		t.Fatalf("metrics operational paths not loaded: %+v", loaded)
 	}
 	t.Setenv("SWBADGE_METRICS_TOKEN", "environment-metrics-token-at-least-32-bytes")
 	loaded, err = Load(path)
