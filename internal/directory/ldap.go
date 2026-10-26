@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
 	"github.com/go-ldap/ldap/v3"
 )
 
@@ -24,7 +25,15 @@ var (
 	ErrUserNotFound       = errors.New("directory user not found")
 )
 
-type LDAP struct{ URL, BaseDN, BindDN, BindPassword, Domain, AdminGroupDN, CAFile, CertSHA256 string }
+type LDAP struct {
+	URL, BaseDN, BindDN, BindPassword, Domain, AdminGroupDN, CAFile, CertSHA256 string
+	IdentityOperatorGroupDN, OIDCOperatorGroupDN                                string
+	ClientOperatorGroupDN, AuditorGroupDN                                       string
+}
+
+type ldapSearcher interface {
+	Search(*ldap.SearchRequest) (*ldap.SearchResult, error)
+}
 
 func (d LDAP) connect(ctx context.Context) (*ldap.Conn, error) {
 	pool, err := x509.SystemCertPool()
@@ -154,16 +163,130 @@ func (d LDAP) AuthenticateAdmin(ctx context.Context, username, password string) 
 		service.Close()
 		return nil, ErrInvalidCredentials
 	}
-	filter := fmt.Sprintf("(&(distinguishedName=%s)(member:1.2.840.113556.1.4.1941:=%s))", ldap.EscapeFilter(d.AdminGroupDN), ldap.EscapeFilter(u.DN))
-	groups, e := service.Search(ldap.NewSearchRequest(d.BaseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 1, 8, false, filter, []string{"distinguishedName"}, nil))
+	roles, e := d.rolesForDN(service, u.DN)
 	service.Close()
 	if e != nil {
 		return nil, e
 	}
-	if len(groups.Entries) != 1 {
+	if !hasRole(roles, adminauth.RoleAdmin) {
 		return nil, ErrNotAuthorized
 	}
 	return d.authenticateUser(ctx, u, username, password)
+}
+
+// AdministrativeRoles resolves the user's current recursive role memberships
+// over a service-bound connection. It does not authenticate a password.
+func (d LDAP) AdministrativeRoles(ctx context.Context, username string) ([]adminauth.Role, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, ErrNotAuthorized
+	}
+	service, err := d.serviceConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer service.Close()
+	u, err := d.searchOne(service, username)
+	if err != nil {
+		return nil, ErrNotAuthorized
+	}
+	roles, err := d.rolesForDN(service, u.DN)
+	if err != nil {
+		return nil, err
+	}
+	if len(roles) == 0 {
+		return nil, ErrNotAuthorized
+	}
+	return roles, nil
+}
+
+// AuthenticateAdministrative accepts a user belonging to any configured
+// administrative role. The legacy AuthenticateAdmin method remains restricted
+// to the full administrator group.
+func (d LDAP) AuthenticateAdministrative(ctx context.Context, username, password string) (*User, []adminauth.Role, error) {
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return nil, nil, ErrInvalidCredentials
+	}
+	service, err := d.serviceConn(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	u, err := d.searchOne(service, username)
+	if err != nil {
+		service.Close()
+		return nil, nil, ErrInvalidCredentials
+	}
+	roles, err := d.rolesForDN(service, u.DN)
+	service.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(roles) == 0 {
+		return nil, nil, ErrNotAuthorized
+	}
+	u, err = d.authenticateUser(ctx, u, username, password)
+	if err != nil {
+		return nil, nil, err
+	}
+	return u, roles, nil
+}
+
+func (d LDAP) rolesForDN(searcher ldapSearcher, userDN string) ([]adminauth.Role, error) {
+	groups := []struct {
+		role adminauth.Role
+		dn   string
+	}{
+		{adminauth.RoleAdmin, d.AdminGroupDN},
+		{adminauth.RoleOperator, d.IdentityOperatorGroupDN},
+		{adminauth.RoleOIDCOperator, d.OIDCOperatorGroupDN},
+		{adminauth.RoleClientOperator, d.ClientOperatorGroupDN},
+		{adminauth.RoleAuditor, d.AuditorGroupDN},
+	}
+	dnRoles := make(map[string]adminauth.Role)
+	filters := make([]string, 0, len(groups))
+	for _, group := range groups {
+		dn := strings.TrimSpace(group.dn)
+		if dn == "" {
+			continue
+		}
+		dnRoles[strings.ToLower(dn)] = group.role
+		filters = append(filters, "(distinguishedName="+ldap.EscapeFilter(dn)+")")
+	}
+	if len(filters) == 0 {
+		return nil, nil
+	}
+	filter := fmt.Sprintf("(&(|%s)(member:1.2.840.113556.1.4.1941:=%s))", strings.Join(filters, ""), ldap.EscapeFilter(userDN))
+	result, err := searcher.Search(ldap.NewSearchRequest(d.BaseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, len(filters), 8, false, filter, []string{"distinguishedName"}, nil))
+	if err != nil {
+		return nil, err
+	}
+	found := make(map[adminauth.Role]struct{})
+	for _, entry := range result.Entries {
+		dn := entry.GetAttributeValue("distinguishedName")
+		if dn == "" {
+			dn = entry.DN
+		}
+		if role, ok := dnRoles[strings.ToLower(strings.TrimSpace(dn))]; ok {
+			found[role] = struct{}{}
+		}
+	}
+	roles := make([]adminauth.Role, 0, len(found))
+	for _, group := range groups {
+		if _, ok := found[group.role]; ok {
+			roles = append(roles, group.role)
+		}
+	}
+	return roles, nil
+}
+
+func hasRole(roles []adminauth.Role, wanted adminauth.Role) bool {
+	for _, role := range roles {
+		if role == wanted {
+			return true
+		}
+	}
+	return false
 }
 func (d LDAP) AuthenticateUser(ctx context.Context, username, password string) (*User, error) {
 	username = strings.TrimSpace(username)

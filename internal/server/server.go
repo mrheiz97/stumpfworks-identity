@@ -174,7 +174,32 @@ func (s *Server) adminGuard(next http.Handler) http.Handler {
 		}
 		c, e := r.Cookie("swbadge_admin")
 		if e == nil {
-			if _, e = s.sessions.Verify(c.Value, time.Now()); e == nil {
+			if username, verifyErr := s.sessions.Verify(c.Value, time.Now()); verifyErr == nil {
+				// Signing out must remain possible during a directory outage or
+				// immediately after all administrative roles have been removed.
+				if r.URL.Path == "/logout" {
+					_ = r.ParseForm()
+					token := r.FormValue("_csrf")
+					if token == "" {
+						token = r.Header.Get("X-CSRF-Token")
+					}
+					if !s.sessions.VerifyCSRF(c.Value, token) {
+						s.problem(w, http.StatusForbidden, "csrf_invalid")
+						return
+					}
+					next.ServeHTTP(w, r)
+					return
+				}
+				roles, roleErr := s.currentAdministrativeRoles(r.Context(), username)
+				if roleErr != nil {
+					s.authorizationDenied(w, r, roleErr)
+					return
+				}
+				permission := requiredAdministrativePermission(r)
+				if !adminauth.Allowed(permission, roles...) {
+					s.problem(w, http.StatusForbidden, "authorization_required")
+					return
+				}
 				if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 					_ = r.ParseForm()
 					token := r.FormValue("_csrf")
@@ -186,7 +211,7 @@ func (s *Server) adminGuard(next http.Handler) http.Handler {
 						return
 					}
 				}
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, r.WithContext(withAdministrativeRoles(r.Context(), roles)))
 				return
 			}
 		}
@@ -264,7 +289,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
-	u, e := s.dir.AuthenticateAdmin(r.Context(), username, r.FormValue("password"))
+	var u *directory.User
+	var e error
+	if administrative, ok := s.dir.(directory.AdministrativeDirectory); ok {
+		u, _, e = administrative.AuthenticateAdministrative(r.Context(), username, r.FormValue("password"))
+	} else {
+		u, e = s.dir.AuthenticateAdmin(r.Context(), username, r.FormValue("password"))
+	}
 	if e != nil {
 		s.loginFailed(ip)
 		s.log.Warn("admin login denied", "event", "admin_login_failed", "username", username, "ip_address", remoteIP(r))
@@ -351,10 +382,17 @@ func (s *Server) pinPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, _ := r.Cookie("swbadge_admin")
-	data := map[string]any{"Users": users, "CSRF": s.sessions.CSRF(c.Value)}
+	data := map[string]any{"Users": users, "CSRF": s.sessions.CSRF(c.Value), "CanCredentialsWrite": requestCan(r, adminauth.PermissionCredentialsWrite)}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = template.Must(template.New("pin").Parse(pinTemplate)).Execute(w, data)
+	_ = template.Must(template.New("pin").Parse(permissionAwarePINTemplate())).Execute(w, data)
+}
+
+func permissionAwarePINTemplate() string {
+	result := strings.Replace(pinTemplate, `<th>Action</th>`, `{{if .CanCredentialsWrite}}<th>Action</th>{{end}}`, 1)
+	const actionStart = `<td><form class="pin-form"`
+	result = strings.Replace(result, actionStart, `{{if $.CanCredentialsWrite}}`+actionStart, 1)
+	return strings.Replace(result, `</form></td></tr>{{end}}</tbody>`, `</form></td>{{end}}</tr>{{end}}</tbody>`, 1)
 }
 func (s *Server) selfServiceSession(r *http.Request) (string, string, string, bool) {
 	if !s.protect || s.sessions == nil {
@@ -897,8 +935,20 @@ var page = template.Must(template.New("page").Parse(webPageTemplate()))
 func webPageTemplate() string {
 	result := strings.Replace(webTemplate, `{{if .Enabled}}<span class="badge success">Active</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}`, `{{if .Enabled}}<span class="badge success">Active</span>{{else if .ActivationPending}}<span class="badge warning">Pending activation</span>{{else}}<span class="badge neutral">Revoked</span>{{end}}`, 1)
 	result = strings.Replace(result, `<a href="/oidc-clients"><span>↗</span>OIDC clients</a>`, `<a href="/oidc-clients"><span>↗</span>OIDC clients</a><a href="/oidc-sessions"><span>◌</span>OIDC sessions</a>`, 1)
+	result = strings.Replace(result, `<a class="{{if eq .Path "/users"}}active{{end}}" href="/users"><span>◎</span>Users</a>`, `{{if .CanIdentityRead}}<a class="{{if eq .Path "/users"}}active{{end}}" href="/users"><span>◎</span>Users</a>{{end}}`, 1)
+	result = strings.Replace(result, `<a class="{{if eq .Path "/badges"}}active{{end}}" href="/badges"><span>◇</span>Badges</a>`, `{{if .CanCredentialsRead}}<a class="{{if eq .Path "/badges"}}active{{end}}" href="/badges"><span>◇</span>Badges</a>{{end}}`, 1)
+	result = strings.Replace(result, `<a class="{{if eq .Path "/audit"}}active{{end}}" href="/audit"><span>≡</span>Audit log</a>`, `{{if .CanAuditRead}}<a class="{{if eq .Path "/audit"}}active{{end}}" href="/audit"><span>≡</span>Audit log</a>{{end}}`, 1)
+	result = strings.Replace(result, `<a href="/oidc-clients"><span>↗</span>OIDC clients</a>`, `{{if .CanOIDCRead}}<a href="/oidc-clients"><span>↗</span>OIDC clients</a>{{end}}`, 1)
+	result = strings.Replace(result, `<a href="/oidc-sessions"><span>◌</span>OIDC sessions</a>`, `{{if .CanOIDCSessionsRead}}<a href="/oidc-sessions"><span>◌</span>OIDC sessions</a>{{end}}`, 1)
+	result = strings.Replace(result, `<a class="{{if eq .Path "/status"}}active{{end}}" href="/status"><span>◉</span>System status</a>`, `{{if .CanSystemRead}}<a class="{{if eq .Path "/status"}}active{{end}}" href="/status"><span>◉</span>System status</a>{{end}}`, 1)
+	result = strings.Replace(result, `<form method="post" action="/directory/users/import"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><button class="small" type="submit">Import</button></form>`, `{{if $.CanIdentityWrite}}<form method="post" action="/directory/users/import"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><button class="small" type="submit">Import</button></form>{{end}}`, 1)
+	result = strings.Replace(result, `<a class="button secondary" href="/pin">Manage PINs</a>`, `{{if .CanCredentialsWrite}}<a class="button secondary" href="/pin">Manage PINs</a>{{end}}`, 1)
+	const issueStart = `<section class="panel"><div class="panel-head"><div><h2>Issue a new badge</h2>`
+	result = strings.Replace(result, issueStart, `{{if .CanCredentialsWrite}}`+issueStart, 1)
+	const issuedStart = `<section class="panel"><div class="panel-head"><div><h2>Issued badges</h2>`
+	result = strings.Replace(result, issuedStart, `{{end}}`+issuedStart, 1)
 	const revoke = `<form method="post" action="/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Revoke</button></form>`
-	return strings.Replace(result, revoke, revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>`, 1)
+	return strings.Replace(result, revoke, `{{if $.CanCredentialsWrite}}`+revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>{{end}}`, 1)
 }
 
 func (s *Server) web(w http.ResponseWriter, r *http.Request) {
@@ -906,9 +956,18 @@ func (s *Server) web(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	users, _ := s.store.Users(r.Context())
-	badges, _ := s.store.Badges(r.Context())
-	audits, _ := s.store.Audits(r.Context())
+	var users []database.User
+	var badges []database.Badge
+	var audits []database.Audit
+	if r.URL.Path == "/users" || r.URL.Path == "/badges" {
+		users, _ = s.store.Users(r.Context())
+	}
+	if r.URL.Path == "/badges" {
+		badges, _ = s.store.Badges(r.Context())
+	}
+	if r.URL.Path == "/audit" {
+		audits, _ = s.store.Audits(r.Context())
+	}
 	var adUsers []directory.User
 	if s.dir != nil && r.URL.Path == "/users" {
 		adUsers, _ = s.dir.ListUsers(r.Context())
@@ -922,7 +981,13 @@ func (s *Server) web(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("database counts failed", "component", "database")
 		stats = map[string]int64{}
 	}
-	data := map[string]any{"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": stats, "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload")}
+	data := map[string]any{
+		"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": stats, "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload"),
+		"CanIdentityRead": requestCan(r, adminauth.PermissionIdentityRead), "CanIdentityWrite": requestCan(r, adminauth.PermissionIdentityWrite),
+		"CanCredentialsRead": requestCan(r, adminauth.PermissionCredentialsRead), "CanCredentialsWrite": requestCan(r, adminauth.PermissionCredentialsWrite),
+		"CanAuditRead": requestCan(r, adminauth.PermissionAuditRead), "CanOIDCRead": requestCan(r, adminauth.PermissionOIDCRead),
+		"CanOIDCSessionsRead": requestCan(r, adminauth.PermissionOIDCSessionsRead), "CanSystemRead": requestCan(r, adminauth.PermissionSystemRead),
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = page.Execute(w, data)

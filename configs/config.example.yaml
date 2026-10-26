@@ -19,6 +19,10 @@ directory:
   bind_password: ""
   domain: "example.test"
   admin_group_dn: "CN=SWBadge-Admins,CN=Users,DC=example,DC=test"
+  identity_operator_group_dn: ""
+  oidc_operator_group_dn: ""
+  client_operator_group_dn: ""
+  identity_auditor_group_dn: ""
   ca_file: ""
 
 auth:

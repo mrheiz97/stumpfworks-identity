@@ -2,6 +2,39 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [1.6.0] - 2026-10-26
+
+### Added
+
+- Added optional recursive AD group mappings for Identity, OIDC and client
+  operators plus a read-only auditor. The existing administrator group remains
+  the unrestricted recovery role, and installations without optional mappings
+  retain their previous behavior.
+- Added a server-side permission matrix shared by HTML and JSON administration
+  routes. Current group membership is resolved for every privileged request;
+  membership removal and directory failures therefore fail closed without
+  waiting for the signed cookie to expire.
+- Added permission-aware navigation, mutation controls and a dedicated
+  read-only OIDC operations view. UI visibility remains a usability feature;
+  direct requests are independently authorized by the server.
+- Added SQLite and PostgreSQL authorization contracts covering bounded roles,
+  direct denied writes, transactional operator changes and audit, role unions,
+  unknown roles, role removal, LDAP failure and legacy administrator
+  compatibility.
+- Added production rollout and rollback guidance with empty-group compatibility,
+  one-role-at-a-time activation and preserved OIDC, AD-password, Passkey,
+  Badge/PIN, Greeter, PKINIT and Kerberos acceptance checks.
+
+### Security
+
+- Administrative cookies continue to contain only their audience, username
+  and expiry. Role names and AD group DNs are neither stored in the browser nor
+  emitted as OIDC claims.
+- Logout remains available with a valid session-bound CSRF proof after role
+  removal or during a directory outage; other privileged requests fail closed.
+- Duplicate configured role group DNs are rejected at startup, including
+  case-only duplicates, to prevent ambiguous policy assignments.
+
 ## [1.5.0] - 2026-10-25
 
 ### Added

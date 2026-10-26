@@ -1,6 +1,10 @@
 package directory
 
-import "context"
+import (
+	"context"
+
+	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
+)
 
 type User struct{ Username, DisplayName, DN, Mail string }
 type Directory interface {
@@ -9,6 +13,14 @@ type Directory interface {
 	ListUsers(context.Context) ([]User, error)
 	AuthenticateUser(context.Context, string, string) (*User, error)
 	AuthenticateAdmin(context.Context, string, string) (*User, error)
+}
+
+// AdministrativeDirectory resolves current administrative roles separately
+// from the legacy full-administrator authentication boundary.
+type AdministrativeDirectory interface {
+	Directory
+	AdministrativeRoles(context.Context, string) ([]adminauth.Role, error)
+	AuthenticateAdministrative(context.Context, string, string) (*User, []adminauth.Role, error)
 }
 type Local struct{}
 

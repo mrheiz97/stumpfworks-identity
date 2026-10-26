@@ -4,7 +4,19 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
 )
+
+type administrativeTestDirectory struct{ Local }
+
+func (administrativeTestDirectory) AdministrativeRoles(context.Context, string) ([]adminauth.Role, error) {
+	return []adminauth.Role{adminauth.RoleAuditor}, nil
+}
+
+func (administrativeTestDirectory) AuthenticateAdministrative(_ context.Context, username, _ string) (*User, []adminauth.Role, error) {
+	return &User{Username: username}, []adminauth.Role{adminauth.RoleAuditor}, nil
+}
 
 func TestLookupOverlayBoundary(t *testing.T) {
 	called := false
@@ -26,6 +38,27 @@ func TestLookupOverlayBoundary(t *testing.T) {
 	}
 	if _, err := d.AuthenticateAdmin(context.Background(), "alice", "synthetic"); err != nil || called {
 		t.Fatal("admin policy boundary changed")
+	}
+}
+
+func TestLookupOverlayPreservesAdministrativePolicyBoundary(t *testing.T) {
+	d, err := WithUserLookup(administrativeTestDirectory{}, func(_ context.Context, name string) (*User, error) {
+		return &User{Username: name}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	administrative, ok := d.(AdministrativeDirectory)
+	if !ok {
+		t.Fatal("framework lookup overlay hid administrative role resolver")
+	}
+	roles, err := administrative.AdministrativeRoles(context.Background(), "alice")
+	if err != nil || len(roles) != 1 || roles[0] != adminauth.RoleAuditor {
+		t.Fatalf("role resolution was not delegated: %v %v", roles, err)
+	}
+	user, roles, err := administrative.AuthenticateAdministrative(context.Background(), "alice", "synthetic")
+	if err != nil || user.Username != "alice" || len(roles) != 1 || roles[0] != adminauth.RoleAuditor {
+		t.Fatalf("administrative authentication was not delegated: %+v %v %v", user, roles, err)
 	}
 }
 
