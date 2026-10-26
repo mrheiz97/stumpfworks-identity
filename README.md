@@ -68,6 +68,9 @@ Always install the deployment CA correctly. Never bypass TLS verification.
 - Administrative and self-service sessions use separate signed audiences.
 - Administrative routes enforce current recursive AD role membership; role
   names and group DNs are not stored in browser sessions or OIDC claims.
+- Optional time-limited emergency administration uses single-use hashed grants,
+  server-side revocable sessions and transactional audit; it is disabled by
+  default and does not replace the AD administrator login.
 - AD credentials are verified over LDAPS and are never persisted.
 - Normal username/password login remains available as a recovery path.
 
@@ -104,6 +107,7 @@ docs/                Architecture, API, security and operations guides
 - [Security model](docs/security.md)
 - [Administrative roles and permissions](docs/roles-and-permissions.md)
 - [Administrative role rollout and rollback](docs/roles-rollout.md)
+- [Time-limited emergency administration](docs/emergency-admin.md)
 - [Client device authentication plan](docs/client-device-authentication.md)
 - [Passkey and WebAuthn plan](docs/passkeys.md)
 - [Operations and recovery](docs/operations.md)

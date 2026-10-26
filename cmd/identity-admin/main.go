@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
@@ -25,6 +28,9 @@ type identityAdminStore interface {
 	SetOIDCClientEnabledWithAudit(context.Context, string, bool, string) error
 	UserByUsername(context.Context, string) (database.User, error)
 	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
+	CreateEmergencyAdminGrantWithAudit(context.Context, database.EmergencyAdminGrant, string) error
+	EmergencyAdminGrants(context.Context, time.Time) ([]database.EmergencyAdminGrant, error)
+	RevokeEmergencyAdminGrantWithAudit(context.Context, string, string) error
 }
 
 type values []string
@@ -48,7 +54,7 @@ func execute(args []string, output io.Writer) error {
 	}
 	args = global.Args()
 	if len(args) == 0 {
-		return errors.New("command required: oidc-client or oidc-subject")
+		return errors.New("command required: oidc-client, oidc-subject, or emergency-admin")
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -67,9 +73,74 @@ func execute(args []string, output io.Writer) error {
 		return clientCommand(context.Background(), store, args[1:], output)
 	case "oidc-subject":
 		return subjectCommand(context.Background(), store, args[1:], output)
+	case "emergency-admin":
+		if !cfg.EmergencyAdminEnabled {
+			return errors.New("emergency administrator access is disabled")
+		}
+		return emergencyAdminCommand(context.Background(), store, args[1:], output)
 	default:
 		return errors.New("unknown command")
 	}
+}
+
+func emergencyAdminCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {
+	if len(args) == 0 {
+		return errors.New("emergency-admin action required: issue, list, or revoke")
+	}
+	action := args[0]
+	fs := flag.NewFlagSet("emergency-admin "+action, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	minutes := fs.Int("minutes", 15, "lifetime in minutes (5-60)")
+	id := fs.String("id", "", "emergency grant ID")
+	if err := fs.Parse(args[1:]); err != nil {
+		return errors.New("invalid emergency-admin arguments")
+	}
+	switch action {
+	case "issue":
+		if *minutes < 5 || *minutes > 60 {
+			return errors.New("emergency lifetime must be between 5 and 60 minutes")
+		}
+		grantID, err := newSecret()
+		if err != nil {
+			return errors.New("secure random generation failed")
+		}
+		token, err := newSecret()
+		if err != nil {
+			return errors.New("secure random generation failed")
+		}
+		sum := sha256.Sum256([]byte(token))
+		now := time.Now().UTC()
+		grant := database.EmergencyAdminGrant{ID: grantID, TokenHash: hex.EncodeToString(sum[:]), CreatedAt: now, ExpiresAt: now.Add(time.Duration(*minutes) * time.Minute)}
+		if err = store.CreateEmergencyAdminGrantWithAudit(ctx, grant, ""); err != nil {
+			return errors.New("emergency grant creation failed")
+		}
+		fmt.Fprintf(output, "grant_id=%s\nemergency_token=%s\nexpires_at=%s\nnotice=This token is shown once and can be used only once.\n", grant.ID, token, grant.ExpiresAt.Format(time.RFC3339))
+	case "list":
+		grants, err := store.EmergencyAdminGrants(ctx, time.Now().UTC())
+		if err != nil {
+			return errors.New("emergency grants could not be listed")
+		}
+		for _, grant := range grants {
+			status := "unused"
+			if grant.RevokedAt.Valid {
+				status = "revoked"
+			} else if grant.ConsumedAt.Valid {
+				status = "active"
+			}
+			fmt.Fprintf(output, "grant_id=%s status=%s expires_at=%s\n", grant.ID, status, grant.ExpiresAt.UTC().Format(time.RFC3339))
+		}
+	case "revoke":
+		if strings.TrimSpace(*id) == "" || len(*id) > 128 {
+			return errors.New("valid emergency grant ID required")
+		}
+		if err := store.RevokeEmergencyAdminGrantWithAudit(ctx, *id, ""); err != nil {
+			return errors.New("emergency grant revocation failed")
+		}
+		fmt.Fprintf(output, "grant_id=%s\nrevoked=true\n", *id)
+	default:
+		return errors.New("unknown emergency-admin action")
+	}
+	return nil
 }
 
 func clientCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {

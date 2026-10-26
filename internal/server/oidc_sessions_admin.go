@@ -41,8 +41,8 @@ func (s *Server) oidcSessionsPage(w http.ResponseWriter, r *http.Request) {
 		views = append(views, oidcSessionView{SessionID: session.SessionID, ClientID: session.ClientID, Username: session.Username, Scope: session.Scope, Status: status, IssuedAt: session.IssuedAt, ExpiresAt: session.ExpiresAt, Revocable: revocable})
 	}
 	csrf := ""
-	if cookie, err := r.Cookie("swbadge_admin"); err == nil {
-		csrf = s.sessions.CSRF(cookie.Value)
+	if token := administrativeCookieToken(r); token != "" {
+		csrf = s.sessions.CSRF(token)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

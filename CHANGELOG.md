@@ -2,6 +2,29 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [1.7.0] - Unreleased
+
+### Added
+
+- Added disabled-by-default, time-limited emergency administration for a
+  directory outage. Root-only local commands issue, list and revoke 5–60 minute
+  grants; the clear token is shown once and only its SHA-256 hash is persisted.
+- Added a separate `emergency-admin` browser audience backed by a random hashed
+  server-side session. Every request checks expiry and revocation without LDAP,
+  while normal AD administration remains unchanged.
+- Added SQLite and PostgreSQL schema, import, reconciliation and concurrency
+  contracts for exactly-once exchange and immediate revocation.
+- Added a guarded rollout, acceptance and rollback runbook that preserves AD
+  password fallback, Badge/PIN, Greeter, Passkeys, OIDC, PKINIT and Kerberos.
+
+### Security
+
+- Grant issuance, successful exchange, explicit revocation and logout
+  revocation commit atomically with data-minimal audit events. Audit failure
+  rolls back the corresponding state transition.
+- Emergency tokens, token hashes and session hashes are excluded from browser
+  listings and audit details. Login failures remain generic and rate-limited.
+
 ## [1.6.0] - 2026-10-26
 
 ### Added

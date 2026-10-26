@@ -32,3 +32,6 @@ UPDATE webauthn_credentials SET management_id=gen_random_uuid()::text WHERE mana
 ALTER TABLE webauthn_credentials ALTER COLUMN management_id SET NOT NULL;
 ALTER TABLE webauthn_credentials ADD CONSTRAINT webauthn_management_id_length CHECK(length(management_id) BETWEEN 16 AND 128);
 CREATE UNIQUE INDEX idx_webauthn_credentials_management ON webauthn_credentials(management_id);`
+
+const postgresEmergencyAdminMigration = `CREATE TABLE emergency_admin_grants (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64), session_hash TEXT UNIQUE CHECK(session_hash IS NULL OR length(session_hash)=64), created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, consumed_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, CHECK(expires_at>created_at));
+CREATE INDEX idx_emergency_admin_expiry ON emergency_admin_grants(expires_at);`

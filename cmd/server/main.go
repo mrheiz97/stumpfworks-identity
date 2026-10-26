@@ -149,8 +149,13 @@ func main() {
 		}
 		srv = app.NewProtected(st, log, runtimeDirectory, sessions)
 	} else {
+		if cfg.EmergencyAdminEnabled {
+			slog.Error("emergency administrator access requires protected directory mode")
+			os.Exit(1)
+		}
 		srv = app.New(st, log)
 	}
+	srv.ConfigureEmergencyAdmin(cfg.EmergencyAdminEnabled)
 	if err := srv.ConfigureClientTargetVersion(cfg.ClientTargetVersion); err != nil {
 		slog.Error("client target version configuration failed", "error", err)
 		os.Exit(1)

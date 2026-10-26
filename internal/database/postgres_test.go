@@ -80,6 +80,11 @@ func TestPostgresIdentityAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testEmergencyAdminContract(t, store)
+	testPostgresEmergencyAdminAuditRollback(t, pool, store)
+	if _, err := pool.Native().Exec(ctx, "TRUNCATE emergency_admin_grants,audit_log RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatal(err)
+	}
 	user, err := store.CreateUser(ctx, "fixture", "Synthetic User", "cn=fixture,dc=example,dc=test")
 	if err != nil {
 		t.Fatal(err)
@@ -248,10 +253,13 @@ CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECU
 		if err := source.CreateWebAuthnCeremony(ctx, WebAuthnCeremony{ID: "import-webauthn-ceremony", Kind: "authentication", Audience: "self-service", SessionData: []byte(`{"challenge":"synthetic-import"}`), CreatedAt: ceremonyNow, ExpiresAt: ceremonyNow.Add(2 * time.Minute)}); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := source.DB.ExecContext(ctx, `INSERT INTO emergency_admin_grants(id,token_hash,created_at,expires_at) VALUES(?,?,?,?)`, "import-emergency-grant", emergencyHash("import-emergency-token"), ceremonyNow, ceremonyNow.Add(15*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := store.ImportSQLite(ctx, source.DB, 100); !errors.Is(err, ErrImportFailed) {
 			t.Fatal("nonempty import target accepted")
 		}
-		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies RESTART IDENTITY CASCADE"); err != nil {
+		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies,emergency_admin_grants RESTART IDENTITY CASCADE"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := store.ImportSQLite(ctx, source.DB, 1); !errors.Is(err, ErrImportFailed) {
@@ -612,7 +620,7 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 		}
 	})
 	t.Run("legacy client import and fail-closed source shape", func(t *testing.T) {
-		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies RESTART IDENTITY CASCADE"); err != nil {
+		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies,emergency_admin_grants RESTART IDENTITY CASCADE"); err != nil {
 			t.Fatal(err)
 		}
 		path := filepath.Join(t.TempDir(), "synthetic-legacy.db")
@@ -681,4 +689,28 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 			t.Fatal("legacy client sequence lost original IDs")
 		}
 	})
+}
+
+func testPostgresEmergencyAdminAuditRollback(t *testing.T, pool *frameworkpg.Pool, store *PostgresStore) {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	grant := EmergencyAdminGrant{ID: "postgres-emergency-audit-rollback", TokenHash: emergencyHash("postgres-emergency-audit-token"), CreatedAt: now, ExpiresAt: now.Add(15 * time.Minute)}
+	if err := store.CreateEmergencyAdminGrantWithAudit(ctx, grant, ""); err != nil {
+		t.Fatal(err)
+	}
+	trigger := `CREATE FUNCTION fail_emergency_login_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='emergency_admin_login' THEN RAISE EXCEPTION 'synthetic audit rejection'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER fail_emergency_login_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_emergency_login_audit()`
+	if _, err := pool.Native().Exec(ctx, trigger); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ConsumeEmergencyAdminGrantWithAudit(ctx, grant.TokenHash, emergencyHash("postgres-first-session"), now.Add(time.Second), ""); err == nil {
+		t.Fatal("PostgreSQL emergency login escaped audit failure")
+	}
+	if _, err := pool.Native().Exec(ctx, "DROP TRIGGER fail_emergency_login_audit ON audit_log; DROP FUNCTION fail_emergency_login_audit()"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ConsumeEmergencyAdminGrantWithAudit(ctx, grant.TokenHash, emergencyHash("postgres-second-session"), now.Add(2*time.Second), ""); err != nil {
+		t.Fatal("PostgreSQL audit rollback consumed token")
+	}
 }

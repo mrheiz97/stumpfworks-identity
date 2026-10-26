@@ -57,6 +57,16 @@ func TestPasskeysAreOptInAndEnvironmentOverrides(t *testing.T) {
 	}
 }
 
+func TestEmergencyAdministratorIsOptIn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("emergency_admin:\n  enabled: false\n"), 0600); err != nil { t.Fatal(err) }
+	loaded, err := Load(path)
+	if err != nil || loaded.EmergencyAdminEnabled { t.Fatalf("unsafe emergency default: %+v %v", loaded, err) }
+	t.Setenv("SWBADGE_EMERGENCY_ADMIN_ENABLED", "true")
+	loaded, err = Load(path)
+	if err != nil || !loaded.EmergencyAdminEnabled { t.Fatalf("emergency opt-in failed: %+v %v", loaded, err) }
+}
+
 func TestFrameworkDirectoryReadsAreSeparatelyOptIn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("directory:\n  enabled: true\n  framework_read_enabled: false\n"), 0600); err != nil {

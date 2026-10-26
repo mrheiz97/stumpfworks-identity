@@ -40,3 +40,7 @@ pkinit:
   ca_cert_file: "/etc/stumpfworks-badge/pkinit-ca/ca.crt"
   ca_key_file: "/etc/stumpfworks-badge/pkinit-ca/ca.key"
   realm: "EXAMPLE.TEST"
+
+emergency_admin:
+  # Disabled by default. Enable only with the documented root-issued token procedure.
+  enabled: false

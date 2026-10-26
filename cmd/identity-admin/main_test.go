@@ -122,6 +122,63 @@ func TestInvalidClientCommandProducesNoSecretOrMutation(t *testing.T) {
 	}
 }
 
+func TestSQLiteEmergencyAdminCommands(t *testing.T) {
+	dir := t.TempDir()
+	databasePath := filepath.Join(dir, "identity.db")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("database:\n  backend: sqlite\n  path: \""+filepath.ToSlash(databasePath)+"\"\nemergency_admin:\n  enabled: true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	base := []string{"--config", configPath, "emergency-admin"}
+	var issued strings.Builder
+	if err := execute(append(base, "issue", "--minutes", "15"), &issued); err != nil {
+		t.Fatal(err)
+	}
+	id := outputValue(t, issued.String(), "grant_id")
+	token := outputValue(t, issued.String(), "emergency_token")
+	if len(token) < 32 {
+		t.Fatal("emergency token is too short")
+	}
+	var listed strings.Builder
+	if err := execute(append(base, "list"), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(listed.String(), id) || !strings.Contains(listed.String(), "status=unused") || strings.Contains(listed.String(), token) {
+		t.Fatal("emergency list exposed secret or omitted grant")
+	}
+	if err := execute(append(base, "revoke", "--id", id), &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := database.Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	events, err := store.Audits(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if strings.Contains(event.Details, token) || strings.Contains(event.Details, id) {
+			t.Fatal("emergency secret or identifier leaked into audit")
+		}
+	}
+}
+
+func TestEmergencyAdminDurationIsBounded(t *testing.T) {
+	store, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, minutes := range []string{"0", "4", "61", "999"} {
+		var output strings.Builder
+		if err := emergencyAdminCommand(t.Context(), store, []string{"issue", "--minutes", minutes}, &output); err == nil || output.Len() != 0 {
+			t.Fatalf("duration %s accepted", minutes)
+		}
+	}
+}
+
 func TestPostgresOIDCAdministrationCommands(t *testing.T) {
 	dsn := os.Getenv("IDENTITY_TEST_POSTGRES_URL")
 	parsed, err := url.Parse(dsn)
@@ -159,7 +216,7 @@ func TestPostgresOIDCAdministrationCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(directory, "config.yaml")
-	configuration := "database:\n  backend: postgres\n  url_file: \"" + filepath.ToSlash(urlPath) + "\"\n  allow_insecure: true\n"
+	configuration := "database:\n  backend: postgres\n  url_file: \"" + filepath.ToSlash(urlPath) + "\"\n  allow_insecure: true\nemergency_admin:\n  enabled: true\n"
 	if err := os.WriteFile(configPath, []byte(configuration), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -193,6 +250,26 @@ func TestPostgresOIDCAdministrationCommands(t *testing.T) {
 	var auditCount int
 	if err := admin.QueryRow(ctx, "SELECT count(*) FROM "+identifier+".audit_log WHERE event_type IN ('oidc_client_created','oidc_client_secret_rotated','oidc_client_disabled','oidc_client_enabled') AND details='' AND client_id='postgres-app'").Scan(&auditCount); err != nil || auditCount != 4 {
 		t.Fatal("PostgreSQL CLI audit contract failed")
+	}
+	emergencyBase := []string{"--config", configPath, "emergency-admin"}
+	var issued strings.Builder
+	if err := execute(append(emergencyBase, "issue", "--minutes", "5"), &issued); err != nil {
+		t.Fatal(err)
+	}
+	grantID := outputValue(t, issued.String(), "grant_id")
+	token := outputValue(t, issued.String(), "emergency_token")
+	var listed strings.Builder
+	if err := execute(append(emergencyBase, "list"), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(listed.String(), grantID) || strings.Contains(listed.String(), token) {
+		t.Fatal("PostgreSQL emergency listing omitted grant or exposed token")
+	}
+	if err := execute(append(emergencyBase, "revoke", "--id", grantID), &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.QueryRow(ctx, "SELECT count(*) FROM "+identifier+".audit_log WHERE event_type IN ('emergency_admin_grant_created','emergency_admin_grant_revoked') AND details=''").Scan(&auditCount); err != nil || auditCount != 2 {
+		t.Fatal("PostgreSQL emergency CLI audit contract failed")
 	}
 }
 

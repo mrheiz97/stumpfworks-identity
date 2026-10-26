@@ -47,3 +47,7 @@ passkeys:
   # RP ID is the exact external hostname; origin additionally includes HTTPS port.
   rp_id: "login01.example.test"
   origin: "https://login01.example.test:8080"
+
+emergency_admin:
+  # Disabled by default. Enable only with the documented root-issued token procedure.
+  enabled: false

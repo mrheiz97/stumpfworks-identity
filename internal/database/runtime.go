@@ -42,6 +42,12 @@ type ApplicationStore interface {
 	RevokeOtherSelfServiceSessions(context.Context, string, string) (int64, error)
 	RevokeOtherSelfServiceSessionsWithAudit(context.Context, string, string, string) (int64, error)
 	RevokeSelfServiceSession(context.Context, string, string) error
+	CreateEmergencyAdminGrantWithAudit(context.Context, EmergencyAdminGrant, string) error
+	ConsumeEmergencyAdminGrantWithAudit(context.Context, string, string, time.Time, string) (EmergencyAdminGrant, error)
+	ActiveEmergencyAdminSession(context.Context, string, time.Time) (EmergencyAdminGrant, error)
+	EmergencyAdminGrants(context.Context, time.Time) ([]EmergencyAdminGrant, error)
+	RevokeEmergencyAdminGrantWithAudit(context.Context, string, string) error
+	RevokeEmergencyAdminSessionWithAudit(context.Context, string, string) error
 	EnsureWebAuthnUserHandle(context.Context, int64) ([]byte, error)
 	CreateWebAuthnCeremony(context.Context, WebAuthnCeremony) error
 	ActiveWebAuthnCeremony(context.Context, string, string, string, time.Time) (WebAuthnCeremony, error)

@@ -192,7 +192,7 @@ func reconcileTable(ctx context.Context, target pgx.Tx, source *sql.Tx, table st
 		key = "credential_id"
 	}
 	sourceOrder, targetOrder := pgx.Identifier{key}.Sanitize(), pgx.Identifier{key}.Sanitize()
-	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" || table == "oidc_sessions" || table == "webauthn_ceremonies" {
+	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" || table == "oidc_sessions" || table == "webauthn_ceremonies" || table == "emergency_admin_grants" {
 		sourceOrder += " COLLATE BINARY"
 		targetOrder += ` COLLATE "C"`
 	}
