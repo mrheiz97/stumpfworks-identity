@@ -174,7 +174,32 @@ func (s *Server) adminGuard(next http.Handler) http.Handler {
 		}
 		c, e := r.Cookie("swbadge_admin")
 		if e == nil {
-			if _, e = s.sessions.Verify(c.Value, time.Now()); e == nil {
+			if username, verifyErr := s.sessions.Verify(c.Value, time.Now()); verifyErr == nil {
+				// Signing out must remain possible during a directory outage or
+				// immediately after all administrative roles have been removed.
+				if r.URL.Path == "/logout" {
+					_ = r.ParseForm()
+					token := r.FormValue("_csrf")
+					if token == "" {
+						token = r.Header.Get("X-CSRF-Token")
+					}
+					if !s.sessions.VerifyCSRF(c.Value, token) {
+						s.problem(w, http.StatusForbidden, "csrf_invalid")
+						return
+					}
+					next.ServeHTTP(w, r)
+					return
+				}
+				roles, roleErr := s.currentAdministrativeRoles(r.Context(), username)
+				if roleErr != nil {
+					s.authorizationDenied(w, r, roleErr)
+					return
+				}
+				permission := requiredAdministrativePermission(r)
+				if !adminauth.Allowed(permission, roles...) {
+					s.problem(w, http.StatusForbidden, "authorization_required")
+					return
+				}
 				if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 					_ = r.ParseForm()
 					token := r.FormValue("_csrf")
@@ -186,7 +211,7 @@ func (s *Server) adminGuard(next http.Handler) http.Handler {
 						return
 					}
 				}
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, r.WithContext(withAdministrativeRoles(r.Context(), roles)))
 				return
 			}
 		}
@@ -264,7 +289,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
-	u, e := s.dir.AuthenticateAdmin(r.Context(), username, r.FormValue("password"))
+	var u *directory.User
+	var e error
+	if administrative, ok := s.dir.(directory.AdministrativeDirectory); ok {
+		u, _, e = administrative.AuthenticateAdministrative(r.Context(), username, r.FormValue("password"))
+	} else {
+		u, e = s.dir.AuthenticateAdmin(r.Context(), username, r.FormValue("password"))
+	}
 	if e != nil {
 		s.loginFailed(ip)
 		s.log.Warn("admin login denied", "event", "admin_login_failed", "username", username, "ip_address", remoteIP(r))
