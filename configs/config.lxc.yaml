@@ -18,6 +18,10 @@ directory:
   bind_password_file: "/etc/stumpfworks-badge/ldap-password"
   domain: "example.test"
   admin_group_dn: "CN=SWBadge-Admins,CN=Users,DC=example,DC=test"
+  identity_operator_group_dn: ""
+  oidc_operator_group_dn: ""
+  client_operator_group_dn: ""
+  identity_auditor_group_dn: ""
   # Legacy adapter only; the framework reader never accepts this SAN bypass.
   ca_file: ""
   cert_sha256: ""

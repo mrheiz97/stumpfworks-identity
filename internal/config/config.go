@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -12,6 +13,8 @@ type Config struct {
 	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile string
 	DirectoryURL, BaseDN, BindDN, BindPassword                                                   string
 	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                        string
+	DirectoryIdentityOperatorGroup, DirectoryOIDCOperatorGroup                                   string
+	DirectoryClientOperatorGroup, DirectoryAuditorGroup                                          string
 	DirectoryBindPasswordFile, DirectoryCertSHA256                                               string
 	SessionSecret                                                                                string
 	SessionSecretFile                                                                            string
@@ -85,6 +88,14 @@ func Load(path string) (Config, error) {
 				c.DirectoryDomain = val
 			case "directory.admin_group_dn":
 				c.DirectoryAdminGroup = val
+			case "directory.identity_operator_group_dn":
+				c.DirectoryIdentityOperatorGroup = val
+			case "directory.oidc_operator_group_dn":
+				c.DirectoryOIDCOperatorGroup = val
+			case "directory.client_operator_group_dn":
+				c.DirectoryClientOperatorGroup = val
+			case "directory.identity_auditor_group_dn":
+				c.DirectoryAuditorGroup = val
 			case "directory.ca_file":
 				c.DirectoryCAFile = val
 			case "directory.bind_password_file":
@@ -145,6 +156,10 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_DIRECTORY_BIND_PASSWORD", &c.BindPassword)
 	set("SWBADGE_DIRECTORY_DOMAIN", &c.DirectoryDomain)
 	set("SWBADGE_DIRECTORY_ADMIN_GROUP_DN", &c.DirectoryAdminGroup)
+	set("SWBADGE_DIRECTORY_IDENTITY_OPERATOR_GROUP_DN", &c.DirectoryIdentityOperatorGroup)
+	set("SWBADGE_DIRECTORY_OIDC_OPERATOR_GROUP_DN", &c.DirectoryOIDCOperatorGroup)
+	set("SWBADGE_DIRECTORY_CLIENT_OPERATOR_GROUP_DN", &c.DirectoryClientOperatorGroup)
+	set("SWBADGE_DIRECTORY_IDENTITY_AUDITOR_GROUP_DN", &c.DirectoryAuditorGroup)
 	set("SWBADGE_DIRECTORY_CA_FILE", &c.DirectoryCAFile)
 	set("SWBADGE_DIRECTORY_BIND_PASSWORD_FILE", &c.DirectoryBindPasswordFile)
 	set("SWBADGE_DIRECTORY_CERT_SHA256", &c.DirectoryCertSHA256)
@@ -218,5 +233,30 @@ func Load(path string) (Config, error) {
 			return c, err
 		}
 	}
+	if err := validateRoleGroups(c); err != nil {
+		return c, err
+	}
 	return c, nil
+}
+
+func validateRoleGroups(c Config) error {
+	groups := map[string]string{
+		"admin_group_dn":             c.DirectoryAdminGroup,
+		"identity_operator_group_dn": c.DirectoryIdentityOperatorGroup,
+		"oidc_operator_group_dn":     c.DirectoryOIDCOperatorGroup,
+		"client_operator_group_dn":   c.DirectoryClientOperatorGroup,
+		"identity_auditor_group_dn":  c.DirectoryAuditorGroup,
+	}
+	seen := make(map[string]string)
+	for name, group := range groups {
+		normalized := strings.ToLower(strings.TrimSpace(group))
+		if normalized == "" {
+			continue
+		}
+		if previous, ok := seen[normalized]; ok {
+			return fmt.Errorf("directory role groups %s and %s must be distinct", previous, name)
+		}
+		seen[normalized] = name
+	}
+	return nil
 }

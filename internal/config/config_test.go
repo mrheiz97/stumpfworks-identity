@@ -73,6 +73,34 @@ func TestFrameworkDirectoryReadsAreSeparatelyOptIn(t *testing.T) {
 	}
 }
 
+func TestAdministrativeRoleGroupsAreOptionalAndEnvironmentOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "directory:\n  admin_group_dn: CN=Admins,DC=example,DC=test\n  identity_operator_group_dn: CN=Identity Operators,DC=example,DC=test\n  oidc_operator_group_dn: CN=OIDC Operators,DC=example,DC=test\n  client_operator_group_dn: CN=Client Operators,DC=example,DC=test\n  identity_auditor_group_dn: CN=Auditors,DC=example,DC=test\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || loaded.DirectoryIdentityOperatorGroup == "" || loaded.DirectoryOIDCOperatorGroup == "" || loaded.DirectoryClientOperatorGroup == "" || loaded.DirectoryAuditorGroup == "" {
+		t.Fatalf("role groups not loaded: %+v %v", loaded, err)
+	}
+	t.Setenv("SWBADGE_DIRECTORY_IDENTITY_AUDITOR_GROUP_DN", "CN=Security Reviewers,DC=example,DC=test")
+	loaded, err = Load(path)
+	if err != nil || loaded.DirectoryAuditorGroup != "CN=Security Reviewers,DC=example,DC=test" {
+		t.Fatalf("role group environment override failed: %+v %v", loaded, err)
+	}
+}
+
+func TestAdministrativeRoleGroupsMustBeDistinct(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "directory:\n  admin_group_dn: CN=Admins,DC=example,DC=test\n  oidc_operator_group_dn: cn=admins,dc=example,dc=test\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "must be distinct") {
+		t.Fatalf("duplicate role group accepted: %v", err)
+	}
+}
+
 func TestMetricsAreOptInAndTokenComesFromProtectedInputs(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "metrics-token")
 	if err := os.WriteFile(secretFile, []byte("synthetic-metrics-token-at-least-32-bytes\n"), 0600); err != nil {

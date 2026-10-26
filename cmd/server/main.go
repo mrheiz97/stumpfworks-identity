@@ -41,7 +41,7 @@ func main() {
 		slog.Error("configuration failed", "error", e)
 		os.Exit(1)
 	}
-	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
+	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, IdentityOperatorGroupDN: cfg.DirectoryIdentityOperatorGroup, OIDCOperatorGroupDN: cfg.DirectoryOIDCOperatorGroup, ClientOperatorGroupDN: cfg.DirectoryClientOperatorGroup, AuditorGroupDN: cfg.DirectoryAuditorGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
 	metricsRegistry := frameworkmetrics.New()
 	var directoryObserver frameworkldap.Observer
 	if cfg.MetricsEnabled {

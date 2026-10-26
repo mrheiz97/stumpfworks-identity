@@ -3,6 +3,8 @@ package directory
 import (
 	"context"
 	"errors"
+
+	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
 )
 
 // UserLookup is consumer-owned so the framework adapter can project results
@@ -12,6 +14,22 @@ type UserLookup func(context.Context, string) (*User, error)
 type lookupOverlay struct {
 	Directory
 	lookup UserLookup
+}
+
+func (d *lookupOverlay) AdministrativeRoles(ctx context.Context, username string) ([]adminauth.Role, error) {
+	administrative, ok := d.Directory.(AdministrativeDirectory)
+	if !ok {
+		return nil, ErrNotAuthorized
+	}
+	return administrative.AdministrativeRoles(ctx, username)
+}
+
+func (d *lookupOverlay) AuthenticateAdministrative(ctx context.Context, username, password string) (*User, []adminauth.Role, error) {
+	administrative, ok := d.Directory.(AdministrativeDirectory)
+	if !ok {
+		return nil, nil, ErrNotAuthorized
+	}
+	return administrative.AuthenticateAdministrative(ctx, username, password)
 }
 
 // WithUserLookup replaces only read-only single-user lookups. Listing and
