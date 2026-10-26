@@ -2,6 +2,26 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [1.8.0] - Unreleased
+
+### Added
+
+- Added opt-in, privacy-bounded Identity metrics for build/start state,
+  modules, component outcomes and latency, audit write failures, aggregate
+  objects, client freshness/health, TLS expiry, backup age and maintenance.
+- Reused Framework v1.0.0 HTTP, LDAP and PostgreSQL pool instrumentation and
+  connected the existing runtime PostgreSQL pool without a duplicate metrics
+  implementation.
+- Added per-source throttling for failed metrics bearer authentication,
+  scrape-time collector deadlines, fixed label vocabularies, privacy and
+  cardinality tests, Prometheus scrape/rule examples and a Grafana dashboard.
+
+### Security
+
+- Metrics never label or expose usernames, badge or OIDC identifiers, client
+  IDs, IP addresses, DNs, file paths, tokens, free-form audit details or raw
+  errors. Unknown routes and results collapse to bounded categories.
+
 ## [1.7.1] - 2026-10-26
 
 ### Fixed

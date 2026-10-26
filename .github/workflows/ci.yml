@@ -40,6 +40,14 @@ jobs:
           fi
           echo "IDENTITY_TEST_PG_DUMP=$(command -v pg_dump)" >> "$GITHUB_ENV"
           echo "IDENTITY_TEST_PG_RESTORE=$(command -v pg_restore)" >> "$GITHUB_ENV"
+      - name: Prometheus tooling
+        run: |
+          if ! command -v promtool >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends prometheus
+          fi
+          promtool check config deploy/prometheus/identity-scrape.yml
+          promtool check rules deploy/prometheus/identity-rules.yml
       - name: Go tests
         env:
           # Synthetic service credentials, never production credentials.

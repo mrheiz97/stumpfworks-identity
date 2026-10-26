@@ -1,0 +1,22 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {"type":"stat","title":"Identity up","targets":[{"expr":"up{job=\"stumpfworks-identity\"}"}],"gridPos":{"h":4,"w":4,"x":0,"y":0}},
+    {"type":"stat","title":"Process uptime","targets":[{"expr":"time() - sw_identity_start_time_seconds"}],"gridPos":{"h":4,"w":4,"x":4,"y":0}},
+    {"type":"stat","title":"Stale clients","targets":[{"expr":"sw_identity_clients{state=\"stale\"}"}],"gridPos":{"h":4,"w":4,"x":8,"y":0}},
+    {"type":"stat","title":"Certificate days left","targets":[{"expr":"(sw_identity_certificate_not_after_seconds - time()) / 86400"}],"gridPos":{"h":4,"w":4,"x":12,"y":0}},
+    {"type":"stat","title":"Backup age hours","targets":[{"expr":"(time() - sw_identity_backup_timestamp_seconds) / 3600"}],"gridPos":{"h":4,"w":4,"x":16,"y":0}},
+    {"type":"timeseries","title":"Identity operations","targets":[{"expr":"sum by (component, outcome) (rate(sw_identity_operations_total[5m]))"}],"gridPos":{"h":8,"w":12,"x":0,"y":4}},
+    {"type":"timeseries","title":"HTTP p95 latency","targets":[{"expr":"histogram_quantile(0.95, sum by (le, route) (rate(swf_http_request_duration_seconds_bucket[5m])))"}],"gridPos":{"h":8,"w":12,"x":12,"y":4}},
+    {"type":"timeseries","title":"LDAP outcomes","targets":[{"expr":"sum by (outcome, stage) (rate(swf_directory_lookups_total[5m]))"}],"gridPos":{"h":8,"w":12,"x":0,"y":12}},
+    {"type":"timeseries","title":"PostgreSQL pool","targets":[{"expr":"swf_postgres_connections"}],"gridPos":{"h":8,"w":12,"x":12,"y":12}}
+  ],
+  "schemaVersion": 41,
+  "tags": ["stumpfworks", "identity"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "StumpfWorks Identity",
+  "uid": "stumpfworks-identity",
+  "version": 1
+}

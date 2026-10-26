@@ -10,6 +10,7 @@ import (
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/observability"
 	oidcprovider "github.com/TheRealHZL/stumpfworks-identity/internal/oidc"
 	passkeyauth "github.com/TheRealHZL/stumpfworks-identity/internal/passkey"
 	app "github.com/TheRealHZL/stumpfworks-identity/internal/server"
@@ -71,6 +72,18 @@ func main() {
 		os.Exit(1)
 	}
 	defer closeDatabase()
+	var identityMetrics *observability.Registry
+	if cfg.MetricsEnabled {
+		identityMetrics = observability.New(version.Version, cfg.DatabaseBackend, map[string]bool{
+			"directory": cfg.DirectoryEnabled, "emergency_admin": cfg.EmergencyAdminEnabled,
+			"metrics": cfg.MetricsEnabled, "oidc": cfg.OIDCEnabled,
+			"passkeys": cfg.PasskeysEnabled, "pkinit": cfg.PKINITEnabled,
+		})
+		identityMetrics.ConfigureOperationalFiles(cfg.TLSCertFile, cfg.MetricsBackupPath, cfg.MetricsMaintenanceFile)
+		if postgresStore, ok := st.(*database.PostgresStore); ok {
+			metricsRegistry.RegisterPostgresPool(postgresStore.FrameworkPool())
+		}
+	}
 	clientActions := 0
 	for _, value := range []string{*registerClient, *rotateClient, *disableClient, *enableClient} {
 		if value != "" {
@@ -156,6 +169,7 @@ func main() {
 		srv = app.New(st, log)
 	}
 	srv.ConfigureEmergencyAdmin(cfg.EmergencyAdminEnabled)
+	srv.ConfigureObservability(identityMetrics)
 	if err := srv.ConfigureClientTargetVersion(cfg.ClientTargetVersion); err != nil {
 		slog.Error("client target version configuration failed", "error", err)
 		os.Exit(1)
@@ -178,6 +192,7 @@ func main() {
 			slog.Error("OIDC configuration failed", "error", err)
 			os.Exit(1)
 		}
+		provider.ConfigureObservability(identityMetrics)
 		srv.ConfigureOIDC(provider)
 	}
 	if cfg.PasskeysEnabled {
@@ -197,7 +212,8 @@ func main() {
 	}
 	applicationHandler := srv.Handler()
 	if cfg.MetricsEnabled {
-		applicationHandler, e = applicationHandlerWithMetrics(applicationHandler, cfg.MetricsToken, metricsRegistry)
+		applicationHandler = identityMetrics.Middleware(applicationHandler)
+		applicationHandler, e = applicationHandlerWithMetrics(applicationHandler, cfg.MetricsToken, metricsRegistry, identityMetrics, st)
 		if e != nil {
 			slog.Error("metrics configuration failed", "error", e)
 			os.Exit(1)
@@ -219,14 +235,15 @@ func main() {
 	}
 }
 
-func applicationHandlerWithMetrics(application http.Handler, token string, registry *frameworkmetrics.Registry) (http.Handler, error) {
-	if application == nil || registry == nil {
+func applicationHandlerWithMetrics(application http.Handler, token string, registry *frameworkmetrics.Registry, identity *observability.Registry, store database.ApplicationStore) (http.Handler, error) {
+	if application == nil || registry == nil || identity == nil || store == nil {
 		return nil, fmt.Errorf("metrics requires application handler and registry")
 	}
-	metricsHandler, err := frameworkmetrics.ProtectBearer(registry.Handler(), token)
+	metricsHandler, err := frameworkmetrics.ProtectBearer(observability.Combine(registry.Handler(), identity.Handler(store)), token)
 	if err != nil {
 		return nil, err
 	}
+	metricsHandler = observability.LimitAuthentication(metricsHandler)
 	root := http.NewServeMux()
 	root.Handle("GET /metrics", metricsHandler)
 	root.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {

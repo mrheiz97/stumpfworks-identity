@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
-	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
-	frameworkmetrics "github.com/mrheiz97/stumpfworks-framework/web/metrics"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/observability"
 	"github.com/jackc/pgx/v5"
+	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
+	frameworkmetrics "github.com/mrheiz97/stumpfworks-framework/web/metrics"
 )
 
 func TestFrameworkDirectoryRuntimeSelectionIsExplicitAndFailClosed(t *testing.T) {
@@ -46,7 +47,12 @@ func TestApplicationMetricsEndpointIsExplicitlyProtected(t *testing.T) {
 	const token = "synthetic-identity-metrics-token-32-bytes"
 	application := http.NewServeMux()
 	application.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	handler, err := applicationHandlerWithMetrics(application, token, frameworkmetrics.New())
+	store, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler, err := applicationHandlerWithMetrics(application, token, frameworkmetrics.New(), observability.New("test", "sqlite", nil), store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +73,7 @@ func TestApplicationMetricsEndpointIsExplicitlyProtected(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer "+token)
 	authorized := httptest.NewRecorder()
 	handler.ServeHTTP(authorized, request)
-	if authorized.Code != http.StatusOK || !strings.Contains(authorized.Body.String(), "swf_http_requests_total") || strings.Contains(authorized.Body.String(), token) {
+	if authorized.Code != http.StatusOK || !strings.Contains(authorized.Body.String(), "swf_http_requests_total") || !strings.Contains(authorized.Body.String(), "sw_identity_info") || strings.Contains(authorized.Body.String(), token) {
 		t.Fatal("authorized metrics exposition invalid")
 	}
 	post := httptest.NewRecorder()
@@ -75,10 +81,10 @@ func TestApplicationMetricsEndpointIsExplicitlyProtected(t *testing.T) {
 	if post.Code != http.StatusMethodNotAllowed || post.Header().Get("Allow") != http.MethodGet {
 		t.Fatal("non-GET metrics request reached application")
 	}
-	if _, err := applicationHandlerWithMetrics(nil, token, frameworkmetrics.New()); err == nil {
+	if _, err := applicationHandlerWithMetrics(nil, token, frameworkmetrics.New(), observability.New("test", "sqlite", nil), store); err == nil {
 		t.Fatal("nil application accepted")
 	}
-	if _, err := applicationHandlerWithMetrics(application, token, nil); err == nil {
+	if _, err := applicationHandlerWithMetrics(application, token, nil, observability.New("test", "sqlite", nil), store); err == nil {
 		t.Fatal("nil registry accepted")
 	}
 }

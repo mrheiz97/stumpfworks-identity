@@ -33,15 +33,20 @@ import (
 )
 
 type Provider struct {
-	issuer   string
-	store    providerStore
-	dir      directory.Directory
-	sessions *adminauth.Sessions
-	keys     []jose.JSONWebKey
-	signer   jose.Signer
-	now      func() time.Time
-	mu       sync.Mutex
-	attempts map[string][]time.Time
+	issuer        string
+	store         providerStore
+	dir           directory.Directory
+	sessions      *adminauth.Sessions
+	keys          []jose.JSONWebKey
+	signer        jose.Signer
+	now           func() time.Time
+	mu            sync.Mutex
+	attempts      map[string][]time.Time
+	auditObserver interface{ ObserveAuditFailure() }
+}
+
+func (p *Provider) ConfigureObservability(observer interface{ ObserveAuditFailure() }) {
+	p.auditObserver = observer
 }
 
 // Status contains public operational metadata suitable for an authenticated
@@ -413,6 +418,9 @@ func (p *Provider) revoke(w http.ResponseWriter, r *http.Request) {
 
 func (p *Provider) audit(r *http.Request, event, user, client string, success bool, details string) {
 	if err := p.store.WriteAudit(r.Context(), database.Audit{EventType: event, Username: user, ClientID: client, Success: success, IPAddress: remoteIP(r), Details: details}); err != nil {
+		if p.auditObserver != nil {
+			p.auditObserver.ObserveAuditFailure()
+		}
 		slog.Error("OIDC security audit write failed", "component", "audit", "event_type", event)
 	}
 }

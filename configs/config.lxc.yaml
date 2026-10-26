@@ -34,6 +34,8 @@ auth:
 metrics:
   enabled: false
   token_file: "/etc/stumpfworks-badge/metrics-token"
+  backup_path: "/var/backups/stumpfworks-badge/latest.db"
+  maintenance_file: "/run/stumpfworks-badge/maintenance"
 
 pkinit:
   enabled: true

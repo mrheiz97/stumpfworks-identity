@@ -19,6 +19,7 @@ type Config struct {
 	SessionSecret                                                                                string
 	SessionSecretFile                                                                            string
 	MetricsToken, MetricsTokenFile                                                               string
+	MetricsBackupPath, MetricsMaintenanceFile                                                    string
 	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                               string
 	ClientTargetVersion                                                                          string
 	OIDCIssuer, OIDCSigningKeyFiles                                                              string
@@ -115,6 +116,10 @@ func Load(path string) (Config, error) {
 				c.MetricsEnabled = val == "true"
 			case "metrics.token_file":
 				c.MetricsTokenFile = val
+			case "metrics.backup_path":
+				c.MetricsBackupPath = val
+			case "metrics.maintenance_file":
+				c.MetricsMaintenanceFile = val
 			case "pkinit.enabled":
 				c.PKINITEnabled = val == "true"
 			case "pkinit.ca_cert_file":
@@ -174,6 +179,8 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_SESSION_SECRET_FILE", &c.SessionSecretFile)
 	set("SWBADGE_METRICS_TOKEN", &c.MetricsToken)
 	set("SWBADGE_METRICS_TOKEN_FILE", &c.MetricsTokenFile)
+	set("SWBADGE_METRICS_BACKUP_PATH", &c.MetricsBackupPath)
+	set("SWBADGE_METRICS_MAINTENANCE_FILE", &c.MetricsMaintenanceFile)
 	set("SWBADGE_PKINIT_CA_CERT_FILE", &c.PKINITCACertFile)
 	set("SWBADGE_PKINIT_CA_KEY_FILE", &c.PKINITCAKeyFile)
 	set("SWBADGE_PKINIT_REALM", &c.PKINITRealm)
