@@ -22,6 +22,10 @@ func administrativeRoles(ctx context.Context) []adminauth.Role {
 	return append([]adminauth.Role(nil), roles...)
 }
 
+func requestCan(r *http.Request, permission adminauth.Permission) bool {
+	return adminauth.Allowed(permission, administrativeRoles(r.Context())...)
+}
+
 func (s *Server) currentAdministrativeRoles(ctx context.Context, username string) ([]adminauth.Role, error) {
 	administrative, ok := s.dir.(directory.AdministrativeDirectory)
 	if !ok {

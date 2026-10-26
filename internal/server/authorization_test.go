@@ -122,3 +122,37 @@ func TestLegacyAdministratorAdapterRetainsFullAccess(t *testing.T) {
 		}
 	}
 }
+
+func TestAdministrativePagesHideUnavailableNavigationAndActions(t *testing.T) {
+	operatorServer, operatorSessions := protectedRoleServer(t, roleDirectory{roles: []adminauth.Role{adminauth.RoleOperator}})
+	operatorDashboard := roleRequest(operatorServer, operatorSessions, http.MethodGet, "/").Body.String()
+	for _, visible := range []string{"Users", "Badges", "System status"} {
+		if !strings.Contains(operatorDashboard, visible) {
+			t.Errorf("operator navigation is missing %q", visible)
+		}
+	}
+	for _, hidden := range []string{"Audit log", "OIDC clients", "OIDC sessions"} {
+		if strings.Contains(operatorDashboard, hidden) {
+			t.Errorf("operator navigation exposed %q", hidden)
+		}
+	}
+
+	auditorServer, auditorSessions := protectedRoleServer(t, roleDirectory{roles: []adminauth.Role{adminauth.RoleAuditor}})
+	usersPage := roleRequest(auditorServer, auditorSessions, http.MethodGet, "/users").Body.String()
+	if strings.Contains(usersPage, `action="/directory/users/import"`) || strings.Contains(usersPage, "Manage PINs") {
+		t.Fatal("auditor user page rendered mutation controls")
+	}
+	badgesPage := roleRequest(auditorServer, auditorSessions, http.MethodGet, "/badges").Body.String()
+	if strings.Contains(badgesPage, "Issue a new badge") || strings.Contains(badgesPage, `action="/badges"`) {
+		t.Fatal("auditor badge page rendered mutation controls")
+	}
+	oidcPage := roleRequest(auditorServer, auditorSessions, http.MethodGet, "/oidc-clients").Body.String()
+	if !strings.Contains(oidcPage, "Read-only view") || strings.Contains(oidcPage, "Register client") || strings.Contains(oidcPage, "Rotate secret") {
+		t.Fatal("auditor OIDC page was not read-only")
+	}
+
+	oidcServer, oidcSessions := protectedRoleServer(t, roleDirectory{roles: []adminauth.Role{adminauth.RoleOIDCOperator}})
+	if body := roleRequest(oidcServer, oidcSessions, http.MethodGet, "/oidc-clients").Body.String(); !strings.Contains(body, "Register client") {
+		t.Fatal("OIDC operator mutation controls are missing")
+	}
+}

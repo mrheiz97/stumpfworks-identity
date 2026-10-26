@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"regexp"
 	"time"
+
+	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
 )
 
 var oidcSessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{32}$`)
@@ -30,7 +32,7 @@ func (s *Server) oidcSessionsPage(w http.ResponseWriter, r *http.Request) {
 	views := make([]oidcSessionView, 0, len(sessions))
 	for _, session := range sessions {
 		status := "Active"
-		revocable := true
+		revocable := requestCan(r, adminauth.PermissionOIDCSessionsRevoke)
 		if session.RevokedAt.Valid {
 			status, revocable = "Revoked", false
 		} else if !session.ExpiresAt.After(now) {
