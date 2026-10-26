@@ -26,6 +26,15 @@ func requestCan(r *http.Request, permission adminauth.Permission) bool {
 	return adminauth.Allowed(permission, administrativeRoles(r.Context())...)
 }
 
+func administrativeCookieToken(r *http.Request) string {
+	for _, name := range []string{"swbadge_admin", "swbadge_emergency_admin"} {
+		if cookie, err := r.Cookie(name); err == nil && cookie.Value != "" {
+			return cookie.Value
+		}
+	}
+	return ""
+}
+
 func (s *Server) currentAdministrativeRoles(ctx context.Context, username string) ([]adminauth.Role, error) {
 	administrative, ok := s.dir.(directory.AdministrativeDirectory)
 	if !ok {

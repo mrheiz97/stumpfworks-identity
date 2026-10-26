@@ -62,7 +62,7 @@ func testPostgresBackupRestore(t *testing.T, ctx context.Context, dsn, schema st
 	before := postgresFixtureFingerprint(t, ctx, pool)
 	backup := filepath.Join(t.TempDir(), "synthetic-identity.dump")
 	run(dump, "--format=custom", "--data-only", "--schema="+schema, "--exclude-table="+schema+".swf_schema_migrations", "--file="+backup)
-	if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies,emergency_admin_grants RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 	run(restore, "--data-only", "--exit-on-error", "--no-owner", "--no-privileges", "--dbname=postgres", "--schema="+schema, backup)

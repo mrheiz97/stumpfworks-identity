@@ -155,8 +155,8 @@ func (s *Server) renderOIDCClients(w http.ResponseWriter, r *http.Request, secre
 		TotalUsers: len(users), LinkedUsers: linkedUsers, UnlinkedUsers: len(users) - linkedUsers,
 	}
 	csrf := ""
-	if cookie, err := r.Cookie("swbadge_admin"); err == nil {
-		csrf = s.sessions.CSRF(cookie.Value)
+	if token := administrativeCookieToken(r); token != "" {
+		csrf = s.sessions.CSRF(token)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -25,6 +25,7 @@ type Config struct {
 	PasskeyRPID, PasskeyOrigin                                                                   string
 	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled  bool
 	PasskeysEnabled                                                                              bool
+	EmergencyAdminEnabled                                                                        bool
 	DatabaseAllowInsecure, Demo                                                                  bool
 }
 
@@ -132,6 +133,8 @@ func Load(path string) (Config, error) {
 				c.PasskeyRPID = val
 			case "passkeys.origin":
 				c.PasskeyOrigin = val
+			case "emergency_admin.enabled":
+				c.EmergencyAdminEnabled = val == "true"
 			}
 		}
 		if err := s.Err(); err != nil {
@@ -192,6 +195,9 @@ func Load(path string) (Config, error) {
 	}
 	if v, ok := os.LookupEnv("SWBADGE_PASSKEYS_ENABLED"); ok {
 		c.PasskeysEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_EMERGENCY_ADMIN_ENABLED"); ok {
+		c.EmergencyAdminEnabled = v == "true"
 	}
 	if v, ok := os.LookupEnv("SWBADGE_POSTGRES_ALLOW_INSECURE"); ok {
 		c.DatabaseAllowInsecure = v == "true"

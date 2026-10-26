@@ -30,6 +30,14 @@ again for every privileged request and fails closed when the directory is
 unavailable. Roles and group DNs are not stored in the browser cookie or
 emitted as OIDC claims.
 
+An optional break-glass path is isolated in a separate `emergency-admin`
+session audience. A root-only local command issues a bounded, single-use random
+token whose hash is stored. Its exchange creates a separately hashed,
+server-side session that is checked on every request and grants the legacy full
+administrator permission set without consulting LDAP. Issuance, exchange and
+revocation are atomic with their audit records. The route is absent unless the
+feature is explicitly enabled.
+
 Self-service accepts a valid AD user but can update only that identity's SWBA PIN and read a bounded list of active badges selected by the authenticated local user ID. Signed session tokens carry distinct `admin` and `self-service` audiences and cannot be exchanged. Browser writes use secure, HTTP-only, SameSite strict cookies and CSRF tokens. Self-service expires after 15 minutes.
 
 Lost-badge self-service revocation is constrained again inside the database transaction by both badge ID and authenticated user ID. It never accepts a username or owner ID from form data and never returns whether a foreign badge exists.

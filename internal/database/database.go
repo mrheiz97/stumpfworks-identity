@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS oidc_sessions (session_id TEXT PRIMARY KEY, access_to
 CREATE TABLE IF NOT EXISTS webauthn_users (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, user_handle BLOB NOT NULL UNIQUE CHECK(length(user_handle) BETWEEN 32 AND 64), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS webauthn_credentials (credential_id BLOB PRIMARY KEY, management_id TEXT NOT NULL UNIQUE CHECK(length(management_id) BETWEEN 16 AND 128), user_id INTEGER NOT NULL REFERENCES webauthn_users(user_id) ON DELETE CASCADE, public_key BLOB NOT NULL, rp_id TEXT NOT NULL, name TEXT NOT NULL, transports TEXT NOT NULL DEFAULT '', attestation_type TEXT NOT NULL DEFAULT '', attestation_format TEXT NOT NULL DEFAULT '', flags INTEGER NOT NULL DEFAULT 0, sign_count INTEGER NOT NULL DEFAULT 0 CHECK(sign_count>=0), backup_eligible BOOLEAN NOT NULL DEFAULT 0, backup_state BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_used_at DATETIME, revoked_at DATETIME);
 CREATE TABLE IF NOT EXISTS webauthn_ceremonies (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('registration','authentication')), audience TEXT NOT NULL CHECK(audience IN ('self-service','admin')), user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, session_data BLOB NOT NULL CHECK(length(session_data) BETWEEN 1 AND 65536), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
+CREATE TABLE IF NOT EXISTS emergency_admin_grants (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64), session_hash TEXT UNIQUE CHECK(session_hash IS NULL OR length(session_hash)=64), created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, consumed_at DATETIME, revoked_at DATETIME, CHECK(expires_at>created_at));
 CREATE INDEX IF NOT EXISTS idx_badges_code ON badges(badge_code); CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp); CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients(last_seen_at);`
 
 type Store struct{ DB *sql.DB }
@@ -85,6 +86,12 @@ type SelfServiceSession struct {
 	Username  string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+type EmergencyAdminGrant struct {
+	ID                     string
+	TokenHash, SessionHash string
+	CreatedAt, ExpiresAt   time.Time
+	ConsumedAt, RevokedAt  sql.NullTime
 }
 type WebAuthnCeremony struct {
 	ID          string
