@@ -21,7 +21,16 @@ The result is a real user TGT. No synthetic or stored AD password is involved.
 
 ## Web authentication
 
-Administrator sessions require the configured AD administrator group. Self-service accepts a valid AD user but can update only that identity's SWBA PIN and read a bounded list of active badges selected by the authenticated local user ID. Signed session tokens carry distinct `admin` and `self-service` audiences and cannot be exchanged. Browser writes use secure, HTTP-only, SameSite strict cookies and CSRF tokens. Self-service expires after 15 minutes.
+Administrator sessions require current recursive membership in at least one
+configured Identity role group. The original administrator group retains full
+access; optional Identity, OIDC and client operators plus an auditor receive
+only the server-side permissions documented in
+[`roles-and-permissions.md`](roles-and-permissions.md). Membership is resolved
+again for every privileged request and fails closed when the directory is
+unavailable. Roles and group DNs are not stored in the browser cookie or
+emitted as OIDC claims.
+
+Self-service accepts a valid AD user but can update only that identity's SWBA PIN and read a bounded list of active badges selected by the authenticated local user ID. Signed session tokens carry distinct `admin` and `self-service` audiences and cannot be exchanged. Browser writes use secure, HTTP-only, SameSite strict cookies and CSRF tokens. Self-service expires after 15 minutes.
 
 Lost-badge self-service revocation is constrained again inside the database transaction by both badge ID and authenticated user ID. It never accepts a username or owner ID from form data and never returns whether a foreign badge exists.
 

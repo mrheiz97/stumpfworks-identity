@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -154,5 +155,102 @@ func TestAdministrativePagesHideUnavailableNavigationAndActions(t *testing.T) {
 	oidcServer, oidcSessions := protectedRoleServer(t, roleDirectory{roles: []adminauth.Role{adminauth.RoleOIDCOperator}})
 	if body := roleRequest(oidcServer, oidcSessions, http.MethodGet, "/oidc-clients").Body.String(); !strings.Contains(body, "Register client") {
 		t.Fatal("OIDC operator mutation controls are missing")
+	}
+}
+
+func TestAdministrativeRoutePermissionMatrix(t *testing.T) {
+	tests := []struct {
+		method     string
+		path       string
+		permission adminauth.Permission
+	}{
+		{http.MethodGet, "/", adminauth.PermissionDashboardRead},
+		{http.MethodGet, "/users", adminauth.PermissionIdentityRead},
+		{http.MethodPost, "/users", adminauth.PermissionIdentityWrite},
+		{http.MethodGet, "/api/v1/users/1", adminauth.PermissionIdentityRead},
+		{http.MethodPost, "/directory/users/import", adminauth.PermissionIdentityWrite},
+		{http.MethodGet, "/badges", adminauth.PermissionCredentialsRead},
+		{http.MethodPost, "/badges/1/revoke", adminauth.PermissionCredentialsWrite},
+		{http.MethodGet, "/api/v1/badges/1/qr", adminauth.PermissionCredentialsRead},
+		{http.MethodGet, "/pin", adminauth.PermissionCredentialsRead},
+		{http.MethodPost, "/users/1/pin", adminauth.PermissionCredentialsWrite},
+		{http.MethodGet, "/audit", adminauth.PermissionAuditRead},
+		{http.MethodGet, "/oidc-clients", adminauth.PermissionOIDCRead},
+		{http.MethodPost, "/oidc-clients/client/rotate-secret", adminauth.PermissionOIDCWrite},
+		{http.MethodGet, "/oidc-sessions", adminauth.PermissionOIDCSessionsRead},
+		{http.MethodPost, "/oidc-sessions/session/revoke", adminauth.PermissionOIDCSessionsRevoke},
+		{http.MethodGet, "/api/v1/clients", adminauth.PermissionClientsRead},
+		{http.MethodGet, "/status", adminauth.PermissionSystemRead},
+	}
+	for _, test := range tests {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		if got := requiredAdministrativePermission(request); got != test.permission {
+			t.Errorf("%s %s requires %q, want %q", test.method, test.path, got, test.permission)
+		}
+	}
+}
+
+func TestLimitedRoleLoginIssuesIdentityOnlySessionAndAudit(t *testing.T) {
+	server, sessions := protectedRoleServer(t, roleDirectory{roles: []adminauth.Role{adminauth.RoleAuditor}})
+	form := strings.NewReader("username=alice&password=correct")
+	request := httptest.NewRequest(http.MethodPost, "/login", form)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || len(response.Result().Cookies()) != 1 {
+		t.Fatalf("limited role login returned %d with %d cookies", response.Code, len(response.Result().Cookies()))
+	}
+	cookie := response.Result().Cookies()[0]
+	username, err := sessions.Verify(cookie.Value, time.Now())
+	if err != nil || username != "alice" {
+		t.Fatalf("issued session is invalid: %q %v", username, err)
+	}
+	for _, role := range []adminauth.Role{adminauth.RoleAdmin, adminauth.RoleAuditor} {
+		if strings.Contains(cookie.Value, string(role)) {
+			t.Fatal("session exposed an administrative role")
+		}
+	}
+	audits, err := server.store.Audits(t.Context())
+	if err != nil || len(audits) != 1 || audits[0].EventType != "admin_login" || audits[0].Username != "alice" {
+		t.Fatalf("limited role login audit missing: %+v %v", audits, err)
+	}
+}
+
+type changingRoleDirectory struct {
+	fakeDirectory
+	mu    sync.RWMutex
+	roles []adminauth.Role
+}
+
+func (d *changingRoleDirectory) AdministrativeRoles(context.Context, string) ([]adminauth.Role, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if len(d.roles) == 0 {
+		return nil, directory.ErrNotAuthorized
+	}
+	return append([]adminauth.Role(nil), d.roles...), nil
+}
+
+func (d *changingRoleDirectory) AuthenticateAdministrative(_ context.Context, username, _ string) (*directory.User, []adminauth.Role, error) {
+	roles, err := d.AdministrativeRoles(context.Background(), username)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &directory.User{Username: username}, roles, nil
+}
+
+func TestAdministrativeRoleRemovalIsNotCached(t *testing.T) {
+	d := &changingRoleDirectory{roles: []adminauth.Role{adminauth.RoleAdmin}}
+	server, sessions := protectedRoleServer(t, d)
+	if response := roleRequest(server, sessions, http.MethodGet, "/audit"); response.Code != http.StatusOK {
+		t.Fatalf("administrator was denied before removal: %d", response.Code)
+	}
+	d.mu.Lock()
+	d.roles = nil
+	d.mu.Unlock()
+	for i := 0; i < 16; i++ {
+		if response := roleRequest(server, sessions, http.MethodGet, "/audit"); response.Code != http.StatusForbidden {
+			t.Fatalf("request %d after role removal returned %d", i, response.Code)
+		}
 	}
 }

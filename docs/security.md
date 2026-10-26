@@ -18,6 +18,12 @@ SWBA combines a physical badge with a personal PIN and converts successful verif
 - Admin and self-service sessions have distinct signed audiences.
 - Cookies are `Secure`, `HttpOnly` and `SameSite=Strict`.
 - Browser writes require a session-bound CSRF token.
+- Administrative permissions are derived from current recursive AD group
+  membership for every privileged request. Directory errors and membership
+  removal fail closed; the existing administrator group retains full access.
+- Administrative roles and group DNs are not stored in session cookies or
+  emitted to OIDC clients. Hidden UI controls are not an authorization boundary;
+  HTML and JSON routes enforce the same permission matrix.
 - Login and PIN attempts are rate-limited.
 - CSP, HSTS, frame denial and restrictive permissions headers are enabled.
 - Audit records exclude passwords, PINs, tokens, grants and private keys.
@@ -40,3 +46,7 @@ SWBA combines a physical badge with a personal PIN and converts successful verif
 Future AD writes must use a dedicated least-privilege account, protect privileged groups, require explicit confirmation for destructive actions and audit before and after state.
 
 Never include real credentials or private keys in issues, logs or commits.
+
+Fine-grained role definitions and their production procedure are documented in
+[Administrative roles](roles-and-permissions.md) and
+[Administrative role rollout](roles-rollout.md).

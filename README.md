@@ -66,6 +66,8 @@ Always install the deployment CA correctly. Never bypass TLS verification.
 - Login grants are random, expire after 30 seconds, are single-use and bound to a client ID.
 - PKINIT certificates expire after ten minutes.
 - Administrative and self-service sessions use separate signed audiences.
+- Administrative routes enforce current recursive AD role membership; role
+  names and group DNs are not stored in browser sessions or OIDC claims.
 - AD credentials are verified over LDAPS and are never persisted.
 - Normal username/password login remains available as a recovery path.
 
@@ -100,6 +102,8 @@ docs/                Architecture, API, security and operations guides
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)
 - [Security model](docs/security.md)
+- [Administrative roles and permissions](docs/roles-and-permissions.md)
+- [Administrative role rollout and rollback](docs/roles-rollout.md)
 - [Client device authentication plan](docs/client-device-authentication.md)
 - [Passkey and WebAuthn plan](docs/passkeys.md)
 - [Operations and recovery](docs/operations.md)
@@ -111,7 +115,9 @@ docs/                Architecture, API, security and operations guides
 
 - `main` contains only tested, release-ready code.
 - `development` is the integration branch for new work.
-- Feature and fix branches start from `development` and return through reviewed merges.
+- Project work is integrated on `development`; releases reach protected `main`
+  only through reviewed merges. No additional task branches are used for this
+  deployment workflow.
 - A merge into `main` requires local tests and an end-to-end test on the target systems.
 
 The v1.0 boundary is a stable identity and authentication platform. Identity administration is intentionally deferred to a later release and requires a dedicated least-privilege AD account, privileged-group protection, explicit confirmation, complete auditing and rollback.
