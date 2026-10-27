@@ -347,6 +347,7 @@ func writeClientState(w http.ResponseWriter, clients []database.Client, now time
 	for _, client := range clients {
 		if !client.Enabled {
 			states["disabled"]++
+			continue
 		}
 		if client.LastSeenAt == nil {
 			states["never"]++

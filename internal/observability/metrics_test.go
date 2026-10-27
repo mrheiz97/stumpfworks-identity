@@ -94,6 +94,32 @@ func TestMetricsAreBoundedAndContainNoIdentityData(t *testing.T) {
 	}
 }
 
+func TestDisabledClientsHaveOneExclusiveOperationalState(t *testing.T) {
+	now := time.Date(2026, 10, 27, 17, 0, 0, 0, time.UTC)
+	old := now.Add(-24 * time.Hour)
+	response := httptest.NewRecorder()
+	writeClientState(response, []database.Client{{
+		ClientID:       "excluded-client",
+		Enabled:        false,
+		LastSeenAt:     &old,
+		NetworkStatus:  "unknown",
+		ADStatus:       "unknown",
+		CameraStatus:   "unknown",
+		KerberosStatus: "unknown",
+	}}, now)
+	body := response.Body.String()
+	for _, expected := range []string{
+		`sw_identity_clients{state="disabled"} 1`,
+		`sw_identity_clients{state="stale"} 0`,
+		`sw_identity_clients{state="never"} 0`,
+		`sw_identity_clients{state="unhealthy"} 0`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("missing %q in metrics:\n%s", expected, body)
+		}
+	}
+}
+
 func TestUnmatchedPathsCannotIncreaseLabelCardinality(t *testing.T) {
 	registry := New("test", "sqlite", nil)
 	handler := registry.Middleware(http.NotFoundHandler())
