@@ -1,7 +1,8 @@
 # Identity observability
 
-Status: opt-in implementation contract. Metrics are disabled by default and a
-production scrape requires its own maintenance window and rollback.
+Status: released in v1.8.0 and deployed opt-in on LOGIN01. The production
+scrape and Grafana dashboard run on the separate Docker01 monitoring stack;
+their independent rollback and maintenance boundaries remain mandatory.
 
 ## Privacy and cardinality contract
 
