@@ -41,6 +41,11 @@ type atomicBadgeStore interface {
 	OIDCCodeForExchange(context.Context, string, string, string, time.Time) (OIDCCode, error)
 	ConsumeOIDCCodeWithAudit(context.Context, string, string, string, time.Time, string) (OIDCCode, error)
 	ConsumeOIDCCodeDenialWithAudit(context.Context, string, string, string, time.Time, string, string) error
+	ConsumeOIDCCodeWithSessionAudit(context.Context, string, string, string, time.Time, OIDCSession, string) (OIDCCode, error)
+	OIDCSessions(context.Context, time.Time) ([]OIDCSession, error)
+	RevokeOIDCSessionsByUserWithAudit(context.Context, string, string) (int64, error)
+	RevokeOIDCSessionsByClientWithAudit(context.Context, string, string) (int64, error)
+	RevokeAllOIDCSessionsWithAudit(context.Context, string) (int64, error)
 	SetUserPINWithAudit(context.Context, int64, string, string, string) error
 	CreateSelfServiceSession(context.Context, string, string, time.Time) error
 	CreateSelfServiceSessionWithAudit(context.Context, string, string, time.Time, string) error
@@ -118,6 +123,15 @@ func TestSQLiteAtomicLostBadge(t *testing.T) {
 			t.Fatal("SQLite atomic audit fixture setup failed")
 		}
 	})
+	testAtomicOIDCBulkRevocation(t, s, func(reject bool) {
+		query := "DROP TRIGGER IF EXISTS fail_atomic_audit"
+		if reject {
+			query = "CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT,'synthetic audit rejection'); END"
+		}
+		if _, err := s.DB.ExecContext(t.Context(), query); err != nil {
+			t.Fatal("SQLite atomic audit fixture setup failed")
+		}
+	})
 	testAtomicClientAdministration(t, s, func(reject bool) {
 		query := "DROP TRIGGER IF EXISTS fail_atomic_audit"
 		if reject {
@@ -127,6 +141,55 @@ func TestSQLiteAtomicLostBadge(t *testing.T) {
 			t.Fatal("SQLite atomic audit fixture setup failed")
 		}
 	})
+}
+
+func testAtomicOIDCBulkRevocation(t *testing.T, s atomicBadgeStore, rejectAudit func(bool)) {
+	t.Helper()
+	ctx, now := t.Context(), time.Now().UTC()
+	user, err := s.CreateUser(ctx, "bulk-session-user", "Bulk Session User", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, client := range []string{"bulk-client-a", "bulk-client-b"} {
+		if err := s.CreateOIDCClient(ctx, client, "synthetic-hash", "https://example.test/callback", "openid"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	createSession := func(codeHash, sessionID, clientID string) {
+		code := OIDCCode{CodeHash: codeHash, ClientID: clientID, UserID: user.ID, RedirectURI: "https://example.test/callback", Scope: "openid", ExpiresAt: now.Add(time.Hour)}
+		if err := s.CreateOIDCCodeWithAudit(ctx, code, user.Username, ""); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.ConsumeOIDCCodeWithSessionAudit(ctx, codeHash, clientID, code.RedirectURI, now, OIDCSession{SessionID: sessionID, AccessTokenHash: "token-" + sessionID, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	createSession("bulk-code-a", "bulk-session-a", "bulk-client-a")
+	createSession("bulk-code-b", "bulk-session-b", "bulk-client-b")
+	rejectAudit(true)
+	if _, err := s.RevokeOIDCSessionsByUserWithAudit(ctx, user.Username, "198.51.100.94"); err == nil {
+		t.Fatal("bulk user revocation survived audit failure")
+	}
+	sessions, err := s.OIDCSessions(ctx, now)
+	activeFixtures := 0
+	for _, session := range sessions {
+		if (session.SessionID == "bulk-session-a" || session.SessionID == "bulk-session-b") && !session.RevokedAt.Valid {
+			activeFixtures++
+		}
+	}
+	if err != nil || activeFixtures != 2 {
+		t.Fatal("audit failure revoked OIDC sessions")
+	}
+	rejectAudit(false)
+	if count, err := s.RevokeOIDCSessionsByClientWithAudit(ctx, "bulk-client-a", "198.51.100.94"); err != nil || count != 1 {
+		t.Fatal("client bulk revocation failed")
+	}
+	if count, err := s.RevokeAllOIDCSessionsWithAudit(ctx, "198.51.100.94"); err != nil || count < 1 {
+		t.Fatal("global bulk revocation failed")
+	}
+	if _, err := s.RevokeAllOIDCSessionsWithAudit(ctx, "198.51.100.94"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("global bulk revocation replay accepted")
+	}
 }
 
 func testAtomicClientAdministration(t *testing.T, s atomicBadgeStore, rejectAudit func(bool)) {

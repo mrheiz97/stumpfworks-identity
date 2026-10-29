@@ -87,6 +87,9 @@ type ApplicationStore interface {
 	OIDCSessions(context.Context, time.Time) ([]OIDCSession, error)
 	RevokeOIDCSessionWithAudit(context.Context, string, string, string) error
 	RevokeOIDCSessionByTokenHashWithAudit(context.Context, string, string, string) error
+	RevokeOIDCSessionsByUserWithAudit(context.Context, string, string) (int64, error)
+	RevokeOIDCSessionsByClientWithAudit(context.Context, string, string) (int64, error)
+	RevokeAllOIDCSessionsWithAudit(context.Context, string) (int64, error)
 }
 
 var _ ApplicationStore = (*Store)(nil)

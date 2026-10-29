@@ -125,6 +125,13 @@ Sessions mit Session-ID, Benutzer, Client, Scope und Laufzeit und können aktive
 Sessions CSRF-geschützt widerrufen. Access-Token und Token-Hash werden weder
 angezeigt noch auditiert.
 
+Die geschützte Sitzungsseite unterstützt zusätzlich zentrale, transaktionale
+Widerrufe für alle aktiven Sitzungen eines Benutzers, eines OIDC-Clients oder
+für sämtliche aktiven Sitzungen in einem Sicherheitsvorfall. Der globale Weg
+verlangt die exakte Bestätigung `revoke-all`. Zustand und ein einzelnes
+aggregiertes, datenminimales Auditereignis committen gemeinsam; Auditfehler
+rollen den vollständigen Widerruf zurück.
+
 Wichtig: Ein bereits signiertes ID-Token bleibt bis zu seinem kurzen Ablauf
 kryptografisch prüfbar. Sofortiger zentraler Widerruf gilt deshalb für den
 opaque Access-Token bei Introspection. Eine Anwendung, die nach dem OIDC-Login

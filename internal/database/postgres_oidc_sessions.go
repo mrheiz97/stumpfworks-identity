@@ -76,6 +76,43 @@ func (s *PostgresStore) RevokeOIDCSessionByTokenHashWithAudit(ctx context.Contex
 	return s.revokeOIDCSessionWithAudit(ctx, "s.access_token_hash=$1 AND s.client_id=$2", "access_token_hash=$1 AND client_id=$2", []any{tokenHash, clientID}, ip, "client_revocation")
 }
 
+func (s *PostgresStore) RevokeOIDCSessionsByUserWithAudit(ctx context.Context, username, ip string) (int64, error) {
+	var canonical string
+	if err := s.pool.Native().QueryRow(ctx, `SELECT username FROM users WHERE `+postgresFoldUsername+`=`+postgresFoldArgument, username).Scan(&canonical); err != nil {
+		return 0, postgresNotFound(err)
+	}
+	return s.revokeOIDCSessionsBulkWithAudit(ctx, `user_id=(SELECT id FROM users WHERE lower(username)=lower($2))`, []any{canonical}, "oidc_user_sessions_revoked", canonical, "", ip, "admin_user_revocation")
+}
+
+func (s *PostgresStore) RevokeOIDCSessionsByClientWithAudit(ctx context.Context, clientID, ip string) (int64, error) {
+	return s.revokeOIDCSessionsBulkWithAudit(ctx, `client_id=$2`, []any{clientID}, "oidc_client_sessions_revoked", "", clientID, ip, "admin_client_revocation")
+}
+
+func (s *PostgresStore) RevokeAllOIDCSessionsWithAudit(ctx context.Context, ip string) (int64, error) {
+	return s.revokeOIDCSessionsBulkWithAudit(ctx, `TRUE`, nil, "oidc_all_sessions_revoked", "", "", ip, "admin_global_revocation")
+}
+
+func (s *PostgresStore) revokeOIDCSessionsBulkWithAudit(ctx context.Context, predicate string, args []any, event, username, clientID, ip, reason string) (int64, error) {
+	if err := validateAuditIP(ip); err != nil {
+		return 0, err
+	}
+	var count int64
+	err := s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		updateArgs := append([]any{time.Now().UTC()}, args...)
+		result, err := tx.Exec(ctx, `UPDATE oidc_sessions SET revoked_at=$1 WHERE `+predicate+` AND revoked_at IS NULL AND expires_at>now()`, updateArgs...)
+		if err != nil {
+			return err
+		}
+		count = result.RowsAffected()
+		if count == 0 {
+			return pgx.ErrNoRows
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO audit_log(event_type,username,client_id,success,ip_address,details) VALUES($1,$2,$3,$4,$5,$6)`, event, username, clientID, true, ip, fmt.Sprintf("%s,count=%d", reason, count))
+		return err
+	})
+	return count, err
+}
+
 func (s *PostgresStore) revokeOIDCSessionWithAudit(ctx context.Context, selectPredicate, updatePredicate string, args []any, ip, reason string) error {
 	if err := validateAuditIP(ip); err != nil {
 		return err
