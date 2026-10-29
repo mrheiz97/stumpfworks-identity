@@ -103,6 +103,28 @@ func TestAdministrationStylesheetIncludesCompactOperationsTheme(t *testing.T) {
 	}
 }
 
+func TestDashboardUsesCompactOperationsLayoutWithStoreCounts(t *testing.T) {
+	s, store := testServer(t)
+	if _, err := store.CreateUser(t.Context(), "alice", "Alice Example", ""); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("dashboard returned %d", response.Code)
+	}
+	body := response.Body.String()
+	for _, contract := range []string{"Identity service overview", "MANAGED USERS", ">1</strong>", "Open system status"} {
+		if !strings.Contains(body, contract) {
+			t.Fatalf("compact dashboard is missing %q", contract)
+		}
+	}
+	if strings.Contains(body, "Badge authentication gateway") {
+		t.Fatal("legacy dashboard hero is still rendered")
+	}
+}
+
 func TestPasskeyRoutesAreAbsentByDefault(t *testing.T) {
 	s, _ := testServer(t)
 	for _, path := range []string{"/self-service/passkeys/registration/begin", "/self-service/passkeys/registration/complete", "/self-service/passkeys/login/begin", "/self-service/passkeys/login/complete", "/self-service/passkeys/revoke"} {

@@ -1056,7 +1056,8 @@ func webPageTemplate() string {
 	const issuedStart = `<section class="panel"><div class="panel-head"><div><h2>Issued badges</h2>`
 	result = strings.Replace(result, issuedStart, `{{end}}`+issuedStart, 1)
 	const revoke = `<form method="post" action="/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Revoke</button></form>`
-	return strings.Replace(result, revoke, `{{if $.CanCredentialsWrite}}`+revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>{{end}}`, 1)
+	result = strings.Replace(result, revoke, `{{if $.CanCredentialsWrite}}`+revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>{{end}}`, 1)
+	return strings.Replace(result, legacyDashboardContent, compactDashboardContent, 1)
 }
 
 func (s *Server) web(w http.ResponseWriter, r *http.Request) {

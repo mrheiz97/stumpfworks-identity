@@ -57,6 +57,35 @@ body:not(.login-page) label{gap:4px;font-size:8px}
 body:not(.login-page) .notice{border-radius:3px}
 body:not(.login-page) .secret{gap:20px}
 body:not(.login-page) .secret code{padding:8px;border-radius:3px;font-size:9px}
+.module-bar{margin:0 0 7px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:#0d1218}
+.module-bar>span{display:block;margin-bottom:6px;color:#5eaaf3;font-size:7px;font-weight:800;letter-spacing:1.4px}
+.module-bar nav{display:flex;gap:3px;overflow-x:auto}
+.module-bar nav a{padding:5px 8px;border-radius:2px;color:#748295;text-decoration:none;font-size:8px;white-space:nowrap}
+.module-bar nav a:hover,.module-bar nav a.active{color:#78baff;background:#142131}
+.compact-stats{grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+.compact-stats article{min-height:82px;padding:11px;border:1px solid var(--line);border-left:2px solid #1685e5;border-radius:4px;background:#0d1218}
+.compact-stats article.cyan{border-left-color:#18b9cc}.compact-stats article.green{border-left-color:#26b36c}.compact-stats article.amber{border-left-color:#d9a400}.compact-stats article.red{border-left-color:#df4458}
+.compact-stats strong{margin-top:6px;font-size:19px}.compact-stats p{margin:2px 0 0;color:var(--muted);font-size:8px}
+.operations-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.operations-grid article{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid var(--line);border-radius:3px;background:#0a0f15}
+.operations-grid article>div{min-width:0;flex:1}.operations-grid strong,.operations-grid small{display:block}.operations-grid strong{font-size:9px}.operations-grid small{margin-top:2px;color:var(--muted);font-size:7px}
+.operation-icon{width:24px;height:24px;display:grid;place-items:center;border:1px solid #29405b;border-radius:3px;color:#68adf1;background:#111d2a;font-size:8px;font-weight:800}
 @media(max-width:1000px){body:not(.login-page) .stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1000px){.compact-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.operations-grid{grid-template-columns:1fr}}
 @media(max-width:680px){body:not(.login-page) .sidebar{position:relative;width:100%;height:auto;padding:12px}body:not(.login-page) .sidebar nav{grid-template-columns:repeat(4,1fr)}body:not(.login-page) .content{padding:16px 12px 35px}body:not(.login-page) .topbar{margin:-16px -12px 12px;padding:0 12px}body:not(.login-page) .stats{grid-template-columns:1fr}}
+@media(max-width:680px){.compact-stats{grid-template-columns:1fr 1fr}}
+.login-page{background:linear-gradient(120deg,#090c10,#10131a);font-size:12px}
+.login-page:before{opacity:.07;background-size:32px 32px}
+.login-page .login-shell{width:min(880px,100%);min-height:520px;border-color:#262e38;border-radius:6px;background:#0d1218;box-shadow:0 25px 80px rgba(0,0,0,.35)}
+.login-page .login-brand{padding:34px;background:radial-gradient(circle at 15% 85%,rgba(22,133,229,.17),transparent 35%),linear-gradient(145deg,#111a26,#0b1016)}
+.login-page .brand-mark{border-radius:4px;background:linear-gradient(145deg,#42a5ff,#0f67b6);color:#fff;box-shadow:0 5px 18px rgba(22,133,229,.24)}
+.login-page .login-brand h1{font-size:36px}.login-page .login-brand p{font-size:13px}
+.login-page .kicker{border-radius:2px;color:#8ec5ff;background:rgba(22,133,229,.12);border-color:rgba(22,133,229,.3)}
+.login-page .login-card{padding:38px 34px;background:#0c1117}
+.login-page .login-icon{width:44px;height:44px;margin-bottom:18px;border-radius:4px;color:#75b9ff;background:#111f30;border-color:#27415f;font-size:20px}
+.login-page .login-card h2{font-size:23px}.login-page .login-form{margin-top:23px}
+.login-page input,.login-page button{border-radius:3px}.login-page button{background:#1685e5}
+.login-page .self-shell{border-color:#262e38;border-radius:6px;background:#0d1218;box-shadow:0 25px 80px rgba(0,0,0,.35)}
+.login-page .self-header{padding:18px 22px;background:#0b1016}.login-page .self-card{padding:32px}
+.login-page .identity-row,.login-page .self-badges,.login-page .passkey-panel,.login-page .self-history,.login-page .self-activation,.login-page .self-sessions{border-radius:4px;background:#0a0f15}
 `
