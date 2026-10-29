@@ -61,6 +61,39 @@ func (s *Store) OIDCCodeForExchange(ctx context.Context, hash, clientID, redirec
 	return scanSQLiteOIDCCode(s.DB.QueryRowContext(ctx, `SELECT code_hash,client_id,user_id,redirect_uri,scope,nonce,code_challenge,expires_at FROM oidc_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND consumed_at IS NULL AND expires_at>=?`, hash, clientID, redirectURI, now.UTC()))
 }
 
+func (s *Store) ConsumeOIDCCodeDenialWithAudit(ctx context.Context, hash, clientID, redirectURI string, now time.Time, ip, reason string) error {
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	if reason != "pkce_failed" && reason != "user_unavailable" && reason != "user_inactive" {
+		return errors.New("invalid OIDC denial reason")
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	code, err := scanSQLiteOIDCCode(tx.QueryRowContext(ctx, `SELECT code_hash,client_id,user_id,redirect_uri,scope,nonce,code_challenge,expires_at FROM oidc_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND consumed_at IS NULL AND expires_at>=?`, hash, clientID, redirectURI, now.UTC()))
+	if err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE oidc_codes SET consumed_at=? WHERE code_hash=? AND consumed_at IS NULL`, now.UTC(), hash)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	var username string
+	if err := tx.QueryRowContext(ctx, `SELECT username FROM users WHERE id=?`, code.UserID).Scan(&username); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,username,client_id,success,ip_address,details) VALUES(?,?,?,?,?,?)`, "oidc_token_denied", username, clientID, false, ip, reason); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // ConsumeOIDCCodeWithAudit is the final token issuance commit. Callers may
 // prepare signed token material first, but must not return it until this wins.
 func (s *Store) ConsumeOIDCCodeWithAudit(ctx context.Context, hash, clientID, redirectURI string, now time.Time, ip string) (OIDCCode, error) {

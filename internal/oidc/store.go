@@ -16,6 +16,7 @@ type providerStore interface {
 	GetUser(context.Context, int64) (database.User, error)
 	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
 	ConsumeOIDCCode(context.Context, string, string, string, time.Time) (database.OIDCCode, error)
+	ConsumeOIDCCodeDenialWithAudit(context.Context, string, string, string, time.Time, string, string) error
 	CreateOIDCCodeWithAudit(context.Context, database.OIDCCode, string, string) error
 	OIDCCodeForExchange(context.Context, string, string, string, time.Time) (database.OIDCCode, error)
 	ConsumeOIDCCodeWithAudit(context.Context, string, string, string, time.Time, string) (database.OIDCCode, error)

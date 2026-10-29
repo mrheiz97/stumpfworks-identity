@@ -76,3 +76,25 @@ func (s *Store) RevokeOtherSelfServiceSessionsWithAudit(ctx context.Context, use
 	}
 	return count, nil
 }
+
+func (s *Store) RevokeSelfServiceSessionWithAudit(ctx context.Context, id, username, ip string) error {
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE self_service_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND lower(username)=lower(?) AND revoked_at IS NULL`, id, username)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES(?,?,?,?)`, "self_service_logout", username, true, ip); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

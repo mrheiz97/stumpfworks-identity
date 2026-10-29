@@ -42,6 +42,7 @@ type ApplicationStore interface {
 	RevokeOtherSelfServiceSessions(context.Context, string, string) (int64, error)
 	RevokeOtherSelfServiceSessionsWithAudit(context.Context, string, string, string) (int64, error)
 	RevokeSelfServiceSession(context.Context, string, string) error
+	RevokeSelfServiceSessionWithAudit(context.Context, string, string, string) error
 	CreateEmergencyAdminGrantWithAudit(context.Context, EmergencyAdminGrant, string) error
 	ConsumeEmergencyAdminGrantWithAudit(context.Context, string, string, time.Time, string) (EmergencyAdminGrant, error)
 	ActiveEmergencyAdminSession(context.Context, string, time.Time) (EmergencyAdminGrant, error)
@@ -77,6 +78,7 @@ type ApplicationStore interface {
 	SetOIDCClientEnabledWithAudit(context.Context, string, bool, string) error
 	CreateOIDCCode(context.Context, OIDCCode) error
 	ConsumeOIDCCode(context.Context, string, string, string, time.Time) (OIDCCode, error)
+	ConsumeOIDCCodeDenialWithAudit(context.Context, string, string, string, time.Time, string, string) error
 	CreateOIDCCodeWithAudit(context.Context, OIDCCode, string, string) error
 	OIDCCodeForExchange(context.Context, string, string, string, time.Time) (OIDCCode, error)
 	ConsumeOIDCCodeWithAudit(context.Context, string, string, string, time.Time, string) (OIDCCode, error)

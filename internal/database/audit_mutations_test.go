@@ -40,11 +40,13 @@ type atomicBadgeStore interface {
 	CreateOIDCCodeWithAudit(context.Context, OIDCCode, string, string) error
 	OIDCCodeForExchange(context.Context, string, string, string, time.Time) (OIDCCode, error)
 	ConsumeOIDCCodeWithAudit(context.Context, string, string, string, time.Time, string) (OIDCCode, error)
+	ConsumeOIDCCodeDenialWithAudit(context.Context, string, string, string, time.Time, string, string) error
 	SetUserPINWithAudit(context.Context, int64, string, string, string) error
 	CreateSelfServiceSession(context.Context, string, string, time.Time) error
 	CreateSelfServiceSessionWithAudit(context.Context, string, string, time.Time, string) error
 	ActiveSelfServiceSession(context.Context, string, string, time.Time) (SelfServiceSession, error)
 	RevokeOtherSelfServiceSessionsWithAudit(context.Context, string, string, string) (int64, error)
+	RevokeSelfServiceSessionWithAudit(context.Context, string, string, string) error
 }
 
 func TestSQLiteAtomicLostBadge(t *testing.T) {
@@ -359,6 +361,20 @@ func testAtomicSessionMutations(t *testing.T, s atomicBadgeStore, rejectAudit fu
 	if _, err := s.ActiveSelfServiceSession(ctx, "session-other", owner.Username, time.Now()); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("audited session revocation did not persist")
 	}
+	rejectAudit(true)
+	if err := s.RevokeSelfServiceSessionWithAudit(ctx, "session-current", owner.Username, "198.51.100.92"); err == nil {
+		t.Fatal("self-service logout committed despite audit failure")
+	}
+	if _, err := s.ActiveSelfServiceSession(ctx, "session-current", owner.Username, time.Now()); err != nil {
+		t.Fatal("audit failure revoked current session")
+	}
+	rejectAudit(false)
+	if err := s.RevokeSelfServiceSessionWithAudit(ctx, "session-current", owner.Username, "198.51.100.92"); err != nil {
+		t.Fatal("audited self-service logout failed")
+	}
+	if _, err := s.ActiveSelfServiceSession(ctx, "session-current", owner.Username, time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("audited self-service logout did not persist")
+	}
 }
 
 func testAtomicOIDCIssuance(t *testing.T, s atomicBadgeStore, rejectAudit func(bool)) {
@@ -416,6 +432,33 @@ func testAtomicOIDCIssuance(t *testing.T, s atomicBadgeStore, rejectAudit func(b
 		if remaining != 0 {
 			t.Fatalf("OIDC audit event %s lost or duplicated", event)
 		}
+	}
+	denied := code
+	denied.CodeHash = "oidc-denied-audit-code"
+	if err := s.CreateOIDCCodeWithAudit(ctx, denied, owner.Username, "198.51.100.91"); err != nil {
+		t.Fatal(err)
+	}
+	rejectAudit(true)
+	if err := s.ConsumeOIDCCodeDenialWithAudit(ctx, denied.CodeHash, denied.ClientID, denied.RedirectURI, now, "198.51.100.91", "pkce_failed"); err == nil {
+		t.Fatal("OIDC denial consumed code despite audit failure")
+	}
+	if _, err := s.OIDCCodeForExchange(ctx, denied.CodeHash, denied.ClientID, denied.RedirectURI, now); err != nil {
+		t.Fatal("OIDC denial audit failure consumed code")
+	}
+	rejectAudit(false)
+	if err := s.ConsumeOIDCCodeDenialWithAudit(ctx, denied.CodeHash, denied.ClientID, denied.RedirectURI, now, "198.51.100.91", "pkce_failed"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.OIDCCodeForExchange(ctx, denied.CodeHash, denied.ClientID, denied.RedirectURI, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("audited OIDC denial left code redeemable")
+	}
+	events, err = s.Audits(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := events[0]
+	if last.EventType != "oidc_token_denied" || last.Username != owner.Username || last.ClientID != denied.ClientID || last.Success || last.Details != "pkce_failed" {
+		t.Fatalf("OIDC denial audit mismatch: %+v", last)
 	}
 }
 

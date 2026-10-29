@@ -332,6 +332,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if e != nil {
 		s.loginFailed(ip)
+		s.audit(r.Context(), "admin_login", "", username, "", false, ip, "invalid_credentials")
 		s.log.Warn("admin login denied", "event", "admin_login_failed", "username", username, "ip_address", remoteIP(r))
 		http.Redirect(w, r, "/login?error=1", 303)
 		return
@@ -748,7 +749,11 @@ func (s *Server) selfServiceLogout(w http.ResponseWriter, r *http.Request) {
 			s.problem(w, http.StatusForbidden, "csrf_invalid")
 			return
 		}
-		_ = s.store.RevokeSelfServiceSession(r.Context(), sessionID, username)
+		if err := s.store.RevokeSelfServiceSessionWithAudit(r.Context(), sessionID, username, remoteIP(r)); err != nil {
+			s.log.Error("self-service logout audit failed", "component", "audit", "event_type", "self_service_logout")
+			s.problem(w, http.StatusServiceUnavailable, "logout_unavailable")
+			return
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: "swbadge_selfservice", Value: "", Path: "/self-service", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 	http.Redirect(w, r, "/self-service", http.StatusSeeOther)
@@ -1100,7 +1105,10 @@ func (s *Server) webCreateUser(w http.ResponseWriter, r *http.Request) {
 			d = u
 		}
 		if u != "" {
-			_, _ = s.store.CreateUserWithAudit(r.Context(), u, d, "", "user_created", remoteIP(r))
+			if _, err := s.store.CreateUserWithAudit(r.Context(), u, d, "", "user_created", remoteIP(r)); err != nil {
+				http.Redirect(w, r, "/users?error=unavailable", http.StatusSeeOther)
+				return
+			}
 		}
 	}
 	http.Redirect(w, r, "/users", http.StatusSeeOther)
@@ -1117,7 +1125,10 @@ func (s *Server) webCreateBadge(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) webRevoke(w http.ResponseWriter, r *http.Request) {
 	n, _ := id(r)
-	_ = s.store.RevokeBadgeWithAudit(r.Context(), n, remoteIP(r))
+	if err := s.store.RevokeBadgeWithAudit(r.Context(), n, remoteIP(r)); err != nil {
+		http.Redirect(w, r, "/badges?error=unavailable", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/badges", 303)
 }
 func (s *Server) webReplace(w http.ResponseWriter, r *http.Request) {

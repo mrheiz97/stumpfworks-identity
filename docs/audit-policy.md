@@ -34,13 +34,21 @@ reusable. Database errors are sensitive and are not logged verbatim.
   material privately, then commits code consumption with `oidc_token_issued`.
   Audit failure exposes neither code nor token material; concurrent exchanges
   still have exactly one winner.
+- Token denial after a redeemable code has been found (invalid PKCE, missing
+  local user or inactive directory user) consumes the one-time code together
+  with `oidc_token_denied`. Audit failure consumes neither and returns only a
+  temporary availability error.
 - First-login OIDC user provisioning and stable subject assignment are each
   transactionally audited before authorization continues.
 - Administrator login is accepted and cookie material is created only after
-  its success event is durable.
+  its success event is durable. Rejected administrator authentication remains
+  rejected and records a best-effort, data-minimal failure event.
 - User provisioning, PIN changes, self-service session creation/revocation and
   administrative badge creation/revocation/replacement commit with their
   success events on both backends.
+- Self-service logout revokes the current server-side session and writes
+  `self_service_logout` in one transaction. Audit failure preserves both the
+  session and browser cookie and returns an availability error.
 - The `identity-admin` OIDC client create, secret rotation, enable/disable and
   first subject assignment operations use the configured runtime backend and
   commit their mutation with the corresponding audit event. One-time client
@@ -70,11 +78,10 @@ state, and that competing token exchanges create exactly one success audit.
   the supported lossless audit export. Keep exports root-readable, encrypted at
   rest when moved off-host, never commit them, and verify a restore before
   treating an export as recoverable.
-- LOGIN01's daily maintenance keeps the existing rolling set of 50 consistent
-  database backups for operational recovery. This rotates backup files, not
-  audit rows. Removing old audit rows requires a separately reviewed archive,
-  retention period and destructive maintenance command; none is authorized or
-  implemented.
+- LOGIN01's daily PostgreSQL maintenance keeps verified custom-format dumps for
+  30 days. This rotates backup files, not audit rows. Removing old audit rows
+  requires a separately reviewed archive, retention period and destructive
+  maintenance command; none is authorized or implemented.
 - Bounded operational messages with `component=audit` and an `event_type`
   identify audit-write failures without database errors or sensitive values.
   Monitor the service journal for these messages and alert on every occurrence;
