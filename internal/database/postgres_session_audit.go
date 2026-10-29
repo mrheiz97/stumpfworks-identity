@@ -54,3 +54,20 @@ func (s *PostgresStore) RevokeOtherSelfServiceSessionsWithAudit(ctx context.Cont
 	}
 	return count, nil
 }
+
+func (s *PostgresStore) RevokeSelfServiceSessionWithAudit(ctx context.Context, id, username, ip string) error {
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	return s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		result, err := tx.Exec(ctx, "UPDATE self_service_sessions SET revoked_at=now() WHERE "+postgresFoldUsername+"="+postgresFoldArgument+" AND id=$2 AND revoked_at IS NULL", username, id)
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected() != 1 {
+			return pgx.ErrNoRows
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO audit_log(event_type,username,success,ip_address) VALUES($1,$2,$3,$4)`, "self_service_logout", username, true, ip)
+		return err
+	})
+}

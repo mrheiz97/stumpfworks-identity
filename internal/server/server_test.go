@@ -473,6 +473,24 @@ func TestAdminLoginFailsClosedWhenAuditCannotPersist(t *testing.T) {
 	}
 }
 
+func TestDeniedAdminLoginIsAudited(t *testing.T) {
+	_, st := testServer(t)
+	sessions, _ := adminauth.NewSessions("01234567890123456789012345678901", time.Hour)
+	s := NewProtected(st, slog.New(slog.NewTextHandler(io.Discard, nil)), fakeDirectory{}, sessions)
+	form := strings.NewReader("username=alice-admin&password=wrong")
+	r := httptest.NewRequest(http.MethodPost, "/login", form)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login?error=1" || len(w.Result().Cookies()) != 0 {
+		t.Fatalf("denied admin login returned %d with %d cookies", w.Code, len(w.Result().Cookies()))
+	}
+	audits, err := st.Audits(t.Context())
+	if err != nil || len(audits) != 1 || audits[0].EventType != "admin_login" || audits[0].Username != "alice-admin" || audits[0].Success {
+		t.Fatalf("denied admin login audit missing: %+v %v", audits, err)
+	}
+}
+
 func TestSelfServicePIN(t *testing.T) {
 	_, st := testServer(t)
 	sessions, _ := adminauth.NewSessions("01234567890123456789012345678901", time.Hour)

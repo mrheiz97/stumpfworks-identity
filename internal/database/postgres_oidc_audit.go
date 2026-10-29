@@ -49,6 +49,27 @@ func (s *PostgresStore) OIDCCodeForExchange(ctx context.Context, hash, clientID,
 	return scanPostgresOIDCCode(s.pool.Native().QueryRow(ctx, `SELECT code_hash,client_id,user_id,redirect_uri,scope,nonce,code_challenge,expires_at FROM oidc_codes WHERE code_hash=$1 AND client_id=$2 AND redirect_uri=$3 AND consumed_at IS NULL AND expires_at>=$4`, hash, clientID, redirectURI, now.UTC()))
 }
 
+func (s *PostgresStore) ConsumeOIDCCodeDenialWithAudit(ctx context.Context, hash, clientID, redirectURI string, now time.Time, ip, reason string) error {
+	if err := validateAuditIP(ip); err != nil {
+		return err
+	}
+	if reason != "pkce_failed" && reason != "user_unavailable" && reason != "user_inactive" {
+		return errors.New("invalid OIDC denial reason")
+	}
+	return s.pool.WithinTransaction(ctx, func(tx pgx.Tx) error {
+		code, err := scanPostgresOIDCCode(tx.QueryRow(ctx, `UPDATE oidc_codes SET consumed_at=$1 WHERE code_hash=$2 AND client_id=$3 AND redirect_uri=$4 AND consumed_at IS NULL AND expires_at>=$1 RETURNING code_hash,client_id,user_id,redirect_uri,scope,nonce,code_challenge,expires_at`, now.UTC(), hash, clientID, redirectURI))
+		if err != nil {
+			return err
+		}
+		var username string
+		if err := tx.QueryRow(ctx, `SELECT username FROM users WHERE id=$1`, code.UserID).Scan(&username); err != nil {
+			return postgresNotFound(err)
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO audit_log(event_type,username,client_id,success,ip_address,details) VALUES($1,$2,$3,$4,$5,$6)`, "oidc_token_denied", username, clientID, false, ip, reason)
+		return err
+	})
+}
+
 func (s *PostgresStore) ConsumeOIDCCodeWithAudit(ctx context.Context, hash, clientID, redirectURI string, now time.Time, ip string) (OIDCCode, error) {
 	if err := validateAuditIP(ip); err != nil {
 		return OIDCCode{}, err

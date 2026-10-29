@@ -281,29 +281,22 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	}
 	verifier := r.FormValue("code_verifier")
 	if len(verifier) < 43 || len(verifier) > 128 {
-		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
-		p.audit(r, "oidc_token_denied", "", clientID, false, "pkce_failed")
-		p.oauthError(w, "invalid_grant", 400)
+		p.consumeDeniedCode(w, r, codeHash, clientID, redirectURI, exchangeTime, "pkce_failed")
 		return
 	}
 	challenge := sha256.Sum256([]byte(verifier))
 	if verifier == "" || base64.RawURLEncoding.EncodeToString(challenge[:]) != stored.CodeChallenge {
-		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
-		p.audit(r, "oidc_token_denied", "", clientID, false, "pkce_failed")
-		p.oauthError(w, "invalid_grant", 400)
+		p.consumeDeniedCode(w, r, codeHash, clientID, redirectURI, exchangeTime, "pkce_failed")
 		return
 	}
 	u, err := p.store.GetUser(r.Context(), stored.UserID)
 	if err != nil {
-		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
-		p.oauthError(w, "invalid_grant", 400)
+		p.consumeDeniedCode(w, r, codeHash, clientID, redirectURI, exchangeTime, "user_unavailable")
 		return
 	}
 	du, err := p.dir.GetUser(r.Context(), u.Username)
 	if err != nil {
-		_, _ = p.store.ConsumeOIDCCode(r.Context(), codeHash, clientID, redirectURI, exchangeTime)
-		p.audit(r, "oidc_token_denied", u.Username, clientID, false, "user_inactive")
-		p.oauthError(w, "invalid_grant", 400)
+		p.consumeDeniedCode(w, r, codeHash, clientID, redirectURI, exchangeTime, "user_inactive")
 		return
 	}
 	sub, err := p.store.EnsureOIDCSubjectWithAudit(r.Context(), u.ID, remoteIP(r))
@@ -350,6 +343,15 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.writeJSON(w, 200, map[string]any{"access_token": accessToken, "token_type": "Bearer", "expires_in": 300, "id_token": idToken, "scope": stored.Scope})
+}
+
+func (p *Provider) consumeDeniedCode(w http.ResponseWriter, r *http.Request, hash, clientID, redirectURI string, now time.Time, reason string) {
+	if err := p.store.ConsumeOIDCCodeDenialWithAudit(r.Context(), hash, clientID, redirectURI, now, remoteIP(r), reason); err != nil {
+		slog.Error("OIDC token denial audit failed", "component", "audit", "event_type", "oidc_token_denied")
+		p.oauthError(w, "temporarily_unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	p.oauthError(w, "invalid_grant", http.StatusBadRequest)
 }
 
 func (p *Provider) authenticateClient(r *http.Request) (string, bool) {

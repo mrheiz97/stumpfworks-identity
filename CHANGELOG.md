@@ -2,7 +2,7 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
-## [Unreleased]
+## [1.9.0] - 2026-10-29
 
 ### Added
 
@@ -16,6 +16,15 @@ All notable changes to StumpfWorks Identity are documented here.
 - Documented the completed LOGIN01 PostgreSQL 17 production migration,
   least-privilege role split, stopped SQLite reconciliation, and successful
   restore rehearsals.
+
+### Security
+
+- Made current self-service logout and redeemable OIDC-code denial atomic with
+  their audit records on SQLite and PostgreSQL. Audit rejection now preserves
+  the session or code and exposes no false success.
+- Added data-minimal audit coverage for rejected administrator authentication
+  and stopped HTML administration routes from hiding transactional audit
+  failures behind normal redirects.
 
 ## [1.8.0] - 2026-10-26
 
