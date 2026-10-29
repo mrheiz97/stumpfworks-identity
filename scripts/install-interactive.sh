@@ -112,7 +112,7 @@ install_login01() {
 
     rollback="/root/swbadge-login01-install-rollback-$timestamp"
     install -d -m 0700 "$rollback"
-    for target in /opt/stumpfworks-badge/sw-badge-server /etc/stumpfworks-badge/config.yaml /etc/stumpfworks-badge/ldap-password /etc/stumpfworks-badge/session-secret /etc/systemd/system/sw-badge-server.service /etc/systemd/system/swbadge-login01-maintenance.service /etc/systemd/system/swbadge-login01-maintenance.timer /usr/local/sbin/swbadge-cert-check /usr/local/sbin/swbadge-sqlite-backup; do
+    for target in /opt/stumpfworks-badge/sw-badge-server /etc/stumpfworks-badge/config.yaml /etc/stumpfworks-badge/ldap-password /etc/stumpfworks-badge/session-secret /etc/systemd/system/sw-badge-server.service /etc/systemd/system/swbadge-login01-maintenance.service /etc/systemd/system/swbadge-login01-maintenance.timer /usr/local/sbin/swbadge-cert-check /usr/local/sbin/swbadge-sqlite-backup /usr/local/sbin/swbadge-postgres-backup; do
         backup_file "$target" "$rollback"
     done
 
@@ -168,6 +168,7 @@ EOF
     install -o root -g root -m 0644 "$project_dir/deploy/systemd/sw-badge-server.service" /etc/systemd/system/sw-badge-server.service
     install -o root -g root -m 0755 "$project_dir/scripts/swbadge-cert-check.sh" /usr/local/sbin/swbadge-cert-check
     install -o root -g root -m 0755 "$project_dir/scripts/swbadge-sqlite-backup.py" /usr/local/sbin/swbadge-sqlite-backup
+    install -o root -g root -m 0755 "$project_dir/scripts/swbadge-postgres-backup.py" /usr/local/sbin/swbadge-postgres-backup
     install -o root -g root -m 0644 "$project_dir/deploy/systemd/swbadge-login01-maintenance.service" /etc/systemd/system/swbadge-login01-maintenance.service
     install -o root -g root -m 0644 "$project_dir/deploy/systemd/swbadge-login01-maintenance.timer" /etc/systemd/system/swbadge-login01-maintenance.timer
     install -d -o root -g root -m 0700 /var/backups/stumpfworks-badge

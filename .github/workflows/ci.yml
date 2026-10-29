@@ -61,7 +61,7 @@ jobs:
       - name: Python syntax
         run: |
           python3 -m py_compile cmd/native-greeter/sw-badge-native-greeter.py
-          python3 -m py_compile scripts/swbadge-sqlite-backup.py
+          python3 -m py_compile scripts/swbadge-sqlite-backup.py scripts/swbadge-postgres-backup.py
       - name: Shell syntax
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 sh -n
       - name: Whitespace
