@@ -84,6 +84,25 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestAdministrationStylesheetIncludesCompactOperationsTheme(t *testing.T) {
+	s, _ := testServer(t)
+	request := httptest.NewRequest(http.MethodGet, "/static/style.css", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("stylesheet returned %d", response.Code)
+	}
+	if contentType := response.Header().Get("Content-Type"); contentType != "text/css" {
+		t.Fatalf("unexpected stylesheet content type %q", contentType)
+	}
+	body := response.Body.String()
+	for _, contract := range []string{"body:not(.login-page)", "grid-template-columns:repeat(4,minmax(0,1fr))", "background:#0d1015"} {
+		if !strings.Contains(body, contract) {
+			t.Fatalf("compact administration stylesheet is missing %q", contract)
+		}
+	}
+}
+
 func TestPasskeyRoutesAreAbsentByDefault(t *testing.T) {
 	s, _ := testServer(t)
 	for _, path := range []string{"/self-service/passkeys/registration/begin", "/self-service/passkeys/registration/complete", "/self-service/passkeys/login/begin", "/self-service/passkeys/login/complete", "/self-service/passkeys/revoke"} {
