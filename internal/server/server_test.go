@@ -120,8 +120,26 @@ func TestDashboardUsesCompactOperationsLayoutWithStoreCounts(t *testing.T) {
 			t.Fatalf("compact dashboard is missing %q", contract)
 		}
 	}
+	for _, navigation := range []string{"Users", "Badges", "OIDC", "Audit", "System"} {
+		if !strings.Contains(body, navigation) {
+			t.Fatalf("unprotected preview is missing %q navigation", navigation)
+		}
+	}
 	if strings.Contains(body, "Badge authentication gateway") {
 		t.Fatal("legacy dashboard hero is still rendered")
+	}
+}
+
+func TestUnprotectedPINPreviewDoesNotRequireSessionManager(t *testing.T) {
+	s, store := testServer(t)
+	if _, err := store.CreateUser(t.Context(), "alice", "Alice Example", ""); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/pin", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "PIN management") {
+		t.Fatalf("unprotected PIN preview returned %d: %s", response.Code, response.Body.String())
 	}
 }
 

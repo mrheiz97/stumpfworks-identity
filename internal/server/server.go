@@ -486,7 +486,11 @@ func (s *Server) pinPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := administrativeCookieToken(r)
-	data := map[string]any{"Users": users, "CSRF": s.sessions.CSRF(token), "CanCredentialsWrite": requestCan(r, adminauth.PermissionCredentialsWrite)}
+	csrf := ""
+	if s.sessions != nil {
+		csrf = s.sessions.CSRF(token)
+	}
+	data := map[string]any{"Users": users, "CSRF": csrf, "CanCredentialsWrite": s.unprotectedOrCan(r, adminauth.PermissionCredentialsWrite)}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = template.Must(template.New("pin").Parse(permissionAwarePINTemplate())).Execute(w, data)
@@ -1092,14 +1096,18 @@ func (s *Server) web(w http.ResponseWriter, r *http.Request) {
 	}
 	data := map[string]any{
 		"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": stats, "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload"),
-		"CanIdentityRead": requestCan(r, adminauth.PermissionIdentityRead), "CanIdentityWrite": requestCan(r, adminauth.PermissionIdentityWrite),
-		"CanCredentialsRead": requestCan(r, adminauth.PermissionCredentialsRead), "CanCredentialsWrite": requestCan(r, adminauth.PermissionCredentialsWrite),
-		"CanAuditRead": requestCan(r, adminauth.PermissionAuditRead), "CanOIDCRead": requestCan(r, adminauth.PermissionOIDCRead),
-		"CanOIDCSessionsRead": requestCan(r, adminauth.PermissionOIDCSessionsRead), "CanSystemRead": requestCan(r, adminauth.PermissionSystemRead),
+		"CanIdentityRead": s.unprotectedOrCan(r, adminauth.PermissionIdentityRead), "CanIdentityWrite": s.unprotectedOrCan(r, adminauth.PermissionIdentityWrite),
+		"CanCredentialsRead": s.unprotectedOrCan(r, adminauth.PermissionCredentialsRead), "CanCredentialsWrite": s.unprotectedOrCan(r, adminauth.PermissionCredentialsWrite),
+		"CanAuditRead": s.unprotectedOrCan(r, adminauth.PermissionAuditRead), "CanOIDCRead": s.unprotectedOrCan(r, adminauth.PermissionOIDCRead),
+		"CanOIDCSessionsRead": s.unprotectedOrCan(r, adminauth.PermissionOIDCSessionsRead), "CanSystemRead": s.unprotectedOrCan(r, adminauth.PermissionSystemRead),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = page.Execute(w, data)
+}
+
+func (s *Server) unprotectedOrCan(r *http.Request, permission adminauth.Permission) bool {
+	return !s.protect || requestCan(r, permission)
 }
 func (s *Server) webCreateUser(w http.ResponseWriter, r *http.Request) {
 	if e := r.ParseForm(); e == nil {
