@@ -283,7 +283,7 @@ func (s *Server) systemStatusPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Clients": clientViews(clients, time.Now(), s.clientTargetVersion), "Version": version.Version, "ClientTargetVersion": s.clientTargetVersion, "Uptime": time.Since(s.started).Round(time.Second)}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	if err := systemStatusTemplate.Execute(w, data); err != nil {
+	if err := s.renderCompactAdminPage(w, r, systemStatusTemplate, data, "/status"); err != nil {
 		s.log.Error("system status template failed", "error", err)
 	}
 }

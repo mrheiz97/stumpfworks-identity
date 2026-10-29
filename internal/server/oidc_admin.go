@@ -164,7 +164,7 @@ func (s *Server) renderOIDCClients(w http.ResponseWriter, r *http.Request, secre
 	if !requestCan(r, adminauth.PermissionOIDCWrite) {
 		tmpl = oidcClientsReadOnlyTemplate
 	}
-	if err := tmpl.Execute(w, oidcClientsPageData{Clients: views, Users: userViews, Operations: operations, CSRF: csrf, SecretID: secretID, Secret: secret, Notice: notice}); err != nil {
+	if err := s.renderCompactAdminPage(w, r, tmpl, oidcClientsPageData{Clients: views, Users: userViews, Operations: operations, CSRF: csrf, SecretID: secretID, Secret: secret, Notice: notice}, "/oidc-clients"); err != nil {
 		s.log.Error("OIDC client page rendering failed", "error", err)
 	}
 }

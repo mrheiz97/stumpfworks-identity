@@ -143,6 +143,24 @@ func TestUnprotectedPINPreviewDoesNotRequireSessionManager(t *testing.T) {
 	}
 }
 
+func TestStandaloneAdministrationPagesUseSharedSidebar(t *testing.T) {
+	s, _ := testServer(t)
+	for path, activePath := range map[string]string{
+		"/pin": "/users", "/oidc-clients": "/oidc-clients", "/oidc-sessions": "/oidc-sessions", "/status": "/status",
+	} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		s.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, response.Code)
+		}
+		body := response.Body.String()
+		if !strings.Contains(body, `class="sidebar"`) || !strings.Contains(body, `class="active" href="`+activePath+`"`) {
+			t.Fatalf("%s is missing the shared sidebar or active navigation", path)
+		}
+	}
+}
+
 func TestPasskeyRoutesAreAbsentByDefault(t *testing.T) {
 	s, _ := testServer(t)
 	for _, path := range []string{"/self-service/passkeys/registration/begin", "/self-service/passkeys/registration/complete", "/self-service/passkeys/login/begin", "/self-service/passkeys/login/complete", "/self-service/passkeys/revoke"} {

@@ -493,7 +493,7 @@ func (s *Server) pinPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Users": users, "CSRF": csrf, "CanCredentialsWrite": s.unprotectedOrCan(r, adminauth.PermissionCredentialsWrite)}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = template.Must(template.New("pin").Parse(permissionAwarePINTemplate())).Execute(w, data)
+	_ = s.renderCompactAdminPage(w, r, template.Must(template.New("pin").Parse(permissionAwarePINTemplate())), data, "/users")
 }
 
 func permissionAwarePINTemplate() string {
