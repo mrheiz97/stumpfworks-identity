@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -86,6 +87,52 @@ func (s *Store) RevokeOIDCSessionWithAudit(ctx context.Context, sessionID, ip, r
 
 func (s *Store) RevokeOIDCSessionByTokenHashWithAudit(ctx context.Context, tokenHash, clientID, ip string) error {
 	return s.revokeOIDCSessionWithAudit(ctx, `access_token_hash=? AND client_id=?`, tokenHash, ip, "client_revocation", clientID)
+}
+
+func (s *Store) RevokeOIDCSessionsByUserWithAudit(ctx context.Context, username, ip string) (int64, error) {
+	var canonical string
+	if err := s.DB.QueryRowContext(ctx, `SELECT username FROM users WHERE lower(username)=lower(?)`, username).Scan(&canonical); err != nil {
+		return 0, err
+	}
+	return s.revokeOIDCSessionsBulkWithAudit(ctx, `user_id=(SELECT id FROM users WHERE lower(username)=lower(?))`, []any{canonical}, "oidc_user_sessions_revoked", canonical, "", ip, "admin_user_revocation")
+}
+
+func (s *Store) RevokeOIDCSessionsByClientWithAudit(ctx context.Context, clientID, ip string) (int64, error) {
+	return s.revokeOIDCSessionsBulkWithAudit(ctx, `client_id=?`, []any{clientID}, "oidc_client_sessions_revoked", "", clientID, ip, "admin_client_revocation")
+}
+
+func (s *Store) RevokeAllOIDCSessionsWithAudit(ctx context.Context, ip string) (int64, error) {
+	return s.revokeOIDCSessionsBulkWithAudit(ctx, `1=1`, nil, "oidc_all_sessions_revoked", "", "", ip, "admin_global_revocation")
+}
+
+func (s *Store) revokeOIDCSessionsBulkWithAudit(ctx context.Context, predicate string, args []any, event, username, clientID, ip, reason string) (int64, error) {
+	if err := validateAuditIP(ip); err != nil {
+		return 0, err
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	updateArgs := append([]any{time.Now().UTC()}, args...)
+	result, err := tx.ExecContext(ctx, `UPDATE oidc_sessions SET revoked_at=? WHERE `+predicate+` AND revoked_at IS NULL AND expires_at>CURRENT_TIMESTAMP`, updateArgs...)
+	if err != nil {
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if count == 0 {
+		return 0, sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,username,client_id,success,ip_address,details) VALUES(?,?,?,?,?,?)`, event, username, clientID, true, ip, fmt.Sprintf("%s,count=%d", reason, count)); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (s *Store) revokeOIDCSessionWithAudit(ctx context.Context, predicate string, value string, ip string, reason string, extra ...any) error {

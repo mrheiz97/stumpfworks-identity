@@ -59,6 +59,9 @@ func TestOIDCSessionAdministration(t *testing.T) {
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), sessionID) || strings.Contains(page.Body.String(), tokenHash) {
 		t.Fatal("session page missing safe metadata or exposed token hash")
 	}
+	if !strings.Contains(page.Body.String(), "Central revocation") || !strings.Contains(page.Body.String(), "Revoke every active session") {
+		t.Fatal("central session revocation controls missing")
+	}
 
 	missingCSRF := postOIDCAdmin(t, s, cookie, "/oidc-sessions/"+sessionID+"/revoke", url.Values{})
 	if missingCSRF.Code != http.StatusForbidden {
@@ -87,6 +90,32 @@ func TestOIDCSessionAdministration(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("session revocation audit missing")
+	}
+
+	insertSession := func(id, hash, client string) {
+		if _, err := store.DB.ExecContext(t.Context(), `INSERT INTO oidc_sessions(session_id,access_token_hash,client_id,user_id,scope,issued_at,expires_at) VALUES(?,?,?,?,?,?,?)`, id, hash, client, user.ID, "openid", time.Now().UTC(), time.Now().Add(5*time.Minute).UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertSession("user-revoke-session-000000000000", "user-revoke-token-a", "session-app")
+	insertSession("user-revoke-session-111111111111", "user-revoke-token-b", "session-app")
+	bulkUser := postOIDCAdmin(t, s, cookie, "/oidc-sessions/revoke-user", url.Values{"_csrf": {sessions.CSRF(cookie.Value)}, "username": {user.Username}})
+	if bulkUser.Code != http.StatusSeeOther || !strings.Contains(bulkUser.Header().Get("Location"), "revoked-2") {
+		t.Fatalf("bulk user revocation returned %d %s", bulkUser.Code, bulkUser.Header().Get("Location"))
+	}
+	insertSession("client-revoke-session-0000000000", "client-revoke-token", "session-app")
+	bulkClient := postOIDCAdmin(t, s, cookie, "/oidc-sessions/revoke-client", url.Values{"_csrf": {sessions.CSRF(cookie.Value)}, "client_id": {"session-app"}})
+	if bulkClient.Code != http.StatusSeeOther || !strings.Contains(bulkClient.Header().Get("Location"), "revoked-1") {
+		t.Fatalf("bulk client revocation returned %d %s", bulkClient.Code, bulkClient.Header().Get("Location"))
+	}
+	insertSession("global-revoke-session-0000000000", "global-revoke-token", "session-app")
+	badGlobal := postOIDCAdmin(t, s, cookie, "/oidc-sessions/revoke-all", url.Values{"_csrf": {sessions.CSRF(cookie.Value)}, "confirmation": {"wrong"}})
+	if badGlobal.Code != http.StatusBadRequest {
+		t.Fatalf("global revocation accepted missing confirmation: %d", badGlobal.Code)
+	}
+	global := postOIDCAdmin(t, s, cookie, "/oidc-sessions/revoke-all", url.Values{"_csrf": {sessions.CSRF(cookie.Value)}, "confirmation": {"revoke-all"}})
+	if global.Code != http.StatusSeeOther || !strings.Contains(global.Header().Get("Location"), "revoked-1") {
+		t.Fatalf("global revocation returned %d %s", global.Code, global.Header().Get("Location"))
 	}
 }
 

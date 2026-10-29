@@ -2,6 +2,21 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [1.10.0] - 2026-10-29
+
+### Added
+
+- Added transactional central OIDC revocation for every active session owned
+  by one user, issued to one client, or present globally during an incident.
+- Added protected controls to the existing OIDC sessions page with CSRF,
+  bounded validation and explicit `revoke-all` confirmation.
+
+### Security
+
+- Bulk revocation and its aggregate, data-minimal audit event commit together
+  on SQLite and PostgreSQL. Audit failure rolls back every affected session;
+  concurrent or repeated requests cannot create a second successful mutation.
+
 ## [1.9.0] - 2026-10-29
 
 ### Added
