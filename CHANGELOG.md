@@ -2,6 +2,21 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Added a root-only PostgreSQL custom-format backup helper and an explicit
+  post-cutover systemd drop-in. Credentials remain in a libpq service file,
+  every dump is validated with `pg_restore --list`, and the success marker is
+  advanced only after certificate and backup checks pass.
+
+### Operations
+
+- Documented the completed LOGIN01 PostgreSQL 17 production migration,
+  least-privilege role split, stopped SQLite reconciliation, and successful
+  restore rehearsals.
+
 ## [1.8.0] - 2026-10-26
 
 ### Added

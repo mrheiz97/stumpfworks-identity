@@ -4,6 +4,31 @@ This runbook does not authorize a production cutover by itself. Use separate
 migration and runtime credentials, keep secrets in root-readable files, and
 retain SQLite until PostgreSQL acceptance is complete.
 
+## Production status (29 October 2026)
+
+LOGIN01 now runs Identity v1.8.2 on a dedicated local PostgreSQL 17.11
+cluster. The cluster uses UTF-8, data page checksums, SCRAM-SHA-256 and the
+Homelab CA-issued LOGIN01 certificate with `verify-full`. Network access is
+restricted to LOGIN01 and separate migrator, runtime and read-only backup
+roles are used.
+
+The stopped SQLite source was integrity-checked, imported and reconciled
+across all twelve data groups. A custom-format dump was restored into a fresh
+verification database and reconciled again. The restricted runtime role can
+read and write application data but cannot create schema objects. The former
+SQLite database remains a rollback artifact and must not be started writable
+after any PostgreSQL application write without an explicit reconciliation
+plan.
+
+Daily maintenance uses `scripts/swbadge-postgres-backup.py` through the
+PostgreSQL systemd drop-in. The tool keeps the service credential in a
+root-only libpq service file, never in process arguments, creates a
+custom-format dump, validates it with `pg_restore --list`, and only then lets
+the maintenance unit advance the observability success marker. A real
+maintenance dump was restored and reconciled before acceptance. Normal AD
+administrator login, dashboard access and a protected read-only area were
+confirmed interactively after the cutover.
+
 ## Safety boundary
 
 - Create and verify a fresh SQLite online backup before the maintenance window.

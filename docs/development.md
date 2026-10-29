@@ -7,6 +7,7 @@ gofmt -w ./cmd ./internal
 go test ./...
 python3 -m py_compile cmd/native-greeter/sw-badge-native-greeter.py
 python3 -m py_compile scripts/swbadge-sqlite-backup.py
+python3 -m py_compile scripts/swbadge-postgres-backup.py
 sh -n scripts/swbadge-cert-check.sh
 git diff --check
 ```
