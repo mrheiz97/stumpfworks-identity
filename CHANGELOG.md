@@ -2,6 +2,27 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [1.11.0] - 2026-10-29
+
+### Changed
+
+- Rebuilt the administration interface around the approved compact
+  StumpfWorks operations design: denser navigation, ordered live store
+  counters, a service overview, compact forms and tables, and responsive
+  layouts without introducing a client-side framework.
+- Unified OIDC clients, OIDC sessions, system status and PIN management with
+  the same server-rendered sidebar and active navigation as the core Identity
+  pages. Login and Self-Service use a quieter variant of the same design.
+
+### Security
+
+- Preserved server-side role filtering, CSRF fields, CSP, secret-free browser
+  state and every existing mutation endpoint. Shared navigation is generated
+  from the current request permissions and does not expose unauthorized
+  sections.
+- Added rendering contracts for the compact stylesheet, live database counts,
+  shared standalone-page shell and the unprotected local preview boundary.
+
 ## [1.10.0] - 2026-10-29
 
 ### Added

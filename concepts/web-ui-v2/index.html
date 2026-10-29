@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>StumpfWorks Identity – UI-Konzept</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="node64-direction.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">S</span><div><strong>STUMPF<span>WORKS</span></strong><small>IDENTITY</small></div></div>
+    <nav aria-label="Hauptnavigation">
+      <button class="nav-item active" data-view="dashboard"><span>⌂</span>Übersicht</button>
+      <p>IDENTITÄT</p>
+      <button class="nav-item"><span>♙</span>Benutzer</button>
+      <button class="nav-item"><span>▣</span>Badges &amp; PINs</button>
+      <button class="nav-item"><span>⌁</span>Passkeys</button>
+      <p>DIENSTE</p>
+      <button class="nav-item"><span>◇</span>OIDC-Clients</button>
+      <button class="nav-item" data-view="sessions"><span>◷</span>OIDC-Sitzungen</button>
+      <button class="nav-item"><span>▤</span>Audit</button>
+      <p>BETRIEB</p>
+      <button class="nav-item"><span>▱</span>Clients</button>
+      <button class="nav-item"><span>⚙</span>System</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="profile"><span>SA</span><div><strong>Sebastian</strong><small>Administrator</small></div><button aria-label="Abmelden">↪</button></div>
+      <small class="version">Identity v1.10.0 · PostgreSQL</small>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <button class="mobile-menu" aria-label="Navigation öffnen">☰</button>
+      <div class="crumbs"><span>StumpfWorks</span><b>/</b><strong id="crumb">Übersicht</strong></div>
+      <div class="top-actions"><button class="icon-button" aria-label="Benachrichtigungen">♢<i></i></button><div class="health"><i></i><span>Alle Systeme bereit</span></div></div>
+    </header>
+
+    <section class="view active" id="dashboard">
+      <div class="page-head"><div><p class="eyebrow">IDENTITY / LOGIN01</p><h1>StumpfWorks Identity</h1><p>Zentrale Identitäten, Anmeldungen und Vertrauensdienste.</p></div><button class="primary">＋ Benutzer anlegen</button></div>
+      <div class="module-tabs"><button class="active">◈ Übersicht</button><button>♙ Benutzer</button><button>▣ Badges</button><button>⌁ Passkeys</button><button>◇ OIDC</button><button>▤ Audit</button><button>⚙ System</button></div>
+
+      <div class="stats">
+        <article class="blue"><div class="stat-head"><span>Authentifizierungen</span><b class="icon">◎</b></div><strong>3.786</strong><p>letzte 24 Stunden</p></article>
+        <article class="cyan"><div class="stat-head"><span>Aktive Sitzungen</span><b class="icon">◷</b></div><strong>12</strong><p>OIDC und Self-Service</p></article>
+        <article class="green"><div class="stat-head"><span>LDAP-Abfragen</span><b class="icon">↗</b></div><strong>41,8 K</strong><p>letzte 24 Stunden</p></article>
+        <article class="amber"><div class="stat-head"><span>Fehlerquote</span><b class="icon">!</b></div><strong>0,02 %</strong><p>3 abgelehnte Versuche</p></article>
+        <article class="red"><div class="stat-head"><span>Auditfehler</span><b class="icon">♢</b></div><strong>0</strong><p>transaktional abgesichert</p></article>
+      </div>
+
+      <div class="layout">
+        <article class="card activity-card">
+          <div class="card-head"><div><h2>LOGIN01 · Authentifizierungen und Datenverkehr</h2><p>Anmeldungen, OIDC-Ausgaben und LDAP-Lesevorgänge</p></div><div><button class="select">alle Verfahren⌄</button> <button class="select">24 h</button></div></div>
+          <div class="chart" aria-label="Balkendiagramm der Anmeldungen">
+            <svg viewBox="0 0 700 190" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,154 60,145 120,150 180,132 240,136 300,116 360,106 420,78 480,87 540,45 600,65 660,34 700,54"/><polygon points="0,154 60,145 120,150 180,132 240,136 300,116 360,106 420,78 480,87 540,45 600,65 660,34 700,54 700,190 0,190"/></svg>
+            <div style="--h:38%"><b>182</b><i></i><span>00</span></div><div style="--h:20%"><b>94</b><i></i><span>02</span></div><div style="--h:25%"><b>121</b><i></i><span>04</span></div><div style="--h:30%"><b>146</b><i></i><span>06</span></div><div style="--h:45%"><b>218</b><i></i><span>08</span></div><div style="--h:58%"><b>281</b><i></i><span>10</span></div><div style="--h:72%"><b>349</b><i></i><span>12</span></div><div class="today" style="--h:84%"><b>407</b><i></i><span>14</span></div><div style="--h:75%"><b>364</b><i></i><span>16</span></div><div style="--h:90%"><b>436</b><i></i><span>18</span></div><div style="--h:62%"><b>301</b><i></i><span>20</span></div><div style="--h:44%"><b>214</b><i></i><span>22</span></div>
+          </div>
+          <div class="legend"><span><i class="l-blue"></i>Anmeldungen</span><span><i class="l-cyan"></i>LDAP-Lesevorgänge</span><span><i class="l-red"></i>Abgelehnt</span></div>
+        </article>
+        <article class="card health-card">
+          <div class="card-head"><div><h2>Systemzustand</h2><p>Live aus LOGIN01</p></div><button class="text-button">Details →</button></div>
+          <ul class="systems"><li><span class="system-icon">I</span><div><strong>Identity Server</strong><small>v1.10.0 · seit 2h 14m</small></div><b>Bereit</b></li><li><span class="system-icon">P</span><div><strong>PostgreSQL</strong><small>Verbindung verschlüsselt</small></div><b>Bereit</b></li><li><span class="system-icon">L</span><div><strong>LDAP / Samba AD</strong><small>7 aktive Benutzer</small></div><b>Bereit</b></li><li><span class="system-icon">B</span><div><strong>Letztes Backup</strong><small>Heute, 13:14 Uhr</small></div><b>Geprüft</b></li></ul>
+        </article>
+      </div>
+
+      <article class="card service-table"><div class="card-head"><div><h2>Identity-Dienste</h2><p>Aktueller Zustand, Vertrauenspfade und letzte Aktivität</p></div><button class="text-button">Systemstatus öffnen →</button></div><div class="table-wrap"><table><thead><tr><th>DIENST</th><th>ENDPUNKT / BACKEND</th><th>STATUS</th><th>LETZTE AKTIVITÄT</th><th>24H</th><th>SCHUTZ</th><th></th></tr></thead><tbody><tr><td><strong>Administrator-Login</strong><small>AD-Kennwort + Rollen</small></td><td><code>/login</code></td><td><span class="status ready">● Bereit</span></td><td>vor 12 Min.</td><td>184</td><td><span class="tag">LDAP TLS</span></td><td><button class="dots">•••</button></td></tr><tr><td><strong>OIDC Provider</strong><small>stumpfworks-access</small></td><td><code>/oidc/token</code></td><td><span class="status ready">● Bereit</span></td><td>gerade eben</td><td>52</td><td><span class="tag">PKCE</span> <span class="tag">RS256</span></td><td><button class="dots">•••</button></td></tr><tr><td><strong>Badge / PIN</strong><small>WYSE01 Greeter</small></td><td><code>/api/v1/auth</code></td><td><span class="status ready">● Bereit</span></td><td>vor 8 Min.</td><td>27</td><td><span class="tag">mTLS geplant</span></td><td><button class="dots">•••</button></td></tr><tr><td><strong>PKINIT</strong><small>Kerberos-Zertifikate</small></td><td><code>LOGIN01 CA</code></td><td><span class="status ready">● Bereit</span></td><td>vor 8 Min.</td><td>27</td><td><span class="tag">10 Min.</span></td><td><button class="dots">•••</button></td></tr><tr><td><strong>PostgreSQL</strong><small>Identity Store</small></td><td><code>verify-full / SCRAM</code></td><td><span class="status ready">● Bereit</span></td><td>jetzt</td><td>41,8 K</td><td><span class="tag">TLS</span></td><td><button class="dots">•••</button></td></tr></tbody></table></div></article>
+    </section>
+
+    <section class="view" id="sessions">
+      <div class="page-head"><div><p class="eyebrow">OIDC / SITZUNGEN</p><h1>Sitzungsverwaltung</h1><p>Aktive Anwendungszugriffe prüfen und gezielt widerrufen.</p></div><button class="secondary">OIDC-Clients</button></div>
+      <div class="notice"><span>✓</span><div><strong>Widerruf abgeschlossen</strong><p>Eine aktive Benutzersitzung wurde sicher beendet und auditiert.</p></div><button>×</button></div>
+      <article class="card danger-zone"><div class="card-head"><div><h2>Zentraler Widerruf</h2><p>Beende Sitzungen gezielt. Ein globaler Widerruf bleibt bewusst getrennt.</p></div><span class="risk">Sicherheitsaktion</span></div><div class="revoke-grid"><label><span>Benutzer</span><select><option>sebastian</option><option>katrin</option></select><button>Benutzersitzungen widerrufen</button></label><label><span>Anwendung</span><select><option>stumpfworks-access</option></select><button>Client-Sitzungen widerrufen</button></label><label class="critical"><span>Notfallbestätigung</span><input placeholder="revoke-all"><button>Alle Sitzungen widerrufen</button></label></div></article>
+      <article class="card table-card"><div class="card-head"><div><h2>Ausgegebene Sitzungen</h2><p>Tokens werden ausschließlich als Hash gespeichert.</p></div><div class="filters"><button class="select">Alle Zustände⌄</button><button class="icon-button">↻</button></div></div><div class="table-wrap"><table><thead><tr><th>SITZUNG</th><th>BENUTZER</th><th>CLIENT</th><th>AUSGEGEBEN</th><th>ABLAUF</th><th>STATUS</th><th></th></tr></thead><tbody><tr><td><code>fZRy…TX0</code></td><td><strong>sebastian</strong></td><td>stumpfworks-access</td><td>Heute, 13:22</td><td>Heute, 13:27</td><td><span class="status expired">Abgelaufen</span></td><td><button class="dots">•••</button></td></tr><tr><td><code>1kVE…kUt</code></td><td><strong>sebastian</strong></td><td>stumpfworks-access</td><td>Heute, 13:11</td><td>Heute, 13:16</td><td><span class="status expired">Abgelaufen</span></td><td><button class="dots">•••</button></td></tr></tbody></table></div></article>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

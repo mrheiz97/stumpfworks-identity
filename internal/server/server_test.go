@@ -84,6 +84,83 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestAdministrationStylesheetIncludesCompactOperationsTheme(t *testing.T) {
+	s, _ := testServer(t)
+	request := httptest.NewRequest(http.MethodGet, "/static/style.css", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("stylesheet returned %d", response.Code)
+	}
+	if contentType := response.Header().Get("Content-Type"); contentType != "text/css" {
+		t.Fatalf("unexpected stylesheet content type %q", contentType)
+	}
+	body := response.Body.String()
+	for _, contract := range []string{"body:not(.login-page)", "grid-template-columns:repeat(4,minmax(0,1fr))", "background:#0d1015"} {
+		if !strings.Contains(body, contract) {
+			t.Fatalf("compact administration stylesheet is missing %q", contract)
+		}
+	}
+}
+
+func TestDashboardUsesCompactOperationsLayoutWithStoreCounts(t *testing.T) {
+	s, store := testServer(t)
+	if _, err := store.CreateUser(t.Context(), "alice", "Alice Example", ""); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("dashboard returned %d", response.Code)
+	}
+	body := response.Body.String()
+	for _, contract := range []string{"Identity service overview", "MANAGED USERS", ">1</strong>", "Open system status"} {
+		if !strings.Contains(body, contract) {
+			t.Fatalf("compact dashboard is missing %q", contract)
+		}
+	}
+	for _, navigation := range []string{"Users", "Badges", "OIDC", "Audit", "System"} {
+		if !strings.Contains(body, navigation) {
+			t.Fatalf("unprotected preview is missing %q navigation", navigation)
+		}
+	}
+	if strings.Contains(body, "Badge authentication gateway") {
+		t.Fatal("legacy dashboard hero is still rendered")
+	}
+}
+
+func TestUnprotectedPINPreviewDoesNotRequireSessionManager(t *testing.T) {
+	s, store := testServer(t)
+	if _, err := store.CreateUser(t.Context(), "alice", "Alice Example", ""); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/pin", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "PIN management") {
+		t.Fatalf("unprotected PIN preview returned %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestStandaloneAdministrationPagesUseSharedSidebar(t *testing.T) {
+	s, _ := testServer(t)
+	for path, activePath := range map[string]string{
+		"/pin": "/users", "/oidc-clients": "/oidc-clients", "/oidc-sessions": "/oidc-sessions", "/status": "/status",
+	} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		s.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, response.Code)
+		}
+		body := response.Body.String()
+		if !strings.Contains(body, `class="sidebar"`) || !strings.Contains(body, `class="active" href="`+activePath+`"`) {
+			t.Fatalf("%s is missing the shared sidebar or active navigation", path)
+		}
+	}
+}
+
 func TestPasskeyRoutesAreAbsentByDefault(t *testing.T) {
 	s, _ := testServer(t)
 	for _, path := range []string{"/self-service/passkeys/registration/begin", "/self-service/passkeys/registration/complete", "/self-service/passkeys/login/begin", "/self-service/passkeys/login/complete", "/self-service/passkeys/revoke"} {

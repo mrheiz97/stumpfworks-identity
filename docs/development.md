@@ -44,14 +44,12 @@ Do not remove the explicit screen-size correction without physical display testi
 - Change FILE01 only when explicitly authorized.
 - Retest password fallback after authentication-stack changes.
 
-## Deferred UI direction
+## Administration UI direction
 
-The functional server, migrations, security boundaries, rollback procedures
-and end-to-end tests take priority over another visual rewrite. After those
-phases are complete, use the **shadcn Dashboard Template** as the preferred
-visual reference for a cohesive redesign of the administration and
-self-service web interface. Start with a local concept and component inventory;
-do not assume that adopting its React implementation is required. The final
-choice must preserve server-side authorization, CSRF protection, secret-free
-browser state, accessibility, maintainability and the existing interface as a
+Version 1.11 adopts the approved compact StumpfWorks operations design derived
+from the local HTML concept under `concepts/web-ui-v2`. It keeps Go's
+server-rendered templates and does not add React or another browser framework.
+All further pages must reuse the common visual contract and preserve
+server-side authorization, CSRF protection, CSP, secret-free browser state,
+responsive operation, accessibility and the previous released binary as the
 tested rollback.

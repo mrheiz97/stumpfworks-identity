@@ -486,10 +486,14 @@ func (s *Server) pinPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := administrativeCookieToken(r)
-	data := map[string]any{"Users": users, "CSRF": s.sessions.CSRF(token), "CanCredentialsWrite": requestCan(r, adminauth.PermissionCredentialsWrite)}
+	csrf := ""
+	if s.sessions != nil {
+		csrf = s.sessions.CSRF(token)
+	}
+	data := map[string]any{"Users": users, "CSRF": csrf, "CanCredentialsWrite": s.unprotectedOrCan(r, adminauth.PermissionCredentialsWrite)}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = template.Must(template.New("pin").Parse(permissionAwarePINTemplate())).Execute(w, data)
+	_ = s.renderCompactAdminPage(w, r, template.Must(template.New("pin").Parse(permissionAwarePINTemplate())), data, "/users")
 }
 
 func permissionAwarePINTemplate() string {
@@ -1056,7 +1060,8 @@ func webPageTemplate() string {
 	const issuedStart = `<section class="panel"><div class="panel-head"><div><h2>Issued badges</h2>`
 	result = strings.Replace(result, issuedStart, `{{end}}`+issuedStart, 1)
 	const revoke = `<form method="post" action="/badges/{{.ID}}/revoke"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="danger small" type="submit">Revoke</button></form>`
-	return strings.Replace(result, revoke, `{{if $.CanCredentialsWrite}}`+revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>{{end}}`, 1)
+	result = strings.Replace(result, revoke, `{{if $.CanCredentialsWrite}}`+revoke+`<form method="post" action="/badges/{{.ID}}/replace"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small" type="submit">Issue replacement</button></form>{{end}}`, 1)
+	return strings.Replace(result, legacyDashboardContent, compactDashboardContent, 1)
 }
 
 func (s *Server) web(w http.ResponseWriter, r *http.Request) {
@@ -1091,14 +1096,18 @@ func (s *Server) web(w http.ResponseWriter, r *http.Request) {
 	}
 	data := map[string]any{
 		"Path": r.URL.Path, "Users": users, "ADUsers": adUsers, "CSRF": csrf, "Badges": badges, "Audits": audits, "Stats": stats, "Version": version.Version, "Uptime": time.Since(s.started).Round(time.Second), "Payload": r.URL.Query().Get("payload"),
-		"CanIdentityRead": requestCan(r, adminauth.PermissionIdentityRead), "CanIdentityWrite": requestCan(r, adminauth.PermissionIdentityWrite),
-		"CanCredentialsRead": requestCan(r, adminauth.PermissionCredentialsRead), "CanCredentialsWrite": requestCan(r, adminauth.PermissionCredentialsWrite),
-		"CanAuditRead": requestCan(r, adminauth.PermissionAuditRead), "CanOIDCRead": requestCan(r, adminauth.PermissionOIDCRead),
-		"CanOIDCSessionsRead": requestCan(r, adminauth.PermissionOIDCSessionsRead), "CanSystemRead": requestCan(r, adminauth.PermissionSystemRead),
+		"CanIdentityRead": s.unprotectedOrCan(r, adminauth.PermissionIdentityRead), "CanIdentityWrite": s.unprotectedOrCan(r, adminauth.PermissionIdentityWrite),
+		"CanCredentialsRead": s.unprotectedOrCan(r, adminauth.PermissionCredentialsRead), "CanCredentialsWrite": s.unprotectedOrCan(r, adminauth.PermissionCredentialsWrite),
+		"CanAuditRead": s.unprotectedOrCan(r, adminauth.PermissionAuditRead), "CanOIDCRead": s.unprotectedOrCan(r, adminauth.PermissionOIDCRead),
+		"CanOIDCSessionsRead": s.unprotectedOrCan(r, adminauth.PermissionOIDCSessionsRead), "CanSystemRead": s.unprotectedOrCan(r, adminauth.PermissionSystemRead),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = page.Execute(w, data)
+}
+
+func (s *Server) unprotectedOrCan(r *http.Request, permission adminauth.Permission) bool {
+	return !s.protect || requestCan(r, permission)
 }
 func (s *Server) webCreateUser(w http.ResponseWriter, r *http.Request) {
 	if e := r.ParseForm(); e == nil {
@@ -1155,7 +1164,7 @@ func (s *Server) webReplace(w http.ResponseWriter, r *http.Request) {
 }
 func style(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css")
-	fmt.Fprint(w, css, selfServiceCSS, selfServiceHistoryCSS)
+	fmt.Fprint(w, css, selfServiceCSS, selfServiceHistoryCSS, compactAdminCSS)
 }
 
 const selfServiceExtraTemplate = `{{if eq .Status "badge_activated"}}<div class="notice success-notice">Your replacement badge is active and ready to use.</div>{{else if eq .Status "sessions_revoked"}}<div class="notice success-notice">All other self-service sessions were signed out.</div>{{end}}{{if eq .Error "activation_invalid"}}<div class="notice error-notice">The replacement payload is invalid, unavailable or not assigned to your account.</div>{{end}}<section class="self-activation"><div class="self-section-head"><div><h2>Activate a replacement badge</h2><p>Paste the complete one-time payload issued by an administrator.</p></div></div><form class="activation-form" method="post" action="/self-service/badges/activate"><input type="hidden" name="_csrf" value="{{.CSRF}}"><label><span>Replacement payload</span><input type="password" name="payload" autocomplete="off" placeholder="SWBADGE:1:…" required></label><button type="submit">Activate badge</button></form></section><section class="self-history"><div class="self-section-head"><div><h2>Recent badge sign-ins</h2><p>Your latest 20 badge authentication events. Network addresses are not shown.</p></div><span class="count">{{len .AuthEvents}}</span></div>{{range .AuthEvents}}<article class="self-history-row"><span><strong>{{if .BadgeCode}}{{.BadgeCode}}{{else}}Badge unavailable{{end}}</strong><small>{{.Timestamp}}</small></span><span><small>Client</small><strong>{{if .ClientID}}{{.ClientID}}{{else}}Unknown{{end}}</strong></span><span class="badge {{if .Success}}success{{else}}danger-text{{end}}">{{.Result}}</span></article>{{else}}<p class="self-empty">No badge sign-ins have been recorded for your account yet.</p>{{end}}</section><section class="self-sessions"><div class="self-section-head"><div><h2>My self-service sessions</h2><p>Sessions expire automatically after 15 minutes.</p></div><span class="count">{{len .Sessions}}</span></div>{{range .Sessions}}<article class="self-session-row"><span><strong>{{if .Current}}This browser{{else}}Other browser{{end}}</strong><small>Started {{.Created}} · expires {{.Expires}}</small></span>{{if .Current}}<span class="badge success">Current</span>{{else}}<span class="badge neutral">Active</span>{{end}}</article>{{end}}{{if gt (len .Sessions) 1}}<form method="post" action="/self-service/sessions/logout-others"><input type="hidden" name="_csrf" value="{{.CSRF}}"><button class="danger small" type="submit">Sign out all other sessions</button></form>{{end}}</section>`

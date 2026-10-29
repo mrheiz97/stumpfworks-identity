@@ -59,7 +59,7 @@ func (s *Server) oidcSessionsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := oidcSessionsTemplate.Execute(w, oidcSessionsPageData{Sessions: views, ActiveUsers: activeUsers, Clients: activeClients, CSRF: csrf, Status: r.URL.Query().Get("status"), CanRevoke: canRevoke}); err != nil {
+	if err := s.renderCompactAdminPage(w, r, oidcSessionsTemplate, oidcSessionsPageData{Sessions: views, ActiveUsers: activeUsers, Clients: activeClients, CSRF: csrf, Status: r.URL.Query().Get("status"), CanRevoke: canRevoke}, "/oidc-sessions"); err != nil {
 		s.log.Error("OIDC sessions page rendering failed", "error", err)
 	}
 }
