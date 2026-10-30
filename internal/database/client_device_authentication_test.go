@@ -56,8 +56,8 @@ func testClientDeviceConcurrentRenewal(t *testing.T, store clientDeviceAuthentic
 		t.Fatal(err)
 	}
 	first, second := current, current
-	first.ID, first.FingerprintSHA256, first.Serial = "concurrent-replacement-a", strings.Repeat("a", 64), "08ab"
-	second.ID, second.FingerprintSHA256, second.Serial = "concurrent-replacement-b", strings.Repeat("b", 64), "09ab"
+	first.ID, first.FingerprintSHA256, first.Serial = "concurrent-replacement-a", strings.Repeat("c", 64), "08ab"
+	second.ID, second.FingerprintSHA256, second.Serial = "concurrent-replacement-b", strings.Repeat("e", 64), "09ab"
 	first.IssuedAt, second.IssuedAt = now.Add(2*time.Second), now.Add(2*time.Second)
 	first.ExpiresAt, second.ExpiresAt = first.IssuedAt.Add(90*24*time.Hour), second.IssuedAt.Add(90*24*time.Hour)
 	start := make(chan struct{})
