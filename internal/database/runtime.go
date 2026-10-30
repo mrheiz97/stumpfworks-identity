@@ -68,6 +68,12 @@ type ApplicationStore interface {
 	RotateClientTokenWithAudit(context.Context, string, string, string) error
 	SetClientEnabled(context.Context, string, bool) error
 	SetClientEnabledWithAudit(context.Context, string, bool, string) error
+	CreateClientEnrollmentTokenWithAudit(context.Context, ClientEnrollmentToken, string) error
+	EnrollClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
+	RenewClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
+	ClientDeviceCredentials(context.Context, string) ([]ClientDeviceCredential, error)
+	RevokeClientDeviceCredentialWithAudit(context.Context, string, string, string, time.Time) error
+	SetClientAuthenticationModeWithAudit(context.Context, string, string, string, time.Time) error
 	EnsureOIDCSubject(context.Context, int64) (string, error)
 	EnsureOIDCSubjectWithAudit(context.Context, int64, string) (string, error)
 	OIDCClientByID(context.Context, string) (OIDCClient, error)

@@ -35,3 +35,10 @@ CREATE UNIQUE INDEX idx_webauthn_credentials_management ON webauthn_credentials(
 
 const postgresEmergencyAdminMigration = `CREATE TABLE emergency_admin_grants (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64), session_hash TEXT UNIQUE CHECK(session_hash IS NULL OR length(session_hash)=64), created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, consumed_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, CHECK(expires_at>created_at));
 CREATE INDEX idx_emergency_admin_expiry ON emergency_admin_grants(expires_at);`
+
+const postgresClientDeviceAuthenticationMigration = `ALTER TABLE clients ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'token_only' CHECK(auth_mode IN ('token_only','certificate_preferred','certificate_required'));
+CREATE TABLE client_enrollment_tokens (id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64), created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, consumed_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, CHECK(expires_at>created_at));
+CREATE TABLE client_device_credentials (id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE, fingerprint_sha256 TEXT NOT NULL UNIQUE CHECK(length(fingerprint_sha256)=64), serial TEXT NOT NULL UNIQUE, uri_san TEXT NOT NULL, public_key_algorithm TEXT NOT NULL, issuer_id TEXT NOT NULL, issued_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL CHECK(status IN ('active','superseded','revoked')), revoked_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK(expires_at>issued_at));
+CREATE INDEX idx_client_enrollment_expiry ON client_enrollment_tokens(expires_at);
+CREATE INDEX idx_client_credentials_client ON client_device_credentials(client_id,status,expires_at);
+CREATE UNIQUE INDEX idx_client_credentials_one_active ON client_device_credentials(client_id) WHERE status='active';`

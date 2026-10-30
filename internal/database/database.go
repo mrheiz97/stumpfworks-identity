@@ -16,7 +16,7 @@ import (
 const migration = `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, directory_dn TEXT NOT NULL DEFAULT '', pin_hash TEXT NOT NULL DEFAULT '', oidc_subject TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS badges (id INTEGER PRIMARY KEY AUTOINCREMENT, badge_code TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users(id), token_hash TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT 1, description TEXT NOT NULL DEFAULT '', issued_by TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_used_at DATETIME, revoked_at DATETIME);
 CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, badge_id TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', client_id TEXT NOT NULL DEFAULT '', success BOOLEAN NOT NULL, ip_address TEXT NOT NULL DEFAULT '', timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, details TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id TEXT NOT NULL UNIQUE, token_hash TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT 1, version TEXT NOT NULL DEFAULT '', network_status TEXT NOT NULL DEFAULT 'unknown', ad_status TEXT NOT NULL DEFAULT 'unknown', camera_status TEXT NOT NULL DEFAULT 'unknown', kerberos_status TEXT NOT NULL DEFAULT 'unknown', last_update_version TEXT NOT NULL DEFAULT '', last_update_status TEXT NOT NULL DEFAULT 'unknown', last_update_at DATETIME, rollback_available BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at DATETIME);
+CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id TEXT NOT NULL UNIQUE, token_hash TEXT NOT NULL, auth_mode TEXT NOT NULL DEFAULT 'token_only' CHECK(auth_mode IN ('token_only','certificate_preferred','certificate_required')), enabled BOOLEAN NOT NULL DEFAULT 1, version TEXT NOT NULL DEFAULT '', network_status TEXT NOT NULL DEFAULT 'unknown', ad_status TEXT NOT NULL DEFAULT 'unknown', camera_status TEXT NOT NULL DEFAULT 'unknown', kerberos_status TEXT NOT NULL DEFAULT 'unknown', last_update_version TEXT NOT NULL DEFAULT '', last_update_status TEXT NOT NULL DEFAULT 'unknown', last_update_at DATETIME, rollback_available BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at DATETIME);
 CREATE TABLE IF NOT EXISTS self_service_sessions (id TEXT PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, revoked_at DATETIME);
 CREATE TABLE IF NOT EXISTS oidc_clients (client_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, redirect_uris TEXT NOT NULL, scopes TEXT NOT NULL DEFAULT 'openid', enabled BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS oidc_codes (code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oidc_clients(client_id), user_id INTEGER NOT NULL REFERENCES users(id), redirect_uri TEXT NOT NULL, scope TEXT NOT NULL, nonce TEXT NOT NULL, code_challenge TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS webauthn_users (user_id INTEGER PRIMARY KEY REFERENCE
 CREATE TABLE IF NOT EXISTS webauthn_credentials (credential_id BLOB PRIMARY KEY, management_id TEXT NOT NULL UNIQUE CHECK(length(management_id) BETWEEN 16 AND 128), user_id INTEGER NOT NULL REFERENCES webauthn_users(user_id) ON DELETE CASCADE, public_key BLOB NOT NULL, rp_id TEXT NOT NULL, name TEXT NOT NULL, transports TEXT NOT NULL DEFAULT '', attestation_type TEXT NOT NULL DEFAULT '', attestation_format TEXT NOT NULL DEFAULT '', flags INTEGER NOT NULL DEFAULT 0, sign_count INTEGER NOT NULL DEFAULT 0 CHECK(sign_count>=0), backup_eligible BOOLEAN NOT NULL DEFAULT 0, backup_state BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_used_at DATETIME, revoked_at DATETIME);
 CREATE TABLE IF NOT EXISTS webauthn_ceremonies (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('registration','authentication')), audience TEXT NOT NULL CHECK(audience IN ('self-service','admin')), user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, session_data BLOB NOT NULL CHECK(length(session_data) BETWEEN 1 AND 65536), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME NOT NULL, consumed_at DATETIME);
 CREATE TABLE IF NOT EXISTS emergency_admin_grants (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64), session_hash TEXT UNIQUE CHECK(session_hash IS NULL OR length(session_hash)=64), created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, consumed_at DATETIME, revoked_at DATETIME, CHECK(expires_at>created_at));
-CREATE INDEX IF NOT EXISTS idx_badges_code ON badges(badge_code); CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp); CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients(last_seen_at);`
+CREATE TABLE IF NOT EXISTS client_enrollment_tokens (id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64), created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, consumed_at DATETIME, revoked_at DATETIME, CHECK(expires_at>created_at));
+CREATE TABLE IF NOT EXISTS client_device_credentials (id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE, fingerprint_sha256 TEXT NOT NULL UNIQUE CHECK(length(fingerprint_sha256)=64), serial TEXT NOT NULL UNIQUE, uri_san TEXT NOT NULL, public_key_algorithm TEXT NOT NULL, issuer_id TEXT NOT NULL, issued_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, status TEXT NOT NULL CHECK(status IN ('active','superseded','revoked')), revoked_at DATETIME, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK(expires_at>issued_at));
+CREATE INDEX IF NOT EXISTS idx_badges_code ON badges(badge_code); CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp); CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients(last_seen_at); CREATE UNIQUE INDEX IF NOT EXISTS idx_client_credentials_one_active ON client_device_credentials(client_id) WHERE status='active';`
 
 type Store struct{ DB *sql.DB }
 type User struct {
@@ -139,6 +141,7 @@ type Client struct {
 	ID                int64      `json:"id"`
 	ClientID          string     `json:"client_id"`
 	TokenHash         string     `json:"-"`
+	AuthMode          string     `json:"auth_mode"`
 	Version           string     `json:"version"`
 	NetworkStatus     string     `json:"network_status"`
 	ADStatus          string     `json:"ad_status"`
@@ -151,6 +154,19 @@ type Client struct {
 	LastUpdateAt      *time.Time `json:"last_update_at,omitempty"`
 	RollbackAvailable bool       `json:"rollback_available"`
 	Enabled           bool       `json:"enabled"`
+}
+
+type ClientEnrollmentToken struct {
+	ID, ClientID, TokenHash string
+	CreatedAt, ExpiresAt    time.Time
+	ConsumedAt, RevokedAt   sql.NullTime
+}
+
+type ClientDeviceCredential struct {
+	ID, ClientID, FingerprintSHA256, Serial, URISAN string
+	PublicKeyAlgorithm, IssuerID, Status            string
+	IssuedAt, ExpiresAt, CreatedAt, UpdatedAt       time.Time
+	RevokedAt                                       sql.NullTime
 }
 
 type ClientUpdate struct {
@@ -264,7 +280,7 @@ CREATE TRIGGER IF NOT EXISTS validate_webauthn_management_update BEFORE UPDATE O
 		db.Close()
 		return nil, err
 	}
-	for _, column := range []struct{ name, definition string }{{"enabled", "BOOLEAN NOT NULL DEFAULT 1"}, {"updated_at", "DATETIME"}, {"last_update_version", "TEXT NOT NULL DEFAULT ''"}, {"last_update_status", "TEXT NOT NULL DEFAULT 'unknown'"}, {"last_update_at", "DATETIME"}, {"rollback_available", "BOOLEAN NOT NULL DEFAULT 0"}} {
+	for _, column := range []struct{ name, definition string }{{"auth_mode", "TEXT NOT NULL DEFAULT 'token_only' CHECK(auth_mode IN ('token_only','certificate_preferred','certificate_required'))"}, {"enabled", "BOOLEAN NOT NULL DEFAULT 1"}, {"updated_at", "DATETIME"}, {"last_update_version", "TEXT NOT NULL DEFAULT ''"}, {"last_update_status", "TEXT NOT NULL DEFAULT 'unknown'"}, {"last_update_at", "DATETIME"}, {"rollback_available", "BOOLEAN NOT NULL DEFAULT 0"}} {
 		var count int
 		if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('clients') WHERE name=?`, column.name).Scan(&count); err != nil {
 			db.Close()
@@ -558,7 +574,7 @@ func (s *Store) CreateClient(ctx context.Context, clientID, tokenHash string) (C
 }
 
 func (s *Store) ClientByID(ctx context.Context, clientID string) (c Client, err error) {
-	err = s.DB.QueryRowContext(ctx, `SELECT id,client_id,token_hash,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at FROM clients WHERE client_id=?`, clientID).Scan(&c.ID, &c.ClientID, &c.TokenHash, &c.Enabled, &c.Version, &c.NetworkStatus, &c.ADStatus, &c.CameraStatus, &c.KerberosStatus, &c.LastUpdateVersion, &c.LastUpdateStatus, &c.LastUpdateAt, &c.RollbackAvailable, &c.CreatedAt, &c.LastSeenAt)
+	err = s.DB.QueryRowContext(ctx, `SELECT id,client_id,token_hash,auth_mode,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at FROM clients WHERE client_id=?`, clientID).Scan(&c.ID, &c.ClientID, &c.TokenHash, &c.AuthMode, &c.Enabled, &c.Version, &c.NetworkStatus, &c.ADStatus, &c.CameraStatus, &c.KerberosStatus, &c.LastUpdateVersion, &c.LastUpdateStatus, &c.LastUpdateAt, &c.RollbackAvailable, &c.CreatedAt, &c.LastSeenAt)
 	return
 }
 
@@ -614,7 +630,7 @@ func (s *Store) SetClientEnabled(ctx context.Context, clientID string, enabled b
 }
 
 func (s *Store) Clients(ctx context.Context) ([]Client, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,client_id,token_hash,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at FROM clients ORDER BY client_id`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,client_id,token_hash,auth_mode,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at FROM clients ORDER BY client_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -622,7 +638,7 @@ func (s *Store) Clients(ctx context.Context) ([]Client, error) {
 	out := []Client{}
 	for rows.Next() {
 		var c Client
-		if err = rows.Scan(&c.ID, &c.ClientID, &c.TokenHash, &c.Enabled, &c.Version, &c.NetworkStatus, &c.ADStatus, &c.CameraStatus, &c.KerberosStatus, &c.LastUpdateVersion, &c.LastUpdateStatus, &c.LastUpdateAt, &c.RollbackAvailable, &c.CreatedAt, &c.LastSeenAt); err != nil {
+		if err = rows.Scan(&c.ID, &c.ClientID, &c.TokenHash, &c.AuthMode, &c.Enabled, &c.Version, &c.NetworkStatus, &c.ADStatus, &c.CameraStatus, &c.KerberosStatus, &c.LastUpdateVersion, &c.LastUpdateStatus, &c.LastUpdateAt, &c.RollbackAvailable, &c.CreatedAt, &c.LastSeenAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

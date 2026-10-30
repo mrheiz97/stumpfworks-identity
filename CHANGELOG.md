@@ -2,6 +2,23 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Added the backend-neutral database foundation for gradual managed-client
+  certificate authentication: explicit per-client modes, single-use enrollment
+  records and public device-certificate metadata on SQLite and PostgreSQL.
+- Added transactional, audited enrollment, renewal, revocation and mode changes,
+  including replay protection and exact URI-SAN binding to the registered client.
+
+### Security
+
+- Kept every existing client in `token_only` by default. No listener, productive
+  client or existing Badge/PIN, PKINIT, Kerberos or fallback path is changed.
+- Added rollback contracts proving that an audit failure cannot consume an
+  enrollment token or partially replace a device credential.
+
 ## [1.11.0] - 2026-10-29
 
 ### Changed

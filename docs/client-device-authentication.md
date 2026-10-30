@@ -5,6 +5,21 @@ It is a migration plan, not authorization to issue certificates or change a
 production listener. The existing AD password fallback, Badge/PIN login, login
 grant, PKINIT and Kerberos paths remain available throughout the migration.
 
+## Implementation status
+
+The local database foundation is implemented on `development`. SQLite and
+PostgreSQL share the same client mode, enrollment-token and public credential
+records. Initial enrollment, renewal, revocation and mode changes are
+transactional and audited; enrollment and renewal are replay-safe, and the URI
+SAN must exactly equal the registered client identity. Import, reconciliation
+and backup/restore allowlists include both new tables.
+
+This foundation is deliberately dormant: every existing client defaults to
+`token_only`, no device CA or certificate has been created, no API listener has
+changed, and no production system or client has been touched. The next phase is
+certificate validation and a dedicated local client-API listener, followed by
+real PostgreSQL CI and only then a separately approved WYSE01 rollout.
+
 ## Current boundary
 
 `POST /api/v1/client/status` currently authenticates a registered client with a

@@ -7,11 +7,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const postgresClientColumns = "id,client_id,token_hash,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at"
+const postgresClientColumns = "id,client_id,token_hash,auth_mode,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at"
 
 func scanPostgresClient(row pgx.Row) (Client, error) {
 	var c Client
-	err := row.Scan(&c.ID, &c.ClientID, &c.TokenHash, &c.Enabled, &c.Version, &c.NetworkStatus, &c.ADStatus, &c.CameraStatus, &c.KerberosStatus, &c.LastUpdateVersion, &c.LastUpdateStatus, &c.LastUpdateAt, &c.RollbackAvailable, &c.CreatedAt, &c.LastSeenAt)
+	err := row.Scan(&c.ID, &c.ClientID, &c.TokenHash, &c.AuthMode, &c.Enabled, &c.Version, &c.NetworkStatus, &c.ADStatus, &c.CameraStatus, &c.KerberosStatus, &c.LastUpdateVersion, &c.LastUpdateStatus, &c.LastUpdateAt, &c.RollbackAvailable, &c.CreatedAt, &c.LastSeenAt)
 	return c, postgresNotFound(err)
 }
 
