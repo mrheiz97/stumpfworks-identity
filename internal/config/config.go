@@ -11,7 +11,7 @@ import (
 
 type Config struct {
 	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile string
-	ClientAPIListen, ClientAPICAFile                                                             string
+	ClientAPIListen, ClientAPIEnrollmentListen, ClientAPICAFile, ClientAPICAKeyFile              string
 	DirectoryURL, BaseDN, BindDN, BindPassword                                                   string
 	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                        string
 	DirectoryIdentityOperatorGroup, DirectoryOIDCOperatorGroup                                   string
@@ -28,6 +28,7 @@ type Config struct {
 	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled  bool
 	PasskeysEnabled                                                                              bool
 	ClientAPIEnabled                                                                             bool
+	ClientAPIEnrollmentEnabled                                                                   bool
 	EmergencyAdminEnabled                                                                        bool
 	DatabaseAllowInsecure, Demo                                                                  bool
 }
@@ -76,8 +77,14 @@ func Load(path string) (Config, error) {
 				c.ClientAPIEnabled = val == "true"
 			case "client_api.listen":
 				c.ClientAPIListen = val
+			case "client_api.enrollment_listen":
+				c.ClientAPIEnrollmentListen = val
+			case "client_api.enrollment_enabled":
+				c.ClientAPIEnrollmentEnabled = val == "true"
 			case "client_api.ca_file":
 				c.ClientAPICAFile = val
+			case "client_api.ca_key_file":
+				c.ClientAPICAKeyFile = val
 			case "database.path":
 				c.DatabasePath = val
 			case "database.backend":
@@ -167,7 +174,9 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_TLS_CERT_FILE", &c.TLSCertFile)
 	set("SWBADGE_TLS_KEY_FILE", &c.TLSKeyFile)
 	set("SWBADGE_CLIENT_API_LISTEN", &c.ClientAPIListen)
+	set("SWBADGE_CLIENT_API_ENROLLMENT_LISTEN", &c.ClientAPIEnrollmentListen)
 	set("SWBADGE_CLIENT_API_CA_FILE", &c.ClientAPICAFile)
+	set("SWBADGE_CLIENT_API_CA_KEY_FILE", &c.ClientAPICAKeyFile)
 	set("SWBADGE_DATABASE_PATH", &c.DatabasePath)
 	set("SWBADGE_DATABASE_BACKEND", &c.DatabaseBackend)
 	set("SWBADGE_POSTGRES_URL", &c.DatabaseURL)
@@ -219,6 +228,9 @@ func Load(path string) (Config, error) {
 	}
 	if v, ok := os.LookupEnv("SWBADGE_CLIENT_API_ENABLED"); ok {
 		c.ClientAPIEnabled = v == "true"
+	}
+	if v, ok := os.LookupEnv("SWBADGE_CLIENT_API_ENROLLMENT_ENABLED"); ok {
+		c.ClientAPIEnrollmentEnabled = v == "true"
 	}
 	if v, ok := os.LookupEnv("SWBADGE_EMERGENCY_ADMIN_ENABLED"); ok {
 		c.EmergencyAdminEnabled = v == "true"

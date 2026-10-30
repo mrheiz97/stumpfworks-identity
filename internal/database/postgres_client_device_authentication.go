@@ -25,6 +25,15 @@ func (s *PostgresStore) CreateClientEnrollmentTokenWithAudit(ctx context.Context
 	})
 }
 
+func (s *PostgresStore) ValidClientEnrollmentToken(ctx context.Context, clientID, tokenHash string, now time.Time) (bool, error) {
+	if !validPublicIdentifier(clientID) || !validSHA256(tokenHash) || now.IsZero() {
+		return false, ErrInvalidClientDeviceCredential
+	}
+	var exists bool
+	err := s.pool.Native().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_enrollment_tokens t JOIN clients c ON c.client_id=t.client_id WHERE t.client_id=$1 AND t.token_hash=$2 AND t.consumed_at IS NULL AND t.revoked_at IS NULL AND t.expires_at>=$3 AND c.enabled=TRUE)`, clientID, tokenHash, now.UTC()).Scan(&exists)
+	return exists, err
+}
+
 func (s *PostgresStore) EnrollClientDeviceCredentialWithAudit(ctx context.Context, tokenHash string, now time.Time, credential ClientDeviceCredential, ip string) error {
 	if !validSHA256(tokenHash) || validateDeviceCredential(credential) != nil || validateAuditIP(ip) != nil || now.IsZero() {
 		return ErrInvalidClientDeviceCredential

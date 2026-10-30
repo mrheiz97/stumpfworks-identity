@@ -14,6 +14,9 @@ All notable changes to StumpfWorks Identity are documented here.
 - Added a separately opt-in mTLS client-API listener restricted to status
   reports. Its dedicated device-CA trust, certificate identity extraction and
   database credential match do not affect the browser/OIDC listener.
+- Added a separately switchable HTTPS bootstrap listener for one-time device
+  enrollment and an mTLS-only renewal endpoint. `identity-admin` can issue a
+  5–60 minute single-use enrollment secret whose hash alone is stored.
 
 ### Security
 
@@ -24,6 +27,9 @@ All notable changes to StumpfWorks Identity are documented here.
 - Certificate-preferred bearer fallback is explicitly audited in the same
   transaction as its status update. Invalid presented certificates cannot
   downgrade to bearer authentication, and certificate-required mode rejects it.
+- Device CSRs must carry a valid ECDSA P-256 proof of possession. Identity
+  ignores requested names and issues exactly one canonical client URI SAN;
+  enrollment consumption and renewal replacement remain transactionally audited.
 
 ## [1.11.0] - 2026-10-29
 

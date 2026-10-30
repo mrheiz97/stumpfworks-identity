@@ -112,6 +112,15 @@ func (s *Store) CreateClientEnrollmentTokenWithAudit(ctx context.Context, token 
 	return tx.Commit()
 }
 
+func (s *Store) ValidClientEnrollmentToken(ctx context.Context, clientID, tokenHash string, now time.Time) (bool, error) {
+	if !validPublicIdentifier(clientID) || !validSHA256(tokenHash) || now.IsZero() {
+		return false, ErrInvalidClientDeviceCredential
+	}
+	var count int
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM client_enrollment_tokens t JOIN clients c ON c.client_id=t.client_id WHERE t.client_id=? AND t.token_hash=? AND t.consumed_at IS NULL AND t.revoked_at IS NULL AND t.expires_at>=? AND c.enabled=1`, clientID, tokenHash, now.UTC()).Scan(&count)
+	return count == 1, err
+}
+
 func (s *Store) EnrollClientDeviceCredentialWithAudit(ctx context.Context, tokenHash string, now time.Time, credential ClientDeviceCredential, ip string) error {
 	if !validSHA256(tokenHash) || validateDeviceCredential(credential) != nil || validateAuditIP(ip) != nil || now.IsZero() {
 		return ErrInvalidClientDeviceCredential

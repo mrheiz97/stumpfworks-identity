@@ -47,3 +47,13 @@ func clientAPIServer(cfg config.Config, application http.Handler) (*http.Server,
 		},
 	}, nil
 }
+
+func clientEnrollmentServer(cfg config.Config, application http.Handler) (*http.Server, error) {
+	if !cfg.ClientAPIEnrollmentEnabled {
+		return nil, nil
+	}
+	if !cfg.ClientAPIEnabled || application == nil || strings.TrimSpace(cfg.ClientAPIEnrollmentListen) == "" || cfg.ClientAPIEnrollmentListen == cfg.Listen || cfg.ClientAPIEnrollmentListen == cfg.ClientAPIListen || cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
+		return nil, errors.New("client enrollment requires a distinct listener and server TLS certificate")
+	}
+	return &http.Server{Addr: cfg.ClientAPIEnrollmentListen, Handler: application, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, nil
+}

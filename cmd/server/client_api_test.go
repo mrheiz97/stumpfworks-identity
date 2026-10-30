@@ -110,6 +110,37 @@ func TestClientAPIServerDefaultsOffAndFailsClosed(t *testing.T) {
 	}
 }
 
+func TestClientEnrollmentServerIsSeparatelyRestricted(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/client/enroll", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	application := http.Handler(mux)
+	cfg := config.Config{Listen: "public", TLSCertFile: "server.crt", TLSKeyFile: "server.key", ClientAPIEnabled: true, ClientAPIListen: "mtls", ClientAPIEnrollmentEnabled: true, ClientAPIEnrollmentListen: "enrollment"}
+	server, err := clientEnrollmentServer(cfg, application)
+	if err != nil || server.TLSConfig.ClientAuth != tls.NoClientCert {
+		t.Fatalf("valid enrollment server rejected: server=%v err=%v", server, err)
+	}
+	for _, test := range []struct {
+		method, path string
+		want         int
+	}{{http.MethodPost, "/api/v1/client/enroll", http.StatusNoContent}, {http.MethodGet, "/api/v1/client/enroll", http.StatusMethodNotAllowed}, {http.MethodGet, "/login", http.StatusNotFound}} {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, request)
+		if response.Code != test.want {
+			t.Fatalf("enrollment handler returned %d", response.Code)
+		}
+	}
+	for _, invalid := range []config.Config{
+		{ClientAPIEnabled: true, ClientAPIEnrollmentEnabled: true},
+		{ClientAPIEnabled: true, ClientAPIEnrollmentEnabled: true, Listen: "same", ClientAPIListen: "mtls", ClientAPIEnrollmentListen: "same", TLSCertFile: "cert", TLSKeyFile: "key"},
+		{ClientAPIEnabled: true, ClientAPIEnrollmentEnabled: true, Listen: "public", ClientAPIListen: "same", ClientAPIEnrollmentListen: "same", TLSCertFile: "cert", TLSKeyFile: "key"},
+	} {
+		if got, err := clientEnrollmentServer(invalid, application); err == nil || got != nil {
+			t.Fatalf("invalid enrollment listener accepted: %+v", invalid)
+		}
+	}
+}
+
 func syntheticDeviceCAPEM(t *testing.T) []byte {
 	t.Helper()
 	_, _, encoded := syntheticDeviceCA(t, "Synthetic device CA")

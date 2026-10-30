@@ -13,6 +13,7 @@ type clientDeviceAuthenticationStore interface {
 	CreateClient(context.Context, string, string) (Client, error)
 	ClientByID(context.Context, string) (Client, error)
 	CreateClientEnrollmentTokenWithAudit(context.Context, ClientEnrollmentToken, string) error
+	ValidClientEnrollmentToken(context.Context, string, string, time.Time) (bool, error)
 	EnrollClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
 	RenewClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
 	ClientDeviceCredentials(context.Context, string) ([]ClientDeviceCredential, error)

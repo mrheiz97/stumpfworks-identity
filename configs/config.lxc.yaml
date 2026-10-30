@@ -7,7 +7,10 @@ client_api:
   # Keep disabled until the device-certificate rollout has its own rollback.
   enabled: false
   listen: "0.0.0.0:8444"
+  enrollment_enabled: false
+  enrollment_listen: "0.0.0.0:8445"
   ca_file: "/etc/stumpfworks-badge/device-ca/ca.crt"
+  ca_key_file: "/etc/stumpfworks-badge/device-ca/ca.key"
 
 database:
   path: "/var/lib/stumpfworks-badge/badges.db"

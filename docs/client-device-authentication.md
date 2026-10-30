@@ -19,8 +19,19 @@ This foundation is deliberately dormant: every existing client defaults to
 system or client has been touched. Certificate identity validation and a
 separately opt-in mTLS listener restricted to the status endpoint are present
 locally. The listener fails closed without a distinct address, server TLS files
-and device-CA file. The next phase is enrollment and renewal transport, followed
-by real PostgreSQL CI and only then a separately approved WYSE01 rollout.
+and device-CA file. Local enrollment and renewal transport are now implemented:
+bootstrap uses its own independently switchable HTTPS listener and a short-lived
+single-use token; renewal requires the currently active mTLS credential. Both
+accept only signed ECDSA P-256 CSRs and issue the canonical URI identity instead
+of trusting CSR names. Real PostgreSQL CI and the managed-client installer are
+the remaining gates before a separately approved WYSE01 rollout.
+
+The bootstrap listener must be enabled only for an intentional enrollment
+window and disabled immediately afterwards. Operators issue a token with
+`identity-admin client-enrollment issue --client-id <id> --minutes 10`. The
+command prints the random token exactly once; only its SHA-256 hash is stored.
+The device CA private key remains in a root-readable file and is never returned
+by either endpoint.
 
 ## Current boundary
 
