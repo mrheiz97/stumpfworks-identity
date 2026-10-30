@@ -212,10 +212,12 @@ func WriteBundle(bundlePath, caPath string, material Material, replace bool) err
 		return errors.New("device CA material is invalid")
 	}
 	if !replace {
-		if _, err := os.Lstat(bundlePath); err == nil {
-			return errors.New("device credential bundle already exists")
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
+		for _, path := range []string{bundlePath, caPath} {
+			if _, err := os.Lstat(path); err == nil {
+				return errors.New("device credential material already exists")
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
 		}
 	}
 	if replace {

@@ -67,6 +67,14 @@ func TestEnrollValidatesAndWritesRootOnlyBundle(t *testing.T) {
 	if err := WriteBundle(bundle, caFile, material, false); err == nil {
 		t.Fatal("enrollment overwrote an existing device credential")
 	}
+	caOnlyDirectory := t.TempDir()
+	caOnlyBundle, caOnlyFile := filepath.Join(caOnlyDirectory, "device.pem"), filepath.Join(caOnlyDirectory, "device-ca.pem")
+	if err := os.WriteFile(caOnlyFile, material.CAPEM, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteBundle(caOnlyBundle, caOnlyFile, material, false); err == nil {
+		t.Fatal("enrollment overwrote existing device CA material")
+	}
 	before, _ := os.ReadFile(bundle)
 	invalid := material
 	invalid.PrivateKeyPEM = []byte("not-a-private-key")
@@ -143,6 +151,20 @@ func TestActivateAndLocalRollback(t *testing.T) {
 	restored, _ := os.ReadFile(bundle)
 	if !bytes.Equal(oldBytes, restored) {
 		t.Fatal("renewal rollback did not restore previous credential")
+	}
+	enrollmentDirectory := t.TempDir()
+	enrollmentBundle, enrollmentCA := filepath.Join(enrollmentDirectory, "device.pem"), filepath.Join(enrollmentDirectory, "ca.pem")
+	if err := WriteBundle(enrollmentBundle, enrollmentCA, old, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := RollbackBundle(enrollmentBundle, enrollmentCA, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(enrollmentBundle); !os.IsNotExist(err) {
+		t.Fatal("enrollment rollback left credential bundle")
+	}
+	if _, err := os.Stat(enrollmentCA); !os.IsNotExist(err) {
+		t.Fatal("enrollment rollback left device CA")
 	}
 }
 

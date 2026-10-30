@@ -155,16 +155,40 @@ func testClientDeviceAuthenticationContract(t *testing.T, store clientDeviceAuth
 	if err != nil || len(credentials) != 2 || credentials[0].Status != "active" || credentials[1].Status != "pending" {
 		t.Fatalf("renewal state changed: %+v %v", credentials, err)
 	}
-	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, replacement.ID, "192.0.2.10", now.Add(5*time.Second)); err != nil {
+	expiredActivation := now.Add(4*time.Second + ClientDeviceActivationWindow + time.Second)
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, replacement.ID, "192.0.2.10", expiredActivation); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expired pending credential activated: %v", err)
+	}
+	active, err := store.ActiveClientDeviceCredential(ctx, clientID, expiredActivation)
+	if err != nil || active.ID != credential.ID {
+		t.Fatalf("expired activation replaced old credential: %+v %v", active, err)
+	}
+	retry := replacement
+	retry.ID = "credential-contract-03"
+	retry.FingerprintSHA256 = strings.Repeat("e", 64)
+	retry.Serial = "3ab"
+	retry.IssuedAt = expiredActivation.Add(time.Second)
+	retry.ExpiresAt = retry.IssuedAt.Add(90 * 24 * time.Hour)
+	if err := store.StageClientDeviceCredentialRenewalWithAudit(ctx, credential.ID, retry.IssuedAt, retry, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RevokeClientDeviceCredentialWithAudit(ctx, clientID, replacement.ID, "192.0.2.10", now.Add(6*time.Second)); err != nil {
+	credentials, err = store.ClientDeviceCredentials(ctx, clientID)
+	if err != nil || len(credentials) != 3 || credentials[0].Status != "active" || credentials[1].Status != "superseded" || credentials[2].Status != "pending" {
+		t.Fatalf("expired renewal retry state changed: %+v %v", credentials, err)
+	}
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, retry.ID, "192.0.2.10", retry.IssuedAt.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetClientAuthenticationModeWithAudit(ctx, clientID, ClientAuthCertificateRequired, "192.0.2.10", now.Add(7*time.Second)); !errors.Is(err, sql.ErrNoRows) {
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, retry.ID, "192.0.2.10", retry.IssuedAt.Add(2*time.Second)); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("activation replay accepted: %v", err)
+	}
+	if err := store.RevokeClientDeviceCredentialWithAudit(ctx, clientID, retry.ID, "192.0.2.10", retry.IssuedAt.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetClientAuthenticationModeWithAudit(ctx, clientID, ClientAuthCertificateRequired, "192.0.2.10", retry.IssuedAt.Add(4*time.Second)); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("required mode accepted without active credential: %v", err)
 	}
-	if err := store.SetClientAuthenticationModeWithAudit(ctx, clientID, ClientAuthTokenOnly, "192.0.2.10", now.Add(8*time.Second)); err != nil {
+	if err := store.SetClientAuthenticationModeWithAudit(ctx, clientID, ClientAuthTokenOnly, "192.0.2.10", retry.IssuedAt.Add(5*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 }
