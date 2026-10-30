@@ -21,6 +21,10 @@ All notable changes to StumpfWorks Identity are documented here.
   enrollment and authenticated renewal. It verifies the returned chain,
   client identity, usage, expiry and public key before installing one root-only
   certificate/private-key bundle through an atomic file replacement.
+- Added an explicit ten-minute activation stage. Enrollment and renewal remain
+  pending until the newly installed certificate proves possession over mTLS;
+  interrupted renewal leaves the previous active credential usable and restores
+  the previous local bundle.
 
 ### Security
 
@@ -39,6 +43,8 @@ All notable changes to StumpfWorks Identity are documented here.
   rollback.
 - Renewal pins the already installed device CA and rejects an unexpected CA
   change; CA rotation remains a separate operational procedure.
+- A fresh pending credential blocks parallel issuance and cannot supersede the
+  active credential until its final activation and audit event commit together.
 
 ## [1.11.0] - 2026-10-29
 

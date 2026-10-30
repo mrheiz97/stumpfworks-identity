@@ -94,6 +94,26 @@ func Renew(ctx context.Context, client *http.Client, server, clientID string, ex
 	return requestCertificate(ctx, client, strings.TrimRight(server, "/")+"/api/v1/client/renew", payload, clientID, key, expectedCAPEM)
 }
 
+func Activate(ctx context.Context, client *http.Client, server string) error {
+	if client == nil || !validHTTPS(server) {
+		return errors.New("invalid device activation configuration")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(server, "/")+"/api/v1/client/activate", nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("device activation server returned HTTP %d", response.StatusCode)
+	}
+	return nil
+}
+
 func requestCertificate(ctx context.Context, client *http.Client, endpoint string, payload map[string]string, clientID string, key *ecdsa.PrivateKey, expectedCAPEM []byte) (Material, error) {
 	if client == nil {
 		return Material{}, errors.New("HTTP client is required")
@@ -198,11 +218,48 @@ func WriteBundle(bundlePath, caPath string, material Material, replace bool) err
 			return err
 		}
 	}
+	if replace {
+		previous, err := os.ReadFile(bundlePath)
+		if err != nil {
+			return err
+		}
+		if _, err = tls.X509KeyPair(previous, previous); err != nil {
+			return errors.New("existing device credential bundle is invalid")
+		}
+		if err = atomicWrite(bundlePath+".previous", previous, 0o600); err != nil {
+			return err
+		}
+	}
 	if err := atomicWrite(caPath, material.CAPEM, 0o644); err != nil {
 		return err
 	}
 	bundle := append(append([]byte{}, material.CertificatePEM...), material.PrivateKeyPEM...)
 	return atomicWrite(bundlePath, bundle, 0o600)
+}
+
+func RollbackBundle(bundlePath, caPath string, enrollment bool) error {
+	if bundlePath == "" || caPath == "" {
+		return errors.New("device material paths are required")
+	}
+	if enrollment {
+		bundleErr := os.Remove(bundlePath)
+		if bundleErr != nil && !errors.Is(bundleErr, os.ErrNotExist) {
+			return bundleErr
+		}
+		caErr := os.Remove(caPath)
+		if caErr != nil && !errors.Is(caErr, os.ErrNotExist) {
+			return caErr
+		}
+		return nil
+	}
+	previous, err := os.ReadFile(bundlePath + ".previous")
+	if err != nil {
+		return err
+	}
+	if _, err = tls.X509KeyPair(previous, previous); err != nil {
+		return errors.New("previous device credential bundle is invalid")
+	}
+	return atomicWrite(bundlePath, previous, 0o600)
 }
 
 func atomicWrite(path string, value []byte, mode os.FileMode) error {

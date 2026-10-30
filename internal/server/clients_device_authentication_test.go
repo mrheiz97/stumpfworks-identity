@@ -39,6 +39,9 @@ func TestClientStatusCertificateModes(t *testing.T) {
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, enrollmentHash, now, credential, "192.0.2.70"); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, credential.ID, "192.0.2.70", now); err != nil {
+		t.Fatal(err)
+	}
 	bodyBytes, err := json.Marshal(ClientStatusRequest{ClientID: clientID, Version: "1.12.0-dev", NetworkStatus: "ok", ADStatus: "ok", CameraStatus: "ok", KerberosStatus: "ok"})
 	if err != nil {
 		t.Fatal(err)

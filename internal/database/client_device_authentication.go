@@ -17,6 +17,8 @@ const (
 
 var ErrInvalidClientDeviceCredential = errors.New("invalid client device credential")
 
+const ClientDeviceActivationWindow = 10 * time.Minute
+
 func validClientAuthMode(mode string) bool {
 	return mode == ClientAuthTokenOnly || mode == ClientAuthCertificatePreferred || mode == ClientAuthCertificateRequired
 }
@@ -64,7 +66,7 @@ func validateDeviceCredential(credential ClientDeviceCredential) error {
 	return nil
 }
 
-func (s *Store) RenewClientDeviceCredentialWithAudit(ctx context.Context, currentCredentialID string, now time.Time, replacement ClientDeviceCredential, ip string) error {
+func (s *Store) StageClientDeviceCredentialRenewalWithAudit(ctx context.Context, currentCredentialID string, now time.Time, replacement ClientDeviceCredential, ip string) error {
 	if !validPublicIdentifier(currentCredentialID) || validateDeviceCredential(replacement) != nil || validateAuditIP(ip) != nil || now.IsZero() {
 		return ErrInvalidClientDeviceCredential
 	}
@@ -73,18 +75,25 @@ func (s *Store) RenewClientDeviceCredentialWithAudit(ctx context.Context, curren
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE client_device_credentials SET status='superseded',updated_at=? WHERE id=? AND client_id=? AND status='active' AND expires_at>?`, now.UTC(), currentCredentialID, replacement.ClientID, now.UTC())
+	result, err := tx.ExecContext(ctx, `UPDATE client_device_credentials SET updated_at=? WHERE id=? AND client_id=? AND status='active' AND expires_at>?`, now.UTC(), currentCredentialID, replacement.ClientID, now.UTC())
 	if err != nil {
 		return err
 	}
 	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
 		return sql.ErrNoRows
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO client_device_credentials(id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,'active')`, replacement.ID, replacement.ClientID, replacement.FingerprintSHA256, replacement.Serial, replacement.URISAN, replacement.PublicKeyAlgorithm, replacement.IssuerID, replacement.IssuedAt.UTC(), replacement.ExpiresAt.UTC()); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE client_device_credentials SET status='superseded',updated_at=? WHERE client_id=? AND status='pending' AND created_at<=?`, now.UTC(), replacement.ClientID, now.Add(-ClientDeviceActivationWindow).UTC()); err != nil {
+		return err
+	}
+	var pending int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM client_device_credentials WHERE client_id=? AND status='pending'`, replacement.ClientID).Scan(&pending); err != nil || pending != 0 {
+		return sql.ErrNoRows
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO client_device_credentials(id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,supersedes_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?)`, replacement.ID, replacement.ClientID, replacement.FingerprintSHA256, replacement.Serial, replacement.URISAN, replacement.PublicKeyAlgorithm, replacement.IssuerID, replacement.IssuedAt.UTC(), replacement.ExpiresAt.UTC(), currentCredentialID, now.UTC(), now.UTC()); err != nil {
 		return err
 	}
 	details := "credential_id=" + replacement.ID + ",supersedes=" + currentCredentialID
-	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,client_id,success,ip_address,details) VALUES(?,?,?,?,?)`, "client_device_renewed", replacement.ClientID, true, ip, details); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,client_id,success,ip_address,details) VALUES(?,?,?,?,?)`, "client_device_renewal_staged", replacement.ClientID, true, ip, details); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -137,17 +146,24 @@ func (s *Store) EnrollClientDeviceCredentialWithAudit(ctx context.Context, token
 	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
 		return sql.ErrNoRows
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO client_device_credentials(id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,'active')`, credential.ID, credential.ClientID, credential.FingerprintSHA256, credential.Serial, credential.URISAN, credential.PublicKeyAlgorithm, credential.IssuerID, credential.IssuedAt.UTC(), credential.ExpiresAt.UTC()); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE client_device_credentials SET status='superseded',updated_at=? WHERE client_id=? AND status='pending' AND created_at<=?`, now.UTC(), credential.ClientID, now.Add(-ClientDeviceActivationWindow).UTC()); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,client_id,success,ip_address,details) VALUES(?,?,?,?,?)`, "client_device_enrolled", credential.ClientID, true, ip, "credential_id="+credential.ID); err != nil {
+	var pending int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM client_device_credentials WHERE client_id=? AND status='pending'`, credential.ClientID).Scan(&pending); err != nil || pending != 0 {
+		return sql.ErrNoRows
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO client_device_credentials(id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?)`, credential.ID, credential.ClientID, credential.FingerprintSHA256, credential.Serial, credential.URISAN, credential.PublicKeyAlgorithm, credential.IssuerID, credential.IssuedAt.UTC(), credential.ExpiresAt.UTC(), now.UTC(), now.UTC()); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,client_id,success,ip_address,details) VALUES(?,?,?,?,?)`, "client_device_enrollment_staged", credential.ClientID, true, ip, "credential_id="+credential.ID); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 func (s *Store) ClientDeviceCredentials(ctx context.Context, clientID string) ([]ClientDeviceCredential, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,revoked_at,created_at,updated_at FROM client_device_credentials WHERE client_id=? ORDER BY created_at,id`, clientID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,supersedes_id,revoked_at,created_at,updated_at FROM client_device_credentials WHERE client_id=? ORDER BY created_at,id`, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +171,7 @@ func (s *Store) ClientDeviceCredentials(ctx context.Context, clientID string) ([
 	var credentials []ClientDeviceCredential
 	for rows.Next() {
 		var credential ClientDeviceCredential
-		if err := rows.Scan(&credential.ID, &credential.ClientID, &credential.FingerprintSHA256, &credential.Serial, &credential.URISAN, &credential.PublicKeyAlgorithm, &credential.IssuerID, &credential.IssuedAt, &credential.ExpiresAt, &credential.Status, &credential.RevokedAt, &credential.CreatedAt, &credential.UpdatedAt); err != nil {
+		if err := rows.Scan(&credential.ID, &credential.ClientID, &credential.FingerprintSHA256, &credential.Serial, &credential.URISAN, &credential.PublicKeyAlgorithm, &credential.IssuerID, &credential.IssuedAt, &credential.ExpiresAt, &credential.Status, &credential.SupersedesID, &credential.RevokedAt, &credential.CreatedAt, &credential.UpdatedAt); err != nil {
 			return nil, err
 		}
 		credentials = append(credentials, credential)
@@ -167,8 +183,62 @@ func (s *Store) ActiveClientDeviceCredential(ctx context.Context, clientID strin
 	if !validPublicIdentifier(clientID) || now.IsZero() {
 		return credential, ErrInvalidClientDeviceCredential
 	}
-	err = s.DB.QueryRowContext(ctx, `SELECT id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,revoked_at,created_at,updated_at FROM client_device_credentials WHERE client_id=? AND status='active' AND issued_at<=? AND expires_at>?`, clientID, now.UTC(), now.UTC()).Scan(&credential.ID, &credential.ClientID, &credential.FingerprintSHA256, &credential.Serial, &credential.URISAN, &credential.PublicKeyAlgorithm, &credential.IssuerID, &credential.IssuedAt, &credential.ExpiresAt, &credential.Status, &credential.RevokedAt, &credential.CreatedAt, &credential.UpdatedAt)
+	err = s.DB.QueryRowContext(ctx, `SELECT id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,supersedes_id,revoked_at,created_at,updated_at FROM client_device_credentials WHERE client_id=? AND status='active' AND issued_at<=? AND expires_at>?`, clientID, now.UTC(), now.UTC()).Scan(&credential.ID, &credential.ClientID, &credential.FingerprintSHA256, &credential.Serial, &credential.URISAN, &credential.PublicKeyAlgorithm, &credential.IssuerID, &credential.IssuedAt, &credential.ExpiresAt, &credential.Status, &credential.SupersedesID, &credential.RevokedAt, &credential.CreatedAt, &credential.UpdatedAt)
 	return credential, err
+}
+
+func (s *Store) PendingClientDeviceCredential(ctx context.Context, clientID string, now time.Time) (credential ClientDeviceCredential, err error) {
+	if !validPublicIdentifier(clientID) || now.IsZero() {
+		return credential, ErrInvalidClientDeviceCredential
+	}
+	err = s.DB.QueryRowContext(ctx, `SELECT id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,supersedes_id,revoked_at,created_at,updated_at FROM client_device_credentials WHERE client_id=? AND status='pending' AND created_at>? AND expires_at>?`, clientID, now.Add(-ClientDeviceActivationWindow).UTC(), now.UTC()).Scan(&credential.ID, &credential.ClientID, &credential.FingerprintSHA256, &credential.Serial, &credential.URISAN, &credential.PublicKeyAlgorithm, &credential.IssuerID, &credential.IssuedAt, &credential.ExpiresAt, &credential.Status, &credential.SupersedesID, &credential.RevokedAt, &credential.CreatedAt, &credential.UpdatedAt)
+	return credential, err
+}
+
+func (s *Store) ActivateClientDeviceCredentialWithAudit(ctx context.Context, clientID, credentialID, ip string, now time.Time) error {
+	if !validPublicIdentifier(clientID) || !validPublicIdentifier(credentialID) || validateAuditIP(ip) != nil || now.IsZero() {
+		return ErrInvalidClientDeviceCredential
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var supersedes sql.NullString
+	if err = tx.QueryRowContext(ctx, `SELECT supersedes_id FROM client_device_credentials WHERE id=? AND client_id=? AND status='pending' AND created_at>? AND expires_at>?`, credentialID, clientID, now.Add(-ClientDeviceActivationWindow).UTC(), now.UTC()).Scan(&supersedes); err != nil {
+		return err
+	}
+	event := "client_device_enrolled"
+	if supersedes.Valid {
+		result, updateErr := tx.ExecContext(ctx, `UPDATE client_device_credentials SET status='superseded',updated_at=? WHERE id=? AND client_id=? AND status='active'`, now.UTC(), supersedes.String, clientID)
+		if updateErr != nil {
+			return updateErr
+		}
+		if changed, rowsErr := result.RowsAffected(); rowsErr != nil || changed != 1 {
+			return sql.ErrNoRows
+		}
+		event = "client_device_renewed"
+	} else {
+		var active int
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM client_device_credentials WHERE client_id=? AND status='active'`, clientID).Scan(&active); err != nil || active != 0 {
+			return sql.ErrNoRows
+		}
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE client_device_credentials SET status='active',updated_at=? WHERE id=? AND client_id=? AND status='pending'`, now.UTC(), credentialID, clientID)
+	if err != nil {
+		return err
+	}
+	if changed, rowsErr := result.RowsAffected(); rowsErr != nil || changed != 1 {
+		return sql.ErrNoRows
+	}
+	details := "credential_id=" + credentialID
+	if supersedes.Valid {
+		details += ",supersedes=" + supersedes.String
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_log(event_type,client_id,success,ip_address,details) VALUES(?,?,?,?,?)`, event, clientID, true, ip, details); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) RevokeClientDeviceCredentialWithAudit(ctx context.Context, clientID, credentialID, ip string, now time.Time) error {

@@ -113,6 +113,48 @@ func TestRenewPinsExistingDeviceCA(t *testing.T) {
 	}
 }
 
+func TestActivateAndLocalRollback(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/v1/client/activate" {
+			t.Fatalf("unexpected activation request: %s %s", request.Method, request.URL)
+		}
+		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
+	})}
+	if err := Activate(context.Background(), client, "https://identity.example.test:8444"); err != nil {
+		t.Fatal(err)
+	}
+	ca, caKey, caPEM := syntheticCA(t)
+	oldKey, _, _ := newCSR()
+	old := materialFromResponse(t, signedResponse(t, ca, caKey, caPEM, &oldKey.PublicKey, "wyse01-greeter"), oldKey)
+	newKey, _, _ := newCSR()
+	replacement := materialFromResponse(t, signedResponse(t, ca, caKey, caPEM, &newKey.PublicKey, "wyse01-greeter"), newKey)
+	directory := t.TempDir()
+	bundle, caFile := filepath.Join(directory, "device.pem"), filepath.Join(directory, "ca.pem")
+	if err := WriteBundle(bundle, caFile, old, false); err != nil {
+		t.Fatal(err)
+	}
+	oldBytes, _ := os.ReadFile(bundle)
+	if err := WriteBundle(bundle, caFile, replacement, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := RollbackBundle(bundle, caFile, false); err != nil {
+		t.Fatal(err)
+	}
+	restored, _ := os.ReadFile(bundle)
+	if !bytes.Equal(oldBytes, restored) {
+		t.Fatal("renewal rollback did not restore previous credential")
+	}
+}
+
+func materialFromResponse(t *testing.T, response certificateResponse, key *ecdsa.PrivateKey) Material {
+	t.Helper()
+	material, err := validateMaterial(response, "wyse01-greeter", key, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return material
+}
+
 func syntheticCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey, []byte) {
 	t.Helper()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -59,6 +59,14 @@ func TestDeviceCertificateEnrollmentAndRenewalTransport(t *testing.T) {
 	if _, err := leaf.Verify(x509.VerifyOptions{Roots: certPool(ca), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, CurrentTime: time.Now()}); err != nil {
 		t.Fatalf("issued certificate does not verify: %v", err)
 	}
+	activation := httptest.NewRequest(http.MethodPost, "/api/v1/client/activate", nil)
+	activation.RemoteAddr = "192.0.2.90:1234"
+	activation.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{leaf}, VerifiedChains: [][]*x509.Certificate{{leaf, ca}}}
+	activationResponse := httptest.NewRecorder()
+	server.ClientAPIHandler().ServeHTTP(activationResponse, activation)
+	if activationResponse.Code != http.StatusNoContent {
+		t.Fatalf("activation returned %d: %s", activationResponse.Code, activationResponse.Body.String())
+	}
 	replay := httptest.NewRequest(http.MethodPost, "/api/v1/client/enroll", bytes.NewReader(enrollmentBody))
 	replay.RemoteAddr = "192.0.2.90:1234"
 	replayResponse := httptest.NewRecorder()
@@ -77,18 +85,31 @@ func TestDeviceCertificateEnrollmentAndRenewalTransport(t *testing.T) {
 	if renewalResponse.Code != http.StatusOK {
 		t.Fatalf("renewal returned %d: %s", renewalResponse.Code, renewalResponse.Body.String())
 	}
+	var renewed deviceCertificateResponse
+	if err := json.Unmarshal(renewalResponse.Body.Bytes(), &renewed); err != nil {
+		t.Fatal(err)
+	}
+	renewedLeaf := parseCertificatePEM(t, renewed.Certificate)
 	credentials, err := store.ClientDeviceCredentials(ctx, clientID)
-	active, superseded := 0, 0
+	active, pending := 0, 0
 	for _, credential := range credentials {
 		if credential.Status == "active" {
 			active++
 		}
-		if credential.Status == "superseded" {
-			superseded++
+		if credential.Status == "pending" {
+			pending++
 		}
 	}
-	if err != nil || len(credentials) != 2 || active != 1 || superseded != 1 {
+	if err != nil || len(credentials) != 2 || active != 1 || pending != 1 {
 		t.Fatalf("renewal credential state changed: %+v %v", credentials, err)
+	}
+	renewActivation := httptest.NewRequest(http.MethodPost, "/api/v1/client/activate", nil)
+	renewActivation.RemoteAddr = "192.0.2.90:1234"
+	renewActivation.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{renewedLeaf}, VerifiedChains: [][]*x509.Certificate{{renewedLeaf, ca}}}
+	renewActivationResponse := httptest.NewRecorder()
+	server.ClientAPIHandler().ServeHTTP(renewActivationResponse, renewActivation)
+	if renewActivationResponse.Code != http.StatusNoContent {
+		t.Fatalf("renewal activation returned %d: %s", renewActivationResponse.Code, renewActivationResponse.Body.String())
 	}
 	renewalReplay := httptest.NewRequest(http.MethodPost, "/api/v1/client/renew", bytes.NewReader(renewalBody))
 	renewalReplay.RemoteAddr = "192.0.2.90:1234"

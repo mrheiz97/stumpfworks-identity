@@ -15,9 +15,11 @@ type clientDeviceAuthenticationStore interface {
 	CreateClientEnrollmentTokenWithAudit(context.Context, ClientEnrollmentToken, string) error
 	ValidClientEnrollmentToken(context.Context, string, string, time.Time) (bool, error)
 	EnrollClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
-	RenewClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
+	StageClientDeviceCredentialRenewalWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
 	ClientDeviceCredentials(context.Context, string) ([]ClientDeviceCredential, error)
 	ActiveClientDeviceCredential(context.Context, string, time.Time) (ClientDeviceCredential, error)
+	PendingClientDeviceCredential(context.Context, string, time.Time) (ClientDeviceCredential, error)
+	ActivateClientDeviceCredentialWithAudit(context.Context, string, string, string, time.Time) error
 	RevokeClientDeviceCredentialWithAudit(context.Context, string, string, string, time.Time) error
 	SetClientAuthenticationModeWithAudit(context.Context, string, string, string, time.Time) error
 }
@@ -57,6 +59,9 @@ func testClientDeviceConcurrentRenewal(t *testing.T, store clientDeviceAuthentic
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, tokenHash, now.Add(time.Second), current, "192.0.2.60"); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, current.ID, "192.0.2.60", now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	first, second := current, current
 	first.ID, first.FingerprintSHA256, first.Serial = "concurrent-replacement-a", strings.Repeat("c", 64), "8ab"
 	second.ID, second.FingerprintSHA256, second.Serial = "concurrent-replacement-b", strings.Repeat("e", 64), "9ab"
@@ -68,7 +73,7 @@ func testClientDeviceConcurrentRenewal(t *testing.T, store clientDeviceAuthentic
 		replacement := replacement
 		go func() {
 			<-start
-			results <- store.RenewClientDeviceCredentialWithAudit(ctx, current.ID, now.Add(2*time.Second), replacement, "192.0.2.60")
+			results <- store.StageClientDeviceCredentialRenewalWithAudit(ctx, current.ID, now.Add(2*time.Second), replacement, "192.0.2.60")
 		}()
 	}
 	close(start)
@@ -87,8 +92,11 @@ func testClientDeviceConcurrentRenewal(t *testing.T, store clientDeviceAuthentic
 		t.Fatalf("concurrent renewal winners changed: succeeded=%d rejected=%d", succeeded, rejected)
 	}
 	credentials, err := store.ClientDeviceCredentials(ctx, clientID)
-	if err != nil || len(credentials) != 2 || credentials[0].Status != "superseded" || credentials[1].Status != "active" {
+	if err != nil || len(credentials) != 2 || credentials[0].Status != "active" || credentials[1].Status != "pending" {
 		t.Fatalf("concurrent renewal state changed: %+v %v", credentials, err)
+	}
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, credentials[1].ID, "192.0.2.60", now.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
 	}
 	active, err := store.ActiveClientDeviceCredential(ctx, clientID, now.Add(2*time.Second))
 	if err != nil || active.ID != credentials[1].ID {
@@ -118,8 +126,11 @@ func testClientDeviceAuthenticationContract(t *testing.T, store clientDeviceAuth
 		t.Fatalf("enrollment replay accepted: %v", err)
 	}
 	credentials, err := store.ClientDeviceCredentials(ctx, clientID)
-	if err != nil || len(credentials) != 1 || credentials[0].FingerprintSHA256 != credential.FingerprintSHA256 || credentials[0].Status != "active" {
+	if err != nil || len(credentials) != 1 || credentials[0].FingerprintSHA256 != credential.FingerprintSHA256 || credentials[0].Status != "pending" {
 		t.Fatalf("credential metadata changed: %+v %v", credentials, err)
+	}
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, credential.ID, "192.0.2.10", now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
 	}
 	if err := store.SetClientAuthenticationModeWithAudit(ctx, clientID, ClientAuthCertificatePreferred, "192.0.2.10", now.Add(3*time.Second)); err != nil {
 		t.Fatal(err)
@@ -134,15 +145,18 @@ func testClientDeviceAuthenticationContract(t *testing.T, store clientDeviceAuth
 	replacement.Serial = "2ab"
 	replacement.IssuedAt = now.Add(4 * time.Second)
 	replacement.ExpiresAt = replacement.IssuedAt.Add(90 * 24 * time.Hour)
-	if err := store.RenewClientDeviceCredentialWithAudit(ctx, credential.ID, now.Add(4*time.Second), replacement, "192.0.2.10"); err != nil {
+	if err := store.StageClientDeviceCredentialRenewalWithAudit(ctx, credential.ID, now.Add(4*time.Second), replacement, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RenewClientDeviceCredentialWithAudit(ctx, credential.ID, now.Add(5*time.Second), replacement, "192.0.2.10"); !errors.Is(err, sql.ErrNoRows) {
+	if err := store.StageClientDeviceCredentialRenewalWithAudit(ctx, credential.ID, now.Add(5*time.Second), replacement, "192.0.2.10"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("renewal replay accepted: %v", err)
 	}
 	credentials, err = store.ClientDeviceCredentials(ctx, clientID)
-	if err != nil || len(credentials) != 2 || credentials[0].Status != "superseded" || credentials[1].Status != "active" {
+	if err != nil || len(credentials) != 2 || credentials[0].Status != "active" || credentials[1].Status != "pending" {
 		t.Fatalf("renewal state changed: %+v %v", credentials, err)
+	}
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, replacement.ID, "192.0.2.10", now.Add(5*time.Second)); err != nil {
+		t.Fatal(err)
 	}
 	if err := store.RevokeClientDeviceCredentialWithAudit(ctx, clientID, replacement.ID, "192.0.2.10", now.Add(6*time.Second)); err != nil {
 		t.Fatal(err)
@@ -224,7 +238,10 @@ func TestSQLiteClientDeviceRenewalAuditFailureRollsBackReplacement(t *testing.T)
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, tokenHash, now.Add(time.Second), current, "192.0.2.40"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB.Exec(`CREATE TRIGGER reject_client_renewal_audit BEFORE INSERT ON audit_log WHEN NEW.event_type='client_device_renewed' BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END`); err != nil {
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, current.ID, "192.0.2.40", now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB.Exec(`CREATE TRIGGER reject_client_renewal_audit BEFORE INSERT ON audit_log WHEN NEW.event_type='client_device_renewal_staged' BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END`); err != nil {
 		t.Fatal(err)
 	}
 	replacement := current
@@ -233,7 +250,7 @@ func TestSQLiteClientDeviceRenewalAuditFailureRollsBackReplacement(t *testing.T)
 	replacement.Serial = "5ab"
 	replacement.IssuedAt = now.Add(2 * time.Second)
 	replacement.ExpiresAt = replacement.IssuedAt.Add(90 * 24 * time.Hour)
-	if err := store.RenewClientDeviceCredentialWithAudit(ctx, current.ID, now.Add(2*time.Second), replacement, "192.0.2.40"); err == nil {
+	if err := store.StageClientDeviceCredentialRenewalWithAudit(ctx, current.ID, now.Add(2*time.Second), replacement, "192.0.2.40"); err == nil {
 		t.Fatal("synthetic renewal audit failure accepted")
 	}
 	credentials, err := store.ClientDeviceCredentials(ctx, clientID)
@@ -273,7 +290,7 @@ func TestSQLiteClientDeviceMutationAuditFailuresRollBack(t *testing.T) {
 		}
 	}
 
-	createRejectTrigger("client_device_enrolled")
+	createRejectTrigger("client_device_enrollment_staged")
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, tokenHash, now.Add(time.Second), credential, "192.0.2.50"); err == nil {
 		t.Fatal("synthetic enrollment audit failure accepted")
 	}
@@ -286,6 +303,18 @@ func TestSQLiteClientDeviceMutationAuditFailuresRollBack(t *testing.T) {
 	}
 	dropRejectTrigger()
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, tokenHash, now.Add(2*time.Second), credential, "192.0.2.50"); err != nil {
+		t.Fatal(err)
+	}
+	createRejectTrigger("client_device_enrolled")
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, credential.ID, "192.0.2.50", now.Add(2*time.Second)); err == nil {
+		t.Fatal("synthetic activation audit failure accepted")
+	}
+	credentials, err := store.ClientDeviceCredentials(ctx, clientID)
+	if err != nil || len(credentials) != 1 || credentials[0].Status != "pending" {
+		t.Fatalf("activation audit failure changed credential: %+v %v", credentials, err)
+	}
+	dropRejectTrigger()
+	if err := store.ActivateClientDeviceCredentialWithAudit(ctx, clientID, credential.ID, "192.0.2.50", now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -303,7 +332,7 @@ func TestSQLiteClientDeviceMutationAuditFailuresRollBack(t *testing.T) {
 	if err := store.RevokeClientDeviceCredentialWithAudit(ctx, clientID, credential.ID, "192.0.2.50", now.Add(4*time.Second)); err == nil {
 		t.Fatal("synthetic revocation audit failure accepted")
 	}
-	credentials, err := store.ClientDeviceCredentials(ctx, clientID)
+	credentials, err = store.ClientDeviceCredentials(ctx, clientID)
 	if err != nil || len(credentials) != 1 || credentials[0].Status != "active" || credentials[0].RevokedAt.Valid {
 		t.Fatalf("revocation audit failure changed credential: %+v %v", credentials, err)
 	}

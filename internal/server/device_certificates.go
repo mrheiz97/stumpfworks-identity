@@ -101,6 +101,7 @@ func (s *Server) ClientAPIHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/client/status", s.clientStatus)
 	mux.HandleFunc("POST /api/v1/client/renew", s.renewClientDeviceCertificate)
+	mux.HandleFunc("POST /api/v1/client/activate", s.activateClientDeviceCertificate)
 	return s.security(mux)
 }
 
@@ -179,11 +180,35 @@ func (s *Server) renewClientDeviceCertificate(w http.ResponseWriter, r *http.Req
 		s.problem(w, http.StatusInternalServerError, "device_renewal_failed")
 		return
 	}
-	if err = s.store.RenewClientDeviceCredentialWithAudit(r.Context(), current.ID, time.Now().UTC(), replacement, remoteIP(r)); err != nil {
+	if err = s.store.StageClientDeviceCredentialRenewalWithAudit(r.Context(), current.ID, time.Now().UTC(), replacement, remoteIP(r)); err != nil {
 		s.problem(w, http.StatusConflict, "device_renewal_failed")
 		return
 	}
 	s.json(w, http.StatusOK, deviceCertificateResponse{Certificate: certificatePEM, CA: s.deviceIssuer.caPEM, ExpiresAt: replacement.ExpiresAt.UTC().Format(time.RFC3339)})
+}
+
+func (s *Server) activateClientDeviceCertificate(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
+	identity, err := deviceauth.FromTLS(r.TLS, now)
+	if err != nil {
+		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
+		return
+	}
+	pending, err := s.store.PendingClientDeviceCredential(r.Context(), identity.ClientID, now)
+	if err != nil || !sameDeviceCredential(identity, pending) {
+		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
+		return
+	}
+	client, err := s.store.ClientByID(r.Context(), identity.ClientID)
+	if err != nil || !client.Enabled {
+		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
+		return
+	}
+	if err = s.store.ActivateClientDeviceCredentialWithAudit(r.Context(), identity.ClientID, pending.ID, remoteIP(r), now); err != nil {
+		s.problem(w, http.StatusConflict, "device_activation_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func parseDeviceCSR(value string) (*x509.CertificateRequest, error) {
