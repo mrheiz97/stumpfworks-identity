@@ -109,7 +109,12 @@ func kerberosStatus() string {
 }
 
 func HTTPClient(caFile string) (*http.Client, error) {
+	return HTTPClientWithCertificate(caFile, "", "")
+}
+
+func HTTPClientWithCertificate(caFile, certificateFile, keyFile string) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	var tlsConfig *tls.Config
 	if caFile != "" {
 		pem, err := os.ReadFile(caFile)
 		if err != nil {
@@ -122,8 +127,22 @@ func HTTPClient(caFile string) (*http.Client, error) {
 		if !roots.AppendCertsFromPEM(pem) {
 			return nil, errors.New("CA file contains no certificates")
 		}
-		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}
+		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}
 	}
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	if certificateFile != "" || keyFile != "" {
+		if certificateFile == "" || keyFile == "" {
+			return nil, errors.New("both device certificate and key files are required")
+		}
+		certificate, err := tls.LoadX509KeyPair(certificateFile, keyFile)
+		if err != nil {
+			return nil, errors.New("device credential could not be loaded")
+		}
+		tlsConfig.Certificates = []tls.Certificate{certificate}
+	}
+	transport.TLSClientConfig = tlsConfig
 	return &http.Client{Timeout: 10 * time.Second, Transport: transport}, nil
 }
 
@@ -140,7 +159,9 @@ func Send(ctx context.Context, hc *http.Client, server, token string, report Rep
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return err

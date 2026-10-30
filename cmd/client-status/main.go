@@ -24,6 +24,7 @@ func main() {
 	clientID := flag.String("client-id", value("SWBADGE_CLIENT_ID", ""), "registered client ID")
 	caFile := flag.String("ca-file", value("SWBADGE_CA_FILE", ""), "additional PEM CA certificate")
 	tokenFile := flag.String("token-file", value("SWBADGE_CLIENT_TOKEN_FILE", "/etc/stumpfworks-badge/client-status-token"), "root-readable client token file")
+	deviceBundleFile := flag.String("device-bundle-file", value("SWBADGE_DEVICE_BUNDLE_FILE", ""), "optional root-readable device certificate and key bundle")
 	updateStateFile := flag.String("update-state-file", value("SWBADGE_UPDATE_STATE_FILE", clientupdate.DefaultStatePath), "local updater state file")
 	show := flag.Bool("version", false, "show version")
 	flag.Parse()
@@ -34,15 +35,18 @@ func main() {
 	if *server == "" || *clientID == "" {
 		fatal("server and client ID are required")
 	}
-	raw, err := os.ReadFile(*tokenFile)
-	if err != nil {
-		fatal(err.Error())
+	token := ""
+	if *tokenFile != "" {
+		raw, err := os.ReadFile(*tokenFile)
+		if err != nil {
+			fatal(err.Error())
+		}
+		token = strings.TrimSpace(string(raw))
 	}
-	token := strings.TrimSpace(string(raw))
-	if token == "" {
-		fatal("client token file is empty")
+	if token == "" && *deviceBundleFile == "" {
+		fatal("client token or device credential is required")
 	}
-	hc, err := clientstatus.HTTPClient(*caFile)
+	hc, err := clientstatus.HTTPClientWithCertificate(*caFile, *deviceBundleFile, *deviceBundleFile)
 	if err != nil {
 		fatal(err.Error())
 	}

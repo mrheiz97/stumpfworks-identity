@@ -17,6 +17,10 @@ All notable changes to StumpfWorks Identity are documented here.
 - Added a separately switchable HTTPS bootstrap listener for one-time device
   enrollment and an mTLS-only renewal endpoint. `identity-admin` can issue a
   5–60 minute single-use enrollment secret whose hash alone is stored.
+- Added `sw-badge-client-device` for local ECDSA P-256 key generation,
+  enrollment and authenticated renewal. It verifies the returned chain,
+  client identity, usage, expiry and public key before installing one root-only
+  certificate/private-key bundle through an atomic file replacement.
 
 ### Security
 
@@ -30,6 +34,11 @@ All notable changes to StumpfWorks Identity are documented here.
 - Device CSRs must carry a valid ECDSA P-256 proof of possession. Identity
   ignores requested names and issues exactly one canonical client URI SAN;
   enrollment consumption and renewal replacement remain transactionally audited.
+- Client status reporting can load the same device bundle for mTLS while the
+  existing bearer-token file remains available for the controlled migration
+  rollback.
+- Renewal pins the already installed device CA and rejects an unexpected CA
+  change; CA rotation remains a separate operational procedure.
 
 ## [1.11.0] - 2026-10-29
 

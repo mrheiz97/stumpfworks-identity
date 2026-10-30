@@ -33,6 +33,30 @@ command prints the random token exactly once; only its SHA-256 hash is stored.
 The device CA private key remains in a root-readable file and is never returned
 by either endpoint.
 
+On the managed client, `sw-badge-client-device enroll` generates the ECDSA P-256
+private key locally, sends only the signed CSR and one-time token, validates the
+returned certificate and writes a combined certificate/private-key bundle with
+mode `0600`. The enrollment command refuses to overwrite an existing bundle.
+`sw-badge-client-device renew` authenticates with the current bundle, generates
+a new key and replaces the bundle only after the new response passes chain,
+identity, EKU, expiry and public-key checks. `sw-badge-client-status` accepts the
+same bundle through `SWBADGE_DEVICE_BUNDLE_FILE`; the bearer token is deliberately
+retained during the migration window.
+Renewal additionally pins the previously installed device CA; changing that CA
+requires a separate, explicitly reviewed rotation procedure and cannot happen
+silently through an ordinary renewal response.
+
+Example commands (tokens and private material must never be pasted into shell
+history):
+
+```text
+sw-badge-client-device enroll --server https://login01.example.test:8445 \
+  --client-id wyse01-greeter --enrollment-token-file /run/credentials/enrollment
+
+sw-badge-client-device renew --server https://login01.example.test:8444 \
+  --client-id wyse01-greeter
+```
+
 ## Current boundary
 
 `POST /api/v1/client/status` currently authenticates a registered client with a
