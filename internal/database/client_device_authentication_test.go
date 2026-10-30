@@ -165,8 +165,8 @@ func testClientDeviceAuthenticationContract(t *testing.T, store clientDeviceAuth
 	}
 	retry := replacement
 	retry.ID = "credential-contract-03"
-	retry.FingerprintSHA256 = strings.Repeat("e", 64)
-	retry.Serial = "3ab"
+	retry.FingerprintSHA256 = strings.Repeat("f", 64)
+	retry.Serial = "6cd"
 	retry.IssuedAt = expiredActivation.Add(time.Second)
 	retry.ExpiresAt = retry.IssuedAt.Add(90 * 24 * time.Hour)
 	if err := store.StageClientDeviceCredentialRenewalWithAudit(ctx, credential.ID, retry.IssuedAt, retry, "192.0.2.10"); err != nil {
