@@ -83,6 +83,14 @@ func (s *PostgresStore) ClientDeviceCredentials(ctx context.Context, clientID st
 	return credentials, rows.Err()
 }
 
+func (s *PostgresStore) ActiveClientDeviceCredential(ctx context.Context, clientID string, now time.Time) (credential ClientDeviceCredential, err error) {
+	if !validPublicIdentifier(clientID) || now.IsZero() {
+		return credential, ErrInvalidClientDeviceCredential
+	}
+	err = s.pool.Native().QueryRow(ctx, `SELECT id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,revoked_at,created_at,updated_at FROM client_device_credentials WHERE client_id=$1 AND status='active' AND issued_at<=$2 AND expires_at>$2`, clientID, now.UTC()).Scan(&credential.ID, &credential.ClientID, &credential.FingerprintSHA256, &credential.Serial, &credential.URISAN, &credential.PublicKeyAlgorithm, &credential.IssuerID, &credential.IssuedAt, &credential.ExpiresAt, &credential.Status, &credential.RevokedAt, &credential.CreatedAt, &credential.UpdatedAt)
+	return credential, err
+}
+
 func (s *PostgresStore) RevokeClientDeviceCredentialWithAudit(ctx context.Context, clientID, credentialID, ip string, now time.Time) error {
 	if !validPublicIdentifier(clientID) || !validPublicIdentifier(credentialID) || validateAuditIP(ip) != nil || now.IsZero() {
 		return ErrInvalidClientDeviceCredential

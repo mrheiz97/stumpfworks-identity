@@ -41,6 +41,14 @@ func validSHA256(value string) bool {
 	return err == nil
 }
 
+func validCertificateSerial(value string) bool {
+	if len(value) < 1 || len(value) > 128 || strings.ToLower(value) != value || value[0] == '0' {
+		return false
+	}
+	_, err := hex.DecodeString(strings.Repeat("0", len(value)%2) + value)
+	return err == nil
+}
+
 func validateEnrollmentToken(token ClientEnrollmentToken) error {
 	if !validPublicIdentifier(token.ID) || !validPublicIdentifier(token.ClientID) || !validSHA256(token.TokenHash) || token.CreatedAt.IsZero() || !token.ExpiresAt.After(token.CreatedAt) || token.ExpiresAt.Sub(token.CreatedAt) > 24*time.Hour {
 		return ErrInvalidClientDeviceCredential
@@ -50,7 +58,7 @@ func validateEnrollmentToken(token ClientEnrollmentToken) error {
 
 func validateDeviceCredential(credential ClientDeviceCredential) error {
 	expectedURISAN := "urn:stumpfworks:identity:client:" + credential.ClientID
-	if !validPublicIdentifier(credential.ID) || !validPublicIdentifier(credential.ClientID) || !validSHA256(credential.FingerprintSHA256) || !validPublicIdentifier(credential.Serial) || credential.URISAN != expectedURISAN || len(credential.URISAN) > 255 || !validPublicIdentifier(credential.PublicKeyAlgorithm) || !validPublicIdentifier(credential.IssuerID) || credential.IssuedAt.IsZero() || !credential.ExpiresAt.After(credential.IssuedAt) || credential.ExpiresAt.Sub(credential.IssuedAt) > 397*24*time.Hour {
+	if !validPublicIdentifier(credential.ID) || !validPublicIdentifier(credential.ClientID) || !validSHA256(credential.FingerprintSHA256) || !validCertificateSerial(credential.Serial) || credential.URISAN != expectedURISAN || len(credential.URISAN) > 255 || !validPublicIdentifier(credential.PublicKeyAlgorithm) || !validPublicIdentifier(credential.IssuerID) || credential.IssuedAt.IsZero() || !credential.ExpiresAt.After(credential.IssuedAt) || credential.ExpiresAt.Sub(credential.IssuedAt) > 397*24*time.Hour {
 		return ErrInvalidClientDeviceCredential
 	}
 	return nil
@@ -144,6 +152,14 @@ func (s *Store) ClientDeviceCredentials(ctx context.Context, clientID string) ([
 		credentials = append(credentials, credential)
 	}
 	return credentials, rows.Err()
+}
+
+func (s *Store) ActiveClientDeviceCredential(ctx context.Context, clientID string, now time.Time) (credential ClientDeviceCredential, err error) {
+	if !validPublicIdentifier(clientID) || now.IsZero() {
+		return credential, ErrInvalidClientDeviceCredential
+	}
+	err = s.DB.QueryRowContext(ctx, `SELECT id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status,revoked_at,created_at,updated_at FROM client_device_credentials WHERE client_id=? AND status='active' AND issued_at<=? AND expires_at>?`, clientID, now.UTC(), now.UTC()).Scan(&credential.ID, &credential.ClientID, &credential.FingerprintSHA256, &credential.Serial, &credential.URISAN, &credential.PublicKeyAlgorithm, &credential.IssuerID, &credential.IssuedAt, &credential.ExpiresAt, &credential.Status, &credential.RevokedAt, &credential.CreatedAt, &credential.UpdatedAt)
+	return credential, err
 }
 
 func (s *Store) RevokeClientDeviceCredentialWithAudit(ctx context.Context, clientID, credentialID, ip string, now time.Time) error {

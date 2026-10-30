@@ -15,10 +15,12 @@ SAN must exactly equal the registered client identity. Import, reconciliation
 and backup/restore allowlists include both new tables.
 
 This foundation is deliberately dormant: every existing client defaults to
-`token_only`, no device CA or certificate has been created, no API listener has
-changed, and no production system or client has been touched. The next phase is
-certificate validation and a dedicated local client-API listener, followed by
-real PostgreSQL CI and only then a separately approved WYSE01 rollout.
+`token_only`, no device CA or certificate has been created, and no production
+system or client has been touched. Certificate identity validation and a
+separately opt-in mTLS listener restricted to the status endpoint are present
+locally. The listener fails closed without a distinct address, server TLS files
+and device-CA file. The next phase is enrollment and renewal transport, followed
+by real PostgreSQL CI and only then a separately approved WYSE01 rollout.
 
 ## Current boundary
 

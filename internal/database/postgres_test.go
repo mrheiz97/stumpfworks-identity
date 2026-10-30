@@ -234,7 +234,7 @@ CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECU
 		if _, err := source.DB.ExecContext(ctx, `INSERT INTO client_enrollment_tokens(id,client_id,token_hash,created_at,expires_at,consumed_at) VALUES(?,?,?,?,?,?)`, "import-device-enrollment", "fixture-client", strings.Repeat("4", 64), deviceNow, deviceNow.Add(10*time.Minute), deviceNow.Add(time.Second)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := source.DB.ExecContext(ctx, `INSERT INTO client_device_credentials(id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,'active')`, "import-device-credential", "fixture-client", strings.Repeat("5", 64), "import-serial-01", "urn:stumpfworks:identity:client:fixture-client", "ECDSA-P256", "stumpfworks-device-ca-01", deviceNow, deviceNow.Add(90*24*time.Hour)); err != nil {
+		if _, err := source.DB.ExecContext(ctx, `INSERT INTO client_device_credentials(id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,'active')`, "import-device-credential", "fixture-client", strings.Repeat("5", 64), "a1", "urn:stumpfworks:identity:client:fixture-client", "ECDSA-P256", "stumpfworks-device-ca-01", deviceNow, deviceNow.Add(90*24*time.Hour)); err != nil {
 			t.Fatal(err)
 		}
 		if err := source.CreateSelfServiceSession(ctx, "synthetic-session", user.Username, time.Now().Add(time.Hour)); err != nil {

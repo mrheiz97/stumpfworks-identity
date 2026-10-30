@@ -62,6 +62,7 @@ type ApplicationStore interface {
 	ClientByID(context.Context, string) (Client, error)
 	Clients(context.Context) ([]Client, error)
 	UpdateClientStatusWithUpdate(context.Context, string, string, string, string, string, string, *ClientUpdate) error
+	UpdateClientStatusWithUpdateAndTokenFallbackAudit(context.Context, string, string, string, string, string, string, *ClientUpdate, string) error
 	CreateClient(context.Context, string, string) (Client, error)
 	CreateClientWithAudit(context.Context, string, string, string) (Client, error)
 	RotateClientToken(context.Context, string, string) error
@@ -72,6 +73,7 @@ type ApplicationStore interface {
 	EnrollClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
 	RenewClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
 	ClientDeviceCredentials(context.Context, string) ([]ClientDeviceCredential, error)
+	ActiveClientDeviceCredential(context.Context, string, time.Time) (ClientDeviceCredential, error)
 	RevokeClientDeviceCredentialWithAudit(context.Context, string, string, string, time.Time) error
 	SetClientAuthenticationModeWithAudit(context.Context, string, string, string, time.Time) error
 	EnsureOIDCSubject(context.Context, int64) (string, error)

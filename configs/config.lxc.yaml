@@ -3,6 +3,12 @@ server:
   tls_cert_file: "/etc/stumpfworks-badge/tls/server.crt"
   tls_key_file: "/etc/stumpfworks-badge/tls/server.key"
 
+client_api:
+  # Keep disabled until the device-certificate rollout has its own rollback.
+  enabled: false
+  listen: "0.0.0.0:8444"
+  ca_file: "/etc/stumpfworks-badge/device-ca/ca.crt"
+
 database:
   path: "/var/lib/stumpfworks-badge/badges.db"
 

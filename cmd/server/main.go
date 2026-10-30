@@ -220,15 +220,29 @@ func main() {
 		}
 	}
 	log.Info("server starting", "component", "server", "listen", cfg.Listen, "version", version.Version, "metrics_enabled", cfg.MetricsEnabled)
-	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
-		if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
-			slog.Error("both TLS certificate and key are required")
-			os.Exit(1)
-		}
-		e = http.ListenAndServeTLS(cfg.Listen, cfg.TLSCertFile, cfg.TLSKeyFile, applicationHandler)
-	} else {
-		e = http.ListenAndServe(cfg.Listen, applicationHandler)
+	clientServer, err := clientAPIServer(cfg, applicationHandler)
+	if err != nil {
+		slog.Error("client API configuration failed", "error", err)
+		os.Exit(1)
 	}
+	publicServer := &http.Server{Addr: cfg.Listen, Handler: applicationHandler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	errors := make(chan error, 2)
+	go func() {
+		if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
+			if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
+				errors <- fmt.Errorf("both TLS certificate and key are required")
+				return
+			}
+			errors <- publicServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+			return
+		}
+		errors <- publicServer.ListenAndServe()
+	}()
+	if clientServer != nil {
+		log.Info("client API starting", "component", "client_api", "listen", cfg.ClientAPIListen)
+		go func() { errors <- clientServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile) }()
+	}
+	e = <-errors
 	if e != nil {
 		slog.Error("server stopped", "error", e)
 		os.Exit(1)

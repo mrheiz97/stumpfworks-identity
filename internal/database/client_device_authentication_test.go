@@ -16,6 +16,7 @@ type clientDeviceAuthenticationStore interface {
 	EnrollClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
 	RenewClientDeviceCredentialWithAudit(context.Context, string, time.Time, ClientDeviceCredential, string) error
 	ClientDeviceCredentials(context.Context, string) ([]ClientDeviceCredential, error)
+	ActiveClientDeviceCredential(context.Context, string, time.Time) (ClientDeviceCredential, error)
 	RevokeClientDeviceCredentialWithAudit(context.Context, string, string, string, time.Time) error
 	SetClientAuthenticationModeWithAudit(context.Context, string, string, string, time.Time) error
 }
@@ -51,13 +52,13 @@ func testClientDeviceConcurrentRenewal(t *testing.T, store clientDeviceAuthentic
 	if err := store.CreateClientEnrollmentTokenWithAudit(ctx, token, "192.0.2.60"); err != nil {
 		t.Fatal(err)
 	}
-	current := ClientDeviceCredential{ID: "concurrent-renewal-current", ClientID: clientID, FingerprintSHA256: strings.Repeat("9", 64), Serial: "07ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
+	current := ClientDeviceCredential{ID: "concurrent-renewal-current", ClientID: clientID, FingerprintSHA256: strings.Repeat("9", 64), Serial: "7ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, tokenHash, now.Add(time.Second), current, "192.0.2.60"); err != nil {
 		t.Fatal(err)
 	}
 	first, second := current, current
-	first.ID, first.FingerprintSHA256, first.Serial = "concurrent-replacement-a", strings.Repeat("c", 64), "08ab"
-	second.ID, second.FingerprintSHA256, second.Serial = "concurrent-replacement-b", strings.Repeat("e", 64), "09ab"
+	first.ID, first.FingerprintSHA256, first.Serial = "concurrent-replacement-a", strings.Repeat("c", 64), "8ab"
+	second.ID, second.FingerprintSHA256, second.Serial = "concurrent-replacement-b", strings.Repeat("e", 64), "9ab"
 	first.IssuedAt, second.IssuedAt = now.Add(2*time.Second), now.Add(2*time.Second)
 	first.ExpiresAt, second.ExpiresAt = first.IssuedAt.Add(90*24*time.Hour), second.IssuedAt.Add(90*24*time.Hour)
 	start := make(chan struct{})
@@ -88,6 +89,10 @@ func testClientDeviceConcurrentRenewal(t *testing.T, store clientDeviceAuthentic
 	if err != nil || len(credentials) != 2 || credentials[0].Status != "superseded" || credentials[1].Status != "active" {
 		t.Fatalf("concurrent renewal state changed: %+v %v", credentials, err)
 	}
+	active, err := store.ActiveClientDeviceCredential(ctx, clientID, now.Add(2*time.Second))
+	if err != nil || active.ID != credentials[1].ID {
+		t.Fatalf("active credential lookup changed: %+v %v", active, err)
+	}
 }
 
 func testClientDeviceAuthenticationContract(t *testing.T, store clientDeviceAuthenticationStore) {
@@ -104,7 +109,7 @@ func testClientDeviceAuthenticationContract(t *testing.T, store clientDeviceAuth
 	if err := store.CreateClientEnrollmentTokenWithAudit(ctx, token, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
-	credential := ClientDeviceCredential{ID: "credential-contract-01", ClientID: clientID, FingerprintSHA256: strings.Repeat("b", 64), Serial: "01ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
+	credential := ClientDeviceCredential{ID: "credential-contract-01", ClientID: clientID, FingerprintSHA256: strings.Repeat("b", 64), Serial: "1ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, tokenHash, now.Add(time.Second), credential, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +130,7 @@ func testClientDeviceAuthenticationContract(t *testing.T, store clientDeviceAuth
 	replacement := credential
 	replacement.ID = "credential-contract-02"
 	replacement.FingerprintSHA256 = strings.Repeat("d", 64)
-	replacement.Serial = "02ab"
+	replacement.Serial = "2ab"
 	replacement.IssuedAt = now.Add(4 * time.Second)
 	replacement.ExpiresAt = replacement.IssuedAt.Add(90 * 24 * time.Hour)
 	if err := store.RenewClientDeviceCredentialWithAudit(ctx, credential.ID, now.Add(4*time.Second), replacement, "192.0.2.10"); err != nil {
@@ -187,7 +192,7 @@ func TestSQLiteClientDeviceCredentialRejectsMismatchedURISAN(t *testing.T) {
 	if err := store.CreateClientEnrollmentTokenWithAudit(t.Context(), token, "192.0.2.30"); err != nil {
 		t.Fatal(err)
 	}
-	credential := ClientDeviceCredential{ID: "uri-bound-credential", ClientID: "uri-bound-client", FingerprintSHA256: strings.Repeat("f", 64), Serial: "03ab", URISAN: "urn:stumpfworks:identity:client:another-client", PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
+	credential := ClientDeviceCredential{ID: "uri-bound-credential", ClientID: "uri-bound-client", FingerprintSHA256: strings.Repeat("f", 64), Serial: "3ab", URISAN: "urn:stumpfworks:identity:client:another-client", PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
 	if err := store.EnrollClientDeviceCredentialWithAudit(t.Context(), tokenHash, now.Add(time.Second), credential, "192.0.2.30"); !errors.Is(err, ErrInvalidClientDeviceCredential) {
 		t.Fatalf("mismatched URI SAN accepted: %v", err)
 	}
@@ -214,7 +219,7 @@ func TestSQLiteClientDeviceRenewalAuditFailureRollsBackReplacement(t *testing.T)
 	if err := store.CreateClientEnrollmentTokenWithAudit(ctx, token, "192.0.2.40"); err != nil {
 		t.Fatal(err)
 	}
-	current := ClientDeviceCredential{ID: "renewal-current", ClientID: clientID, FingerprintSHA256: strings.Repeat("2", 64), Serial: "04ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
+	current := ClientDeviceCredential{ID: "renewal-current", ClientID: clientID, FingerprintSHA256: strings.Repeat("2", 64), Serial: "4ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
 	if err := store.EnrollClientDeviceCredentialWithAudit(ctx, tokenHash, now.Add(time.Second), current, "192.0.2.40"); err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +229,7 @@ func TestSQLiteClientDeviceRenewalAuditFailureRollsBackReplacement(t *testing.T)
 	replacement := current
 	replacement.ID = "renewal-replacement"
 	replacement.FingerprintSHA256 = strings.Repeat("3", 64)
-	replacement.Serial = "05ab"
+	replacement.Serial = "5ab"
 	replacement.IssuedAt = now.Add(2 * time.Second)
 	replacement.ExpiresAt = replacement.IssuedAt.Add(90 * 24 * time.Hour)
 	if err := store.RenewClientDeviceCredentialWithAudit(ctx, current.ID, now.Add(2*time.Second), replacement, "192.0.2.40"); err == nil {
@@ -253,7 +258,7 @@ func TestSQLiteClientDeviceMutationAuditFailuresRollBack(t *testing.T) {
 	if err := store.CreateClientEnrollmentTokenWithAudit(ctx, token, "192.0.2.50"); err != nil {
 		t.Fatal(err)
 	}
-	credential := ClientDeviceCredential{ID: "mutation-rollback-credential", ClientID: clientID, FingerprintSHA256: strings.Repeat("7", 64), Serial: "06ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
+	credential := ClientDeviceCredential{ID: "mutation-rollback-credential", ClientID: clientID, FingerprintSHA256: strings.Repeat("7", 64), Serial: "6ab", URISAN: "urn:stumpfworks:identity:client:" + clientID, PublicKeyAlgorithm: "ECDSA-P256", IssuerID: "stumpfworks-device-ca-01", IssuedAt: now, ExpiresAt: now.Add(90 * 24 * time.Hour)}
 	createRejectTrigger := func(eventType string) {
 		t.Helper()
 		if _, err := store.DB.Exec(`CREATE TRIGGER reject_device_mutation_audit BEFORE INSERT ON audit_log WHEN NEW.event_type='` + eventType + `' BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END`); err != nil {
@@ -300,5 +305,28 @@ func TestSQLiteClientDeviceMutationAuditFailuresRollBack(t *testing.T) {
 	credentials, err := store.ClientDeviceCredentials(ctx, clientID)
 	if err != nil || len(credentials) != 1 || credentials[0].Status != "active" || credentials[0].RevokedAt.Valid {
 		t.Fatalf("revocation audit failure changed credential: %+v %v", credentials, err)
+	}
+}
+
+func TestSQLiteClientTokenFallbackAuditFailureRollsBackStatus(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := t.Context()
+	const clientID = "fallback-audit-rollback-client"
+	if _, err := store.CreateClient(ctx, clientID, "synthetic-token"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB.Exec(`CREATE TRIGGER reject_client_fallback_audit BEFORE INSERT ON audit_log WHEN NEW.event_type='client_certificate_token_fallback' BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateClientStatusWithUpdateAndTokenFallbackAudit(ctx, clientID, "9.9.9", "ok", "ok", "ok", "ok", nil, "192.0.2.80"); err == nil {
+		t.Fatal("synthetic fallback audit failure accepted")
+	}
+	client, err := store.ClientByID(ctx, clientID)
+	if err != nil || client.Version != "" || client.LastSeenAt != nil {
+		t.Fatalf("fallback audit failure changed status: %+v %v", client, err)
 	}
 }

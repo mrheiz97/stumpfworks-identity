@@ -11,6 +11,9 @@ All notable changes to StumpfWorks Identity are documented here.
   records and public device-certificate metadata on SQLite and PostgreSQL.
 - Added transactional, audited enrollment, renewal, revocation and mode changes,
   including replay protection and exact URI-SAN binding to the registered client.
+- Added a separately opt-in mTLS client-API listener restricted to status
+  reports. Its dedicated device-CA trust, certificate identity extraction and
+  database credential match do not affect the browser/OIDC listener.
 
 ### Security
 
@@ -18,6 +21,9 @@ All notable changes to StumpfWorks Identity are documented here.
   client or existing Badge/PIN, PKINIT, Kerberos or fallback path is changed.
 - Added rollback contracts proving that an audit failure cannot consume an
   enrollment token or partially replace a device credential.
+- Certificate-preferred bearer fallback is explicitly audited in the same
+  transaction as its status update. Invalid presented certificates cannot
+  downgrade to bearer authentication, and certificate-required mode rejects it.
 
 ## [1.11.0] - 2026-10-29
 
