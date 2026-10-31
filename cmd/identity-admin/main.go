@@ -31,6 +31,7 @@ type identityAdminStore interface {
 	CreateEmergencyAdminGrantWithAudit(context.Context, database.EmergencyAdminGrant, string) error
 	EmergencyAdminGrants(context.Context, time.Time) ([]database.EmergencyAdminGrant, error)
 	RevokeEmergencyAdminGrantWithAudit(context.Context, string, string) error
+	CreateClientEnrollmentTokenWithAudit(context.Context, database.ClientEnrollmentToken, string) error
 }
 
 type values []string
@@ -54,7 +55,7 @@ func execute(args []string, output io.Writer) error {
 	}
 	args = global.Args()
 	if len(args) == 0 {
-		return errors.New("command required: oidc-client, oidc-subject, or emergency-admin")
+		return errors.New("command required: oidc-client, oidc-subject, emergency-admin, or client-enrollment")
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -78,9 +79,43 @@ func execute(args []string, output io.Writer) error {
 			return errors.New("emergency administrator access is disabled")
 		}
 		return emergencyAdminCommand(context.Background(), store, args[1:], output)
+	case "client-enrollment":
+		return clientEnrollmentCommand(context.Background(), store, args[1:], output)
 	default:
 		return errors.New("unknown command")
 	}
+}
+
+func clientEnrollmentCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {
+	if len(args) == 0 || args[0] != "issue" {
+		return errors.New("client-enrollment action required: issue")
+	}
+	fs := flag.NewFlagSet("client-enrollment issue", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	clientID := fs.String("client-id", "", "registered managed-client ID")
+	minutes := fs.Int("minutes", 10, "lifetime in minutes (5-60)")
+	if err := fs.Parse(args[1:]); err != nil {
+		return errors.New("invalid client-enrollment arguments")
+	}
+	if !validID(*clientID) || len(*clientID) > 64 || *minutes < 5 || *minutes > 60 {
+		return errors.New("valid client ID and lifetime between 5 and 60 minutes required")
+	}
+	id, err := newSecret()
+	if err != nil {
+		return errors.New("secure random generation failed")
+	}
+	token, err := newSecret()
+	if err != nil {
+		return errors.New("secure random generation failed")
+	}
+	hash := sha256.Sum256([]byte(token))
+	now := time.Now().UTC()
+	enrollment := database.ClientEnrollmentToken{ID: id, ClientID: *clientID, TokenHash: hex.EncodeToString(hash[:]), CreatedAt: now, ExpiresAt: now.Add(time.Duration(*minutes) * time.Minute)}
+	if err = store.CreateClientEnrollmentTokenWithAudit(ctx, enrollment, ""); err != nil {
+		return errors.New("client enrollment token creation failed")
+	}
+	fmt.Fprintf(output, "enrollment_id=%s\nclient_id=%s\nenrollment_token=%s\nexpires_at=%s\nnotice=This token is shown once and can be used only once.\n", enrollment.ID, enrollment.ClientID, token, enrollment.ExpiresAt.Format(time.RFC3339))
+	return nil
 }
 
 func emergencyAdminCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {

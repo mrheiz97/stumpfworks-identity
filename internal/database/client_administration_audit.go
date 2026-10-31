@@ -7,7 +7,7 @@ import (
 
 func scanSQLiteClient(row *sql.Row) (Client, error) {
 	var client Client
-	err := row.Scan(&client.ID, &client.ClientID, &client.TokenHash, &client.Enabled, &client.Version, &client.NetworkStatus, &client.ADStatus, &client.CameraStatus, &client.KerberosStatus, &client.LastUpdateVersion, &client.LastUpdateStatus, &client.LastUpdateAt, &client.RollbackAvailable, &client.CreatedAt, &client.LastSeenAt)
+	err := row.Scan(&client.ID, &client.ClientID, &client.TokenHash, &client.AuthMode, &client.Enabled, &client.Version, &client.NetworkStatus, &client.ADStatus, &client.CameraStatus, &client.KerberosStatus, &client.LastUpdateVersion, &client.LastUpdateStatus, &client.LastUpdateAt, &client.RollbackAvailable, &client.CreatedAt, &client.LastSeenAt)
 	return client, err
 }
 
@@ -23,7 +23,7 @@ func (s *Store) CreateClientWithAudit(ctx context.Context, clientID, tokenHash, 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO clients(client_id,token_hash) VALUES(?,?)`, clientID, tokenHash); err != nil {
 		return Client{}, err
 	}
-	client, err := scanSQLiteClient(tx.QueryRowContext(ctx, `SELECT id,client_id,token_hash,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at FROM clients WHERE client_id=?`, clientID))
+	client, err := scanSQLiteClient(tx.QueryRowContext(ctx, `SELECT id,client_id,token_hash,auth_mode,enabled,version,network_status,ad_status,camera_status,kerberos_status,last_update_version,last_update_status,last_update_at,rollback_available,created_at,last_seen_at FROM clients WHERE client_id=?`, clientID))
 	if err != nil {
 		return Client{}, err
 	}

@@ -2,6 +2,52 @@
 
 All notable changes to StumpfWorks Identity are documented here.
 
+## [Unreleased]
+
+## [1.12.0] - 2026-10-31
+
+### Added
+
+- Added the backend-neutral database foundation for gradual managed-client
+  certificate authentication: explicit per-client modes, single-use enrollment
+  records and public device-certificate metadata on SQLite and PostgreSQL.
+- Added transactional, audited enrollment, renewal, revocation and mode changes,
+  including replay protection and exact URI-SAN binding to the registered client.
+- Added a separately opt-in mTLS client-API listener restricted to status
+  reports. Its dedicated device-CA trust, certificate identity extraction and
+  database credential match do not affect the browser/OIDC listener.
+- Added a separately switchable HTTPS bootstrap listener for one-time device
+  enrollment and an mTLS-only renewal endpoint. `identity-admin` can issue a
+  5–60 minute single-use enrollment secret whose hash alone is stored.
+- Added `sw-badge-client-device` for local ECDSA P-256 key generation,
+  enrollment and authenticated renewal. It verifies the returned chain,
+  client identity, usage, expiry and public key before installing one root-only
+  certificate/private-key bundle through an atomic file replacement.
+- Added an explicit ten-minute activation stage. Enrollment and renewal remain
+  pending until the newly installed certificate proves possession over mTLS;
+  interrupted renewal leaves the previous active credential usable and restores
+  the previous local bundle.
+
+### Security
+
+- Kept every existing client in `token_only` by default. No listener, productive
+  client or existing Badge/PIN, PKINIT, Kerberos or fallback path is changed.
+- Added rollback contracts proving that an audit failure cannot consume an
+  enrollment token or partially replace a device credential.
+- Certificate-preferred bearer fallback is explicitly audited in the same
+  transaction as its status update. Invalid presented certificates cannot
+  downgrade to bearer authentication, and certificate-required mode rejects it.
+- Device CSRs must carry a valid ECDSA P-256 proof of possession. Identity
+  ignores requested names and issues exactly one canonical client URI SAN;
+  enrollment consumption and renewal replacement remain transactionally audited.
+- Client status reporting can load the same device bundle for mTLS while the
+  existing bearer-token file remains available for the controlled migration
+  rollback.
+- Renewal pins the already installed device CA and rejects an unexpected CA
+  change; CA rotation remains a separate operational procedure.
+- A fresh pending credential blocks parallel issuance and cannot supersede the
+  active credential until its final activation and audit event commit together.
+
 ## [1.11.0] - 2026-10-29
 
 ### Changed

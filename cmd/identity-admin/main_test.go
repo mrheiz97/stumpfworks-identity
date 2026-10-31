@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -17,6 +19,49 @@ import (
 	frameworkpg "github.com/mrheiz97/stumpfworks-framework/data/postgres"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestSQLiteClientEnrollmentCommand(t *testing.T) {
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, "identity.db")
+	configPath := filepath.Join(directory, "config.yaml")
+	configuration := "database:\n  backend: sqlite\n  path: \"" + filepath.ToSlash(databasePath) + "\"\n"
+	if err := os.WriteFile(configPath, []byte(configuration), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := database.Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateClient(t.Context(), "enrollment-command-client", "synthetic-status-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	if err := execute([]string{"--config", configPath, "client-enrollment", "issue", "--client-id", "enrollment-command-client", "--minutes", "5"}, &output); err != nil {
+		t.Fatal(err)
+	}
+	token := outputValue(t, output.String(), "enrollment_token")
+	id := outputValue(t, output.String(), "enrollment_id")
+	if len(token) < 32 || id == "" || strings.Count(output.String(), token) != 1 {
+		t.Fatal("one-time enrollment output changed")
+	}
+	hash := sha256.Sum256([]byte(token))
+	store, err = database.Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var storedHash string
+	if err := store.DB.QueryRow(`SELECT token_hash FROM client_enrollment_tokens WHERE id=? AND client_id=?`, id, "enrollment-command-client").Scan(&storedHash); err != nil || storedHash != hex.EncodeToString(hash[:]) || strings.Contains(output.String(), storedHash) {
+		t.Fatalf("enrollment token storage boundary changed: err=%v", err)
+	}
+	var audits int
+	if err := store.DB.QueryRow(`SELECT count(*) FROM audit_log WHERE event_type='client_enrollment_created' AND client_id='enrollment-command-client' AND success=1`).Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("enrollment audit changed: count=%d err=%v", audits, err)
+	}
+}
 
 func TestSQLiteOIDCAdministrationCommands(t *testing.T) {
 	directory := t.TempDir()

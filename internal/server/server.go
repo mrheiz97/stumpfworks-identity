@@ -45,6 +45,7 @@ type Server struct {
 	grantMu               sync.Mutex
 	grants                map[string]loginGrant
 	pkinit                *PKINITIssuer
+	deviceIssuer          *DeviceCertificateIssuer
 	clientTargetVersion   string
 	oidcStatus            oidcprovider.Status
 	passkeys              *passkeyauth.Adapter

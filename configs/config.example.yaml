@@ -1,5 +1,14 @@
 server:
   listen: "0.0.0.0:8080"
+
+client_api:
+  # Disabled until a separate device CA and dedicated listener are prepared.
+  enabled: false
+  listen: "0.0.0.0:8444"
+  enrollment_enabled: false
+  enrollment_listen: "0.0.0.0:8445"
+  ca_file: "/etc/stumpfworks-badge/device-ca/ca.crt"
+  ca_key_file: "/etc/stumpfworks-badge/device-ca/ca.key"
 database:
   # sqlite remains the default. postgres requires a separately migrated schema
   # and a least-privilege runtime URL supplied by environment or this file.

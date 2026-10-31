@@ -174,6 +174,14 @@ func main() {
 		slog.Error("client target version configuration failed", "error", err)
 		os.Exit(1)
 	}
+	if cfg.ClientAPIEnabled || cfg.ClientAPIEnrollmentEnabled {
+		issuer, err := app.LoadDeviceCertificateIssuer(cfg.ClientAPICAFile, cfg.ClientAPICAKeyFile, 90*24*time.Hour)
+		if err != nil {
+			slog.Error("device certificate issuer configuration failed", "error", err)
+			os.Exit(1)
+		}
+		srv.ConfigureDeviceCertificateIssuer(issuer)
+	}
 	if cfg.PKINITEnabled {
 		issuer, err := app.LoadPKINITIssuer(cfg.PKINITCACertFile, cfg.PKINITCAKeyFile, cfg.PKINITRealm, 10*time.Minute)
 		if err != nil {
@@ -220,15 +228,38 @@ func main() {
 		}
 	}
 	log.Info("server starting", "component", "server", "listen", cfg.Listen, "version", version.Version, "metrics_enabled", cfg.MetricsEnabled)
-	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
-		if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
-			slog.Error("both TLS certificate and key are required")
-			os.Exit(1)
-		}
-		e = http.ListenAndServeTLS(cfg.Listen, cfg.TLSCertFile, cfg.TLSKeyFile, applicationHandler)
-	} else {
-		e = http.ListenAndServe(cfg.Listen, applicationHandler)
+	clientServer, err := clientAPIServer(cfg, srv.ClientAPIHandler())
+	if err != nil {
+		slog.Error("client API configuration failed", "error", err)
+		os.Exit(1)
 	}
+	enrollmentServer, err := clientEnrollmentServer(cfg, srv.ClientEnrollmentHandler())
+	if err != nil {
+		slog.Error("client enrollment configuration failed", "error", err)
+		os.Exit(1)
+	}
+	publicServer := &http.Server{Addr: cfg.Listen, Handler: applicationHandler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	errors := make(chan error, 3)
+	go func() {
+		if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
+			if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
+				errors <- fmt.Errorf("both TLS certificate and key are required")
+				return
+			}
+			errors <- publicServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+			return
+		}
+		errors <- publicServer.ListenAndServe()
+	}()
+	if clientServer != nil {
+		log.Info("client API starting", "component", "client_api", "listen", cfg.ClientAPIListen)
+		go func() { errors <- clientServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile) }()
+	}
+	if enrollmentServer != nil {
+		log.Info("client enrollment API starting", "component", "client_enrollment", "listen", cfg.ClientAPIEnrollmentListen)
+		go func() { errors <- enrollmentServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile) }()
+	}
+	e = <-errors
 	if e != nil {
 		slog.Error("server stopped", "error", e)
 		os.Exit(1)

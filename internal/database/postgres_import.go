@@ -18,7 +18,7 @@ import (
 
 var ErrImportFailed = errors.New("Identity import failed; verify target state before retry")
 
-var importTables = []string{"users", "badges", "audit_log", "clients", "self_service_sessions", "oidc_clients", "oidc_codes", "oidc_sessions", "webauthn_users", "webauthn_credentials", "webauthn_ceremonies", "emergency_admin_grants"}
+var importTables = []string{"users", "badges", "audit_log", "clients", "self_service_sessions", "oidc_clients", "oidc_codes", "oidc_sessions", "webauthn_users", "webauthn_credentials", "webauthn_ceremonies", "emergency_admin_grants", "client_enrollment_tokens", "client_device_credentials"}
 
 const maximumImportRowBytes = 256 << 10
 const maximumImportBytes = 128 << 20
@@ -230,7 +230,7 @@ func (s *PostgresStore) importTable(ctx context.Context, target pgx.Tx, snapshot
 		key = "credential_id"
 	}
 	sourceOrder, targetOrder := pgx.Identifier{key}.Sanitize(), pgx.Identifier{key}.Sanitize()
-	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" || table == "oidc_sessions" || table == "webauthn_ceremonies" || table == "emergency_admin_grants" {
+	if table == "self_service_sessions" || table == "oidc_clients" || table == "oidc_codes" || table == "oidc_sessions" || table == "webauthn_ceremonies" || table == "emergency_admin_grants" || table == "client_enrollment_tokens" || table == "client_device_credentials" {
 		sourceOrder += " COLLATE BINARY"
 		targetOrder += ` COLLATE "C"`
 	}

@@ -230,6 +230,13 @@ CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECU
 		if _, err := source.CreateClient(ctx, "fixture-client", "synthetic-client-hash"); err != nil {
 			t.Fatal(err)
 		}
+		deviceNow := time.Now().UTC().Truncate(time.Second)
+		if _, err := source.DB.ExecContext(ctx, `INSERT INTO client_enrollment_tokens(id,client_id,token_hash,created_at,expires_at,consumed_at) VALUES(?,?,?,?,?,?)`, "import-device-enrollment", "fixture-client", strings.Repeat("4", 64), deviceNow, deviceNow.Add(10*time.Minute), deviceNow.Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := source.DB.ExecContext(ctx, `INSERT INTO client_device_credentials(id,client_id,fingerprint_sha256,serial,uri_san,public_key_algorithm,issuer_id,issued_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,'active')`, "import-device-credential", "fixture-client", strings.Repeat("5", 64), "a1", "urn:stumpfworks:identity:client:fixture-client", "ECDSA-P256", "stumpfworks-device-ca-01", deviceNow, deviceNow.Add(90*24*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
 		if err := source.CreateSelfServiceSession(ctx, "synthetic-session", user.Username, time.Now().Add(time.Hour)); err != nil {
 			t.Fatal(err)
 		}
@@ -259,7 +266,7 @@ CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECU
 		if _, err := store.ImportSQLite(ctx, source.DB, 100); !errors.Is(err, ErrImportFailed) {
 			t.Fatal("nonempty import target accepted")
 		}
-		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies,emergency_admin_grants RESTART IDENTITY CASCADE"); err != nil {
+		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies,emergency_admin_grants,client_enrollment_tokens,client_device_credentials RESTART IDENTITY CASCADE"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := store.ImportSQLite(ctx, source.DB, 1); !errors.Is(err, ErrImportFailed) {
@@ -378,6 +385,12 @@ CREATE TRIGGER corrupt_import_fixture BEFORE INSERT ON users FOR EACH ROW EXECUT
 	})
 	t.Run("client contract", func(t *testing.T) {
 		testClientContract(t, store)
+	})
+	t.Run("client device authentication contract", func(t *testing.T) {
+		testClientDeviceAuthenticationContract(t, store)
+	})
+	t.Run("client device concurrent renewal", func(t *testing.T) {
+		testClientDeviceConcurrentRenewal(t, store)
 	})
 	t.Run("audit read contract and visible failure", func(t *testing.T) {
 		testAuditReadContract(t, store, func(event Audit) error { return store.WriteAudit(ctx, event) })
@@ -630,7 +643,7 @@ CREATE TRIGGER fail_atomic_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE
 		}
 	})
 	t.Run("legacy client import and fail-closed source shape", func(t *testing.T) {
-		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies,emergency_admin_grants RESTART IDENTITY CASCADE"); err != nil {
+		if _, err := pool.Native().Exec(ctx, "TRUNCATE users,badges,audit_log,clients,self_service_sessions,oidc_clients,oidc_codes,oidc_sessions,webauthn_users,webauthn_credentials,webauthn_ceremonies,emergency_admin_grants,client_enrollment_tokens,client_device_credentials RESTART IDENTITY CASCADE"); err != nil {
 			t.Fatal(err)
 		}
 		path := filepath.Join(t.TempDir(), "synthetic-legacy.db")

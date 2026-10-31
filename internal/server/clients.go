@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/deviceauth"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/version"
 )
 
@@ -65,23 +66,8 @@ func (s *Server) clientStatus(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
 		return
 	}
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
-		return
-	}
-	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
-	if token == "" {
-		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
-		return
-	}
-	got, err := hex.DecodeString(HashClientToken(token))
-	if err != nil {
-		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
-		return
-	}
-	want, err := hex.DecodeString(c.TokenHash)
-	if err != nil || subtle.ConstantTimeCompare(got, want) != 1 {
+	authenticated, tokenFallback := s.authenticateClientStatus(r, c, time.Now())
+	if !authenticated {
 		s.problem(w, http.StatusUnauthorized, "invalid_client_credentials")
 		return
 	}
@@ -93,11 +79,54 @@ func (s *Server) clientStatus(w http.ResponseWriter, r *http.Request) {
 	if in.Update != nil {
 		update = &database.ClientUpdate{Version: in.Update.Version, Status: in.Update.Status, UpdatedAt: in.Update.UpdatedAt.UTC(), RollbackAvailable: in.Update.RollbackAvailable}
 	}
-	if err = s.store.UpdateClientStatusWithUpdate(r.Context(), in.ClientID, in.Version, in.NetworkStatus, in.ADStatus, in.CameraStatus, in.KerberosStatus, update); err != nil {
+	if tokenFallback {
+		err = s.store.UpdateClientStatusWithUpdateAndTokenFallbackAudit(r.Context(), in.ClientID, in.Version, in.NetworkStatus, in.ADStatus, in.CameraStatus, in.KerberosStatus, update, remoteIP(r))
+	} else {
+		err = s.store.UpdateClientStatusWithUpdate(r.Context(), in.ClientID, in.Version, in.NetworkStatus, in.ADStatus, in.CameraStatus, in.KerberosStatus, update)
+	}
+	if err != nil {
 		s.problem(w, http.StatusInternalServerError, "status_update_failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) authenticateClientStatus(r *http.Request, client database.Client, now time.Time) (bool, bool) {
+	certificatePresented := r.TLS != nil && len(r.TLS.PeerCertificates) != 0
+	if client.AuthMode != database.ClientAuthTokenOnly && certificatePresented {
+		identity, err := deviceauth.FromTLS(r.TLS, now)
+		if err != nil || identity.ClientID != client.ClientID {
+			return false, false
+		}
+		credential, err := s.store.ActiveClientDeviceCredential(r.Context(), client.ClientID, now)
+		if err != nil || credential.Serial != identity.Serial || credential.URISAN != identity.URISAN {
+			return false, false
+		}
+		got, err := hex.DecodeString(identity.FingerprintSHA256)
+		if err != nil {
+			return false, false
+		}
+		want, err := hex.DecodeString(credential.FingerprintSHA256)
+		return err == nil && subtle.ConstantTimeCompare(got, want) == 1, false
+	}
+	if client.AuthMode == database.ClientAuthCertificateRequired {
+		return false, false
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return false, false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	if token == "" {
+		return false, false
+	}
+	got, err := hex.DecodeString(HashClientToken(token))
+	if err != nil {
+		return false, false
+	}
+	want, err := hex.DecodeString(client.TokenHash)
+	valid := err == nil && subtle.ConstantTimeCompare(got, want) == 1
+	return valid, valid && client.AuthMode == database.ClientAuthCertificatePreferred
 }
 
 func validClientUpdate(update *ClientUpdateRequest, now time.Time) bool {

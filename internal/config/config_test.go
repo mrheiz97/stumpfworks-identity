@@ -23,6 +23,28 @@ func TestClientTargetVersionConfigAndEnvironment(t *testing.T) {
 	}
 }
 
+func TestClientAPIIsSeparatelyOptInAndEnvironmentOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := "client_api:\n  enabled: false\n  listen: 127.0.0.1:8444\n  enrollment_enabled: false\n  enrollment_listen: 127.0.0.1:8445\n  ca_file: /secure/device-ca.pem\n  ca_key_file: /secure/device-ca.key\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || loaded.ClientAPIEnabled || loaded.ClientAPIListen != "127.0.0.1:8444" || loaded.ClientAPIEnrollmentListen != "127.0.0.1:8445" || loaded.ClientAPICAFile != "/secure/device-ca.pem" || loaded.ClientAPICAKeyFile != "/secure/device-ca.key" {
+		t.Fatalf("unexpected client API config: %+v %v", loaded, err)
+	}
+	t.Setenv("SWBADGE_CLIENT_API_ENABLED", "true")
+	t.Setenv("SWBADGE_CLIENT_API_ENROLLMENT_ENABLED", "true")
+	t.Setenv("SWBADGE_CLIENT_API_LISTEN", "127.0.0.1:9444")
+	t.Setenv("SWBADGE_CLIENT_API_ENROLLMENT_LISTEN", "127.0.0.1:9445")
+	t.Setenv("SWBADGE_CLIENT_API_CA_FILE", "/override/device-ca.pem")
+	t.Setenv("SWBADGE_CLIENT_API_CA_KEY_FILE", "/override/device-ca.key")
+	loaded, err = Load(path)
+	if err != nil || !loaded.ClientAPIEnabled || !loaded.ClientAPIEnrollmentEnabled || loaded.ClientAPIListen != "127.0.0.1:9444" || loaded.ClientAPIEnrollmentListen != "127.0.0.1:9445" || loaded.ClientAPICAFile != "/override/device-ca.pem" || loaded.ClientAPICAKeyFile != "/override/device-ca.key" {
+		t.Fatalf("client API environment override failed: %+v %v", loaded, err)
+	}
+}
+
 func TestOIDCConfigIsOptInAndEnvironmentOverrides(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("oidc:\n  enabled: false\n  issuer: https://identity.example.test\n  signing_key_files: /secure/current.pem,/secure/old.pem\n"), 0600); err != nil {
