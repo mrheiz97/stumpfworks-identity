@@ -7,25 +7,36 @@ grant, PKINIT and Kerberos paths remain available throughout the migration.
 
 ## Implementation status
 
-The local database foundation is implemented on `development`. SQLite and
-PostgreSQL share the same client mode, enrollment-token and public credential
-records. Initial enrollment, renewal, revocation and mode changes are
-transactional and audited; enrollment and renewal are replay-safe, and the URI
-SAN must exactly equal the registered client identity. Import, reconciliation
-and backup/restore allowlists include both new tables.
+Identity v1.12.0 is published and runs in production on LOGIN01 with PostgreSQL.
+SQLite and PostgreSQL share the same client mode, enrollment-token and public
+credential records. Initial enrollment, renewal, revocation and mode changes
+are transactional and audited; enrollment and renewal are replay-safe, and the
+URI SAN must exactly equal the registered client identity. Import,
+reconciliation and backup/restore allowlists include both new tables.
 
-This foundation is deliberately dormant: every existing client defaults to
-`token_only`, no device CA or certificate has been created, and no production
-system or client has been touched. Certificate identity validation and a
-separately opt-in mTLS listener restricted to the status endpoint are present
-locally. The listener fails closed without a distinct address, server TLS files
-and device-CA file. Local enrollment and renewal transport are now implemented:
+The production foundation remains deliberately dormant: every existing client
+uses `token_only`, no device CA or certificate has been created, and no client
+has been changed. The existing public listener on port 8080 is unchanged; the
+separately opt-in mTLS status and enrollment listeners on ports 8444 and 8445
+remain disabled. The listeners fail closed without distinct addresses, server
+TLS files and the required device-CA material. Enrollment and renewal transport
+are implemented:
 bootstrap uses its own independently switchable HTTPS listener and a short-lived
 single-use token; renewal requires the currently active mTLS credential. Both
 accept only signed ECDSA P-256 CSRs and issue the canonical URI identity instead
-of trusting CSR names. The managed-client installer is present locally; real
-PostgreSQL CI and local interruption/rollback acceptance remain gates before a
-separately approved WYSE01 rollout.
+of trusting CSR names. The managed-client installer, real PostgreSQL contracts,
+Linux race tests and local interruption/rollback acceptance are complete. A
+separately approved WYSE01 rollout with its own stopped rollback remains the
+next gate.
+
+The first controlled WYSE01 enrollment exposed a fail-closed routing omission:
+the dedicated mTLS listener admitted status reports but did not route the
+implemented renewal and activation endpoints. The client removed its newly
+installed material after activation failed, bootstrap was closed immediately,
+and the existing token path remained healthy. v1.12.1 adds only the missing
+`POST /api/v1/client/renew` and `POST /api/v1/client/activate` routes to the
+already certificate-required listener; enrollment remains exclusive to the
+separately enabled bootstrap listener.
 
 The bootstrap listener must be enabled only for an intentional enrollment
 window and disabled immediately afterwards. Operators issue a token with
@@ -134,6 +145,42 @@ window. Rollback consists of changing only that client back to
 `certificate_preferred` or `token_only`; it does not alter Badge/PIN, PKINIT,
 LightDM, Winbind or PAM. Token deletion is a later, separately approved cleanup
 after the certificate path and its recovery procedure are proven.
+
+### WYSE01 rollout gates
+
+Treat each numbered stage as a separate stop point. A later stage is not
+implicitly authorized by completing an earlier one.
+
+1. Read-only preflight: verify the registered client ID, current `token_only`
+   mode, recent status, LightDM, status timer, AD join, disk space, clock,
+   server TLS validation and an empty relevant warning journal.
+2. Stopped rollback: preserve the installed client binaries, root-only
+   configuration and credentials, systemd units/drop-ins and the complete
+   device-bundle target directory. Record and verify SHA-256 hashes without
+   printing credential contents.
+3. Server preparation: create the dedicated device CA and listener credentials
+   root-only, enable only the mTLS status listener, and verify that the public
+   8080 listener and all browser routes are unchanged. Keep bootstrap 8445
+   disabled outside the short enrollment window.
+4. Enrollment: issue one ten-minute token to a protected transient file,
+   briefly enable bootstrap, enroll WYSE01, activate the staged credential,
+   remove the transient token file and disable bootstrap immediately.
+5. Preferred observation: set only WYSE01 to `certificate_preferred`; retain
+   its bearer token and verify certificate status plus the audited token
+   fallback. Exercise one full offline/reconnect window.
+6. Recovery proof: exercise one certificate renewal and one interrupted updater
+   rollback. Confirm the previous credential and client bundle remain usable
+   after every deliberately failed activation.
+7. Required mode: only after a fresh explicit approval, set only WYSE01 to
+   `certificate_required`, verify status reporting, then prove the per-client
+   rollback to `certificate_preferred` or `token_only`.
+8. Regression acceptance: verify normal AD password fallback, Badge/PIN,
+   PKINIT, Kerberos, LightDM, browser administration, OIDC and server backup.
+   Confirm that logs, diagnostics, Git and support artifacts contain no private
+   key, certificate body, enrollment token or bearer token.
+
+MOBILE01 remains excluded from all stages. Badge authorization and PKINIT are
+not moved to certificate authentication as part of this rollout.
 
 Badge authorization and PKINIT are a later phase. They may reuse the verified
 device identity only after the status rollout is stable. At that point the
