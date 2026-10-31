@@ -29,6 +29,15 @@ Linux race tests and local interruption/rollback acceptance are complete. A
 separately approved WYSE01 rollout with its own stopped rollback remains the
 next gate.
 
+The first controlled WYSE01 enrollment exposed a fail-closed routing omission:
+the dedicated mTLS listener admitted status reports but did not route the
+implemented renewal and activation endpoints. The client removed its newly
+installed material after activation failed, bootstrap was closed immediately,
+and the existing token path remained healthy. v1.12.1 adds only the missing
+`POST /api/v1/client/renew` and `POST /api/v1/client/activate` routes to the
+already certificate-required listener; enrollment remains exclusive to the
+separately enabled bootstrap listener.
+
 The bootstrap listener must be enabled only for an intentional enrollment
 window and disabled immediately afterwards. Operators issue a token with
 `identity-admin client-enrollment issue --client-id <id> --minutes 10`. The

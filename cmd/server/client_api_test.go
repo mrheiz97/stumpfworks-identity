@@ -36,7 +36,7 @@ func TestClientAPIServerIsRestrictedAndRequiresVerifiedCertificates(t *testing.T
 	for _, test := range []struct {
 		method, path string
 		want         int
-	}{{http.MethodPost, "/api/v1/client/status", http.StatusNoContent}, {http.MethodGet, "/api/v1/client/status", http.StatusMethodNotAllowed}, {http.MethodGet, "/", http.StatusNotFound}, {http.MethodGet, "/login", http.StatusNotFound}, {http.MethodGet, "/metrics", http.StatusNotFound}} {
+	}{{http.MethodPost, "/api/v1/client/status", http.StatusNoContent}, {http.MethodPost, "/api/v1/client/renew", http.StatusNoContent}, {http.MethodPost, "/api/v1/client/activate", http.StatusNoContent}, {http.MethodGet, "/api/v1/client/status", http.StatusMethodNotAllowed}, {http.MethodGet, "/api/v1/client/renew", http.StatusMethodNotAllowed}, {http.MethodGet, "/api/v1/client/activate", http.StatusMethodNotAllowed}, {http.MethodPost, "/api/v1/client/enroll", http.StatusNotFound}, {http.MethodGet, "/", http.StatusNotFound}, {http.MethodGet, "/login", http.StatusNotFound}, {http.MethodGet, "/metrics", http.StatusNotFound}} {
 		request := httptest.NewRequest(test.method, test.path, nil)
 		response := httptest.NewRecorder()
 		server.Handler.ServeHTTP(response, request)
