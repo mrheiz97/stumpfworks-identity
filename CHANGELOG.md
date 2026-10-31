@@ -4,6 +4,8 @@ All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-31
+
 ### Added
 
 - Added the backend-neutral database foundation for gradual managed-client
