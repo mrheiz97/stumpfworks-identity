@@ -32,6 +32,7 @@ type identityAdminStore interface {
 	EmergencyAdminGrants(context.Context, time.Time) ([]database.EmergencyAdminGrant, error)
 	RevokeEmergencyAdminGrantWithAudit(context.Context, string, string) error
 	CreateClientEnrollmentTokenWithAudit(context.Context, database.ClientEnrollmentToken, string) error
+	SetClientAuthenticationModeWithAudit(context.Context, string, string, string, time.Time) error
 }
 
 type values []string
@@ -55,7 +56,7 @@ func execute(args []string, output io.Writer) error {
 	}
 	args = global.Args()
 	if len(args) == 0 {
-		return errors.New("command required: oidc-client, oidc-subject, emergency-admin, or client-enrollment")
+		return errors.New("command required: oidc-client, oidc-subject, emergency-admin, client-enrollment, or client-auth-mode")
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -81,9 +82,35 @@ func execute(args []string, output io.Writer) error {
 		return emergencyAdminCommand(context.Background(), store, args[1:], output)
 	case "client-enrollment":
 		return clientEnrollmentCommand(context.Background(), store, args[1:], output)
+	case "client-auth-mode":
+		return clientAuthenticationModeCommand(context.Background(), store, args[1:], output)
 	default:
 		return errors.New("unknown command")
 	}
+}
+
+func clientAuthenticationModeCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {
+	if len(args) == 0 || args[0] != "set" {
+		return errors.New("client-auth-mode action required: set")
+	}
+	fs := flag.NewFlagSet("client-auth-mode set", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	clientID := fs.String("client-id", "", "registered managed-client ID")
+	mode := fs.String("mode", "", "token_only, certificate_preferred, or certificate_required")
+	if err := fs.Parse(args[1:]); err != nil || len(fs.Args()) != 0 {
+		return errors.New("invalid client-auth-mode arguments")
+	}
+	if !validID(*clientID) || len(*clientID) > 64 {
+		return errors.New("valid client ID required")
+	}
+	if *mode != database.ClientAuthTokenOnly && *mode != database.ClientAuthCertificatePreferred && *mode != database.ClientAuthCertificateRequired {
+		return errors.New("valid client authentication mode required")
+	}
+	if err := store.SetClientAuthenticationModeWithAudit(ctx, *clientID, *mode, "", time.Now().UTC()); err != nil {
+		return errors.New("client authentication mode update failed")
+	}
+	fmt.Fprintf(output, "client_id=%s\nauth_mode=%s\n", *clientID, *mode)
+	return nil
 }
 
 func clientEnrollmentCommand(ctx context.Context, store identityAdminStore, args []string, output io.Writer) error {

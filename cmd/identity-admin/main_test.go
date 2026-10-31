@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -60,6 +61,55 @@ func TestSQLiteClientEnrollmentCommand(t *testing.T) {
 	var audits int
 	if err := store.DB.QueryRow(`SELECT count(*) FROM audit_log WHERE event_type='client_enrollment_created' AND client_id='enrollment-command-client' AND success=1`).Scan(&audits); err != nil || audits != 1 {
 		t.Fatalf("enrollment audit changed: count=%d err=%v", audits, err)
+	}
+}
+
+func TestSQLiteClientAuthenticationModeCommand(t *testing.T) {
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, "identity.db")
+	configPath := filepath.Join(directory, "config.yaml")
+	configuration := "database:\n  backend: sqlite\n  path: \"" + filepath.ToSlash(databasePath) + "\"\n"
+	if err := os.WriteFile(configPath, []byte(configuration), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := database.Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.CreateClient(t.Context(), "mode-command-client", "synthetic-status-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	base := []string{"--config", configPath, "client-auth-mode", "set", "--client-id", "mode-command-client", "--mode"}
+	var output strings.Builder
+	if err = execute(append(base, database.ClientAuthTokenOnly), &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "client_id=mode-command-client\nauth_mode=token_only\n" {
+		t.Fatalf("unexpected mode output: %q", output.String())
+	}
+	if err = execute(append(base, database.ClientAuthCertificatePreferred), io.Discard); err == nil {
+		t.Fatal("certificate mode without an active credential was accepted")
+	}
+	store, err = database.Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	client, err := store.ClientByID(t.Context(), "mode-command-client")
+	if err != nil || client.AuthMode != database.ClientAuthTokenOnly {
+		t.Fatalf("mode command changed client unexpectedly: client=%+v err=%v", client, err)
+	}
+	var audits int
+	if err = store.DB.QueryRow(`SELECT count(*) FROM audit_log WHERE event_type='client_authentication_mode_changed' AND client_id='mode-command-client' AND success=1`).Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("mode command audit changed: count=%d err=%v", audits, err)
+	}
+	for _, invalid := range []string{"", "preferred", "certificate-required"} {
+		if err = execute(append(base, invalid), io.Discard); err == nil {
+			t.Fatalf("invalid mode %q accepted", invalid)
+		}
 	}
 }
 

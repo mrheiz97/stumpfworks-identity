@@ -146,6 +146,20 @@ window. Rollback consists of changing only that client back to
 LightDM, Winbind or PAM. Token deletion is a later, separately approved cleanup
 after the certificate path and its recovery procedure are proven.
 
+Authentication modes are changed only through the transactional administration
+path, never with direct SQL. The operational command is:
+
+```text
+identity-admin --config /etc/stumpfworks-badge/config.yaml \
+  client-auth-mode set --client-id wyse01-greeter \
+  --mode certificate_preferred
+```
+
+The accepted modes are exactly `token_only`, `certificate_preferred` and
+`certificate_required`. Moving away from `token_only` fails unless an active,
+unexpired device credential exists. Every successful change commits together
+with its bounded audit event.
+
 ### WYSE01 rollout gates
 
 Treat each numbered stage as a separate stop point. A later stage is not
