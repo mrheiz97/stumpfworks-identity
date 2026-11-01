@@ -104,6 +104,8 @@ Stable public key: `/etc/stumpfworks-badge/client-update.pub`, overridable local
 with `--public-key`. No token is read. Redirects are rejected. ZIP hash, signature,
 channel, architecture, release and minimum version are rechecked before execution.
 Successful local update state prevents downgrades when the worker is unchanged.
+The worker retains an independent `installed-version.json` so a later failed
+attempt cannot erase the previous successfully installed version.
 
 `/var/lib/stumpfworks-badge/update-jobs` is mode 0700; its mode-0600 `job.json`
 is atomically written and synced before execution. Artifacts remain below each

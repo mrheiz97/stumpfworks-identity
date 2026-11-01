@@ -220,13 +220,9 @@ func RunWorker(ctx context.Context, o WorkerOptions) error {
 	if e = writeWorkerFile(packagePath, data); e != nil {
 		return e
 	}
-	currentVersion := version.Version
-	lastState, stateErr := ReadUpdateState(o.StatePath)
+	currentVersion, stateErr := workerInstalledVersion(o)
 	if stateErr != nil {
 		return stateErr
-	}
-	if lastState != nil && lastState.Status == "success" && compareVersions(lastState.Version, currentVersion) > 0 {
-		currentVersion = lastState.Version
 	}
 	verified, e := VerifyPackage(packagePath, key, runtime.GOOS+"-"+runtime.GOARCH, currentVersion)
 	if e != nil || verified.Manifest.Channel != "stable" || verified.Manifest.ReleaseVersion != j.ReleaseVersion {
@@ -313,6 +309,18 @@ func workerRollback(o WorkerOptions, j RemoteJob) bool {
 	return e == nil && m.ForRelease == j.ReleaseVersion
 }
 func finishWorker(ctx context.Context, o WorkerOptions, path string, j workerJournal) error {
+	if j.Phase == "succeeded" {
+		current, err := workerInstalledVersion(o)
+		if err != nil {
+			return err
+		}
+		if compareVersions(j.Job.ReleaseVersion, current) > 0 {
+			raw, _ := json.Marshal(j.Job.ReleaseVersion)
+			if err = writeWorkerFile(filepath.Join(o.Directory, "installed-version.json"), raw); err != nil {
+				return err
+			}
+		}
+	}
 	response, e := workerRequest(ctx, o, j.Job.ID+"/result", map[string]any{"state": j.Phase, "rollback_available": j.Rollback})
 	if e != nil {
 		return e
@@ -322,6 +330,36 @@ func finishWorker(ctx context.Context, o WorkerOptions, path string, j workerJou
 		return errors.New("update result not acknowledged")
 	}
 	return os.Remove(path)
+}
+
+// Keep a successful installed-version floor independently of the last attempted
+// update: a later failed attempt must not accidentally permit a downgrade.
+func workerInstalledVersion(o WorkerOptions) (string, error) {
+	current := version.Version
+	raw, err := os.ReadFile(filepath.Join(o.Directory, "installed-version.json"))
+	if err == nil {
+		var saved string
+		if len(raw) > 128 || json.Unmarshal(raw, &saved) != nil || !validVersion(saved) {
+			return "", errors.New("invalid installed version evidence")
+		}
+		if compareVersions(saved, current) > 0 {
+			current = saved
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	state, err := ReadUpdateState(o.StatePath)
+	if err != nil {
+		return "", err
+	}
+	if state != nil && state.Status == "success" && compareVersions(state.Version, current) > 0 {
+		current = state.Version
+		raw, _ = json.Marshal(current)
+		if err = writeWorkerFile(filepath.Join(o.Directory, "installed-version.json"), raw); err != nil {
+			return "", err
+		}
+	}
+	return current, nil
 }
 func writeWorkerJournal(path string, j workerJournal) error {
 	raw, e := json.Marshal(j)

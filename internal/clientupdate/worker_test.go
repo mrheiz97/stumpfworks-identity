@@ -218,3 +218,22 @@ func TestUpdateLockPreventsRecoveryDuringLiveInstall(t *testing.T) {
 		t.Fatal("active install was recovered", e)
 	}
 }
+
+func TestWorkerFailedAttemptPreservesInstalledVersionFloor(t *testing.T) {
+	o, _, _, _ := workerFixture(t)
+	if e := os.MkdirAll(o.Directory, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := WriteUpdateState(o.StatePath, UpdateState{Version: "1.98.0", Status: "success", UpdatedAt: o.Now()}); e != nil {
+		t.Fatal(e)
+	}
+	if v, e := workerInstalledVersion(o); e != nil || v != "1.98.0" {
+		t.Fatal(v, e)
+	}
+	if e := WriteUpdateState(o.StatePath, UpdateState{Version: "1.99.0", Status: "failed", UpdatedAt: o.Now()}); e != nil {
+		t.Fatal(e)
+	}
+	if v, e := workerInstalledVersion(o); e != nil || v != "1.98.0" {
+		t.Fatal("failed attempt erased installed version", v, e)
+	}
+}
