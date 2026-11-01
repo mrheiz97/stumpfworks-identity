@@ -41,6 +41,7 @@ func MigratePostgres(ctx context.Context, pool *frameworkpg.Pool) error {
 	webAuthnManagementSum := sha256.Sum256([]byte(postgresWebAuthnManagementMigration))
 	emergencyAdminSum := sha256.Sum256([]byte(postgresEmergencyAdminMigration))
 	clientDeviceAuthenticationSum := sha256.Sum256([]byte(postgresClientDeviceAuthenticationMigration))
+	updateJobsSum := sha256.Sum256([]byte(clientUpdateJobsSchema))
 	return migrate.Apply(ctx, pool.Native(), []migrate.Migration{
 		{Version: 1, Name: "001_identity.up.sql", SQL: postgresSchema, Checksum: hex.EncodeToString(sum[:])},
 		{Version: 2, Name: "002_oidc_sessions.up.sql", SQL: postgresOIDCSessionsMigration, Checksum: hex.EncodeToString(sessionsSum[:])},
@@ -48,6 +49,7 @@ func MigratePostgres(ctx context.Context, pool *frameworkpg.Pool) error {
 		{Version: 4, Name: "004_webauthn_management.up.sql", SQL: postgresWebAuthnManagementMigration, Checksum: hex.EncodeToString(webAuthnManagementSum[:])},
 		{Version: 5, Name: "005_emergency_admin.up.sql", SQL: postgresEmergencyAdminMigration, Checksum: hex.EncodeToString(emergencyAdminSum[:])},
 		{Version: 6, Name: "006_client_device_authentication.up.sql", SQL: postgresClientDeviceAuthenticationMigration, Checksum: hex.EncodeToString(clientDeviceAuthenticationSum[:])},
+		{Version: 7, Name: "007_client_update_jobs.up.sql", SQL: clientUpdateJobsSchema, Checksum: hex.EncodeToString(updateJobsSum[:])},
 	})
 }
 

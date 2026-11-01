@@ -78,6 +78,8 @@ func PostInterruptedRecovery(parent context.Context, plan StagePlan, runner Comm
 		hasSystemdUnit, hasStatusComponent := false, false
 		for _, component := range plan.Components {
 			switch component.Component {
+			case "swbadge-client-updates.service", "swbadge-client-updates.timer":
+				hasSystemdUnit = true
 			case "swbadge-client-status.service", "swbadge-client-status.timer":
 				hasSystemdUnit = true
 			case "sw-badge-client-status":
@@ -138,6 +140,8 @@ func serviceHealthCheck(parent context.Context, plan StagePlan, runner CommandRu
 		hasSystemdUnit, hasStatusComponent := false, false
 		for _, component := range plan.Components {
 			switch component.Component {
+			case "swbadge-client-updates.service", "swbadge-client-updates.timer":
+				hasSystemdUnit = true
 			case "swbadge-client-status.service", "swbadge-client-status.timer":
 				hasSystemdUnit = true
 			case "sw-badge-client-status":

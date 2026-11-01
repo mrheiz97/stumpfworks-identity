@@ -188,7 +188,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(migration); err != nil {
+	if _, err = db.Exec(migration + clientUpdateJobsSchema); err != nil {
 		db.Close()
 		return nil, err
 	}

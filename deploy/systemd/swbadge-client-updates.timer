@@ -1,0 +1,11 @@
+[Unit]
+Description=Check StumpfWorks Identity scheduled updates
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+RandomizedDelaySec=10s
+Unit=swbadge-client-updates.service
+
+[Install]
+WantedBy=timers.target

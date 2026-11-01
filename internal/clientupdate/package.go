@@ -191,6 +191,11 @@ func writeExclusive(path string, data []byte, mode os.FileMode) error {
 		_ = os.Remove(path)
 		return err
 	}
+	if err = file.Sync(); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return err
+	}
 	if err = file.Close(); err != nil {
 		_ = os.Remove(path)
 		return err

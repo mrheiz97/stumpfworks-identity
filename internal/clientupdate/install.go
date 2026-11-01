@@ -16,6 +16,23 @@ func InstallStaged(root, stageDir, rollbackDir string, now time.Time, allowLight
 }
 
 func InstallStagedWithTransaction(root, stageDir, rollbackDir, transactionPath string, now time.Time, allowLightDMMaintenance bool, healthCheck, rollbackRecovery func() error) error {
+	if transactionPath != "" {
+		if err := os.MkdirAll(filepath.Dir(transactionPath), 0755); err != nil {
+			return err
+		}
+		unlock, acquired, err := tryUpdateLock(transactionPath + ".lock")
+		if err != nil {
+			return err
+		}
+		if !acquired {
+			return errors.New("another update is active")
+		}
+		defer unlock()
+	}
+	return installStagedWithTransaction(root, stageDir, rollbackDir, transactionPath, now, allowLightDMMaintenance, healthCheck, rollbackRecovery)
+}
+
+func installStagedWithTransaction(root, stageDir, rollbackDir, transactionPath string, now time.Time, allowLightDMMaintenance bool, healthCheck, rollbackRecovery func() error) error {
 	if healthCheck == nil {
 		return errors.New("post-install health check is required")
 	}

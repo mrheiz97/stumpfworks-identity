@@ -1,5 +1,8 @@
 # Operations Runbook
 
+For client update scheduling, migration 7, worker bootstrap, maintenance gates
+and rollback, see [scheduled client updates](client-update-jobs.md).
+
 ## Persistent WYSE VNC
 
 Install `deploy/systemd/swbadge-vnc.service` and `scripts/swbadge-vnc-set-password.sh` as root. Run `/usr/local/sbin/swbadge-vnc-set-password` interactively once; never pass the VNC password as a command argument or store it in Git. Configure `SWBADGE_VNC_LISTEN` in `/etc/default/swbadge-vnc` for the client's trusted management interface. The safe template default is loopback only. The service requires `/etc/stumpfworks-badge/vnc.passwd` with mode `0600`, restarts after display-manager changes and is enabled at boot.

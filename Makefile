@@ -1,5 +1,8 @@
 .PHONY: build build-server build-agent build-pam-helper build-client-status build-client-device build-client-diagnostics build-client-updater build-linux-amd64 build-camera-macos run-server run-agent test lint clean
-build: build-server build-agent build-pam-helper build-client-status build-client-device build-client-diagnostics build-client-updater
+build: build-server build-agent build-pam-helper build-client-status build-client-device build-client-diagnostics build-client-updater build-client-update-worker
+build-client-update-worker:
+	@mkdir -p bin
+	go build -o bin/sw-badge-client-update-worker ./cmd/client-update-worker
 build-server:
 	@mkdir -p bin
 	go build -o bin/sw-badge-server ./cmd/server
@@ -23,6 +26,7 @@ build-client-updater:
 	go build -o bin/sw-badge-client-updater ./cmd/client-updater
 build-linux-amd64:
 	@mkdir -p dist/linux-amd64
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o dist/linux-amd64/sw-badge-client-update-worker ./cmd/client-update-worker
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o dist/linux-amd64/sw-badge-server ./cmd/server
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o dist/linux-amd64/sw-badge-pam-helper ./cmd/pam-helper
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o dist/linux-amd64/sw-badge-client-status ./cmd/client-status

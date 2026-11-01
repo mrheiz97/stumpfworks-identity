@@ -96,6 +96,9 @@ func CreateRollback(root string, plan StagePlan, rollbackDir string, now time.Ti
 	encoder := json.NewEncoder(manifestFile)
 	encoder.SetIndent("", "  ")
 	err = encoder.Encode(manifest)
+	if err == nil {
+		err = manifestFile.Sync()
+	}
 	closeErr := manifestFile.Close()
 	if err != nil {
 		cleanup()
@@ -105,8 +108,21 @@ func CreateRollback(root string, plan StagePlan, rollbackDir string, now time.Ti
 		cleanup()
 		return RollbackManifest{}, closeErr
 	}
+	if _, statErr := os.Stat(filepath.Join(temporary, "files")); statErr == nil {
+		if err = syncUpdateDirectory(filepath.Join(temporary, "files")); err != nil {
+			cleanup()
+			return RollbackManifest{}, err
+		}
+	}
+	if err = syncUpdateDirectory(temporary); err != nil {
+		cleanup()
+		return RollbackManifest{}, err
+	}
 	if err = os.Rename(temporary, rollbackDir); err != nil {
 		cleanup()
+		return RollbackManifest{}, err
+	}
+	if err = syncUpdateDirectory(filepath.Dir(rollbackDir)); err != nil {
 		return RollbackManifest{}, err
 	}
 	return manifest, nil
@@ -124,6 +140,9 @@ func copyRollbackFile(source, destination string) (string, error) {
 	}
 	hash := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(output, hash), io.LimitReader(input, maxFileSize+1))
+	if copyErr == nil {
+		copyErr = output.Sync()
+	}
 	closeErr := output.Close()
 	if copyErr != nil {
 		return "", copyErr

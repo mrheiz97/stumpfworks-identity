@@ -1,5 +1,9 @@
 # Administrative roles and permissions
 
+Client update scheduling/cancellation uses `clients.updates.write`, granted to
+administrators and client operators. Auditors retain read-only job visibility
+through `clients.read`. See [scheduled updates](client-update-jobs.md).
+
 Status: design contract for P3.2. This document does not enable new roles or
 change a production system.
 

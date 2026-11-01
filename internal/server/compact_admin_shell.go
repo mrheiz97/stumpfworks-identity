@@ -17,6 +17,7 @@ type compactAdminNavItem struct {
 }
 
 var compactAdminNavigation = []compactAdminNavItem{
+	{path: "/client-updates", icon: "↓", label: "Client updates", permission: adminauth.PermissionClientsRead},
 	{path: "/users", icon: "◎", label: "Users", permission: adminauth.PermissionIdentityRead},
 	{path: "/badges", icon: "◇", label: "Badges", permission: adminauth.PermissionCredentialsRead},
 	{path: "/audit", icon: "≡", label: "Audit log", permission: adminauth.PermissionAuditRead},

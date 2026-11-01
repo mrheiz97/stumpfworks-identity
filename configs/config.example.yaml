@@ -18,6 +18,9 @@ database:
   allow_insecure: false
 updates:
   client_target_version: "1.2.1"
+  # Optional local stable release approvals; requires protected admin + mTLS API.
+  catalog_directory: ""
+  public_key_file: ""
 directory:
   enabled: false
   # Read-only framework adapter. Requires a CA-trusted hostname-valid LDAPS certificate.

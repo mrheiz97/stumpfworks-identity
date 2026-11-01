@@ -231,6 +231,9 @@ CREATE TRIGGER fail_webauthn_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECU
 			t.Fatal(err)
 		}
 		deviceNow := time.Now().UTC().Truncate(time.Second)
+		if _, err := source.DB.ExecContext(ctx, `INSERT INTO client_update_jobs(id,client_id,release_id,release_version,package_sha256,not_before,expires_at,maintenance,state,rollback_available,created_at,updated_at) VALUES('import-update-job-01','fixture-client','approved-release-01','1.13.0',?,100,200,1,'succeeded',1,90,190)`, strings.Repeat("a", 64)); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := source.DB.ExecContext(ctx, `INSERT INTO client_enrollment_tokens(id,client_id,token_hash,created_at,expires_at,consumed_at) VALUES(?,?,?,?,?,?)`, "import-device-enrollment", "fixture-client", strings.Repeat("4", 64), deviceNow, deviceNow.Add(10*time.Minute), deviceNow.Add(time.Second)); err != nil {
 			t.Fatal(err)
 		}
@@ -385,6 +388,21 @@ CREATE TRIGGER corrupt_import_fixture BEFORE INSERT ON users FOR EACH ROW EXECUT
 	})
 	t.Run("client contract", func(t *testing.T) {
 		testClientContract(t, store)
+	})
+	t.Run("client update job contract", func(t *testing.T) {
+		testUpdateJobContract(t, store, func(id string) {
+			if _, e := pool.Native().Exec(ctx, `UPDATE clients SET auth_mode='certificate_preferred' WHERE client_id=$1`, id); e != nil {
+				t.Fatal(e)
+			}
+		}, func(fail bool) {
+			q := `DROP TRIGGER IF EXISTS update_job_audit_failure ON audit_log; DROP FUNCTION IF EXISTS update_job_audit_failure()`
+			if fail {
+				q = `CREATE FUNCTION update_job_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit failure'; END $$; CREATE TRIGGER update_job_audit_failure BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION update_job_audit_failure()`
+			}
+			if _, e := pool.Native().Exec(ctx, q); e != nil {
+				t.Fatal(e)
+			}
+		})
 	})
 	t.Run("client device authentication contract", func(t *testing.T) {
 		testClientDeviceAuthenticationContract(t, store)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.13.0-dev
+
+- Add opt-in approved stable client releases and protected per-client update
+  scheduling/cancellation with explicit execution and LightDM maintenance windows.
+- Add transacted SQLite/PostgreSQL job/audit lifecycle, migration 7, idempotent
+  results and one-open-job enforcement; include jobs in import and reconciliation.
+- Add an mTLS-only device worker reusing signed installation and recovery, with
+  durable local execution evidence and shared OS locking across updater/recovery.
+- Add state, security, concurrency, lost-response and interrupted-worker tests
+  plus deployment/rollback documentation. Production activation remains separate.
+
 All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]

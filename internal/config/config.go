@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	UpdateCatalogDirectory, UpdatePublicKeyFile                                                  string
 	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile string
 	ClientAPIListen, ClientAPIEnrollmentListen, ClientAPICAFile, ClientAPICAKeyFile              string
 	DirectoryURL, BaseDN, BindDN, BindPassword                                                   string
@@ -67,6 +68,10 @@ func Load(path string) (Config, error) {
 			}
 			key, val := section+"."+strings.TrimSpace(p[0]), strings.Trim(strings.TrimSpace(p[1]), `"'`)
 			switch key {
+			case "updates.catalog_directory":
+				c.UpdateCatalogDirectory = val
+			case "updates.public_key_file":
+				c.UpdatePublicKeyFile = val
 			case "server.listen":
 				c.Listen = val
 			case "server.tls_cert_file":
@@ -171,6 +176,8 @@ func Load(path string) (Config, error) {
 		}
 	}
 	set("SWBADGE_LISTEN", &c.Listen)
+	set("SWBADGE_UPDATE_CATALOG_DIRECTORY", &c.UpdateCatalogDirectory)
+	set("SWBADGE_UPDATE_PUBLIC_KEY_FILE", &c.UpdatePublicKeyFile)
 	set("SWBADGE_TLS_CERT_FILE", &c.TLSCertFile)
 	set("SWBADGE_TLS_KEY_FILE", &c.TLSKeyFile)
 	set("SWBADGE_CLIENT_API_LISTEN", &c.ClientAPIListen)

@@ -50,6 +50,11 @@ func requiredAdministrativePermission(r *http.Request) adminauth.Permission {
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 
 	switch {
+	case path == "/client-updates" || strings.HasPrefix(path, "/client-updates/"):
+		if mutating {
+			return adminauth.PermissionClientUpdatesWrite
+		}
+		return adminauth.PermissionClientsRead
 	case path == "/audit":
 		return adminauth.PermissionAuditRead
 	case path == "/oidc-clients" || strings.HasPrefix(path, "/oidc-clients/"):

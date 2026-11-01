@@ -1,5 +1,8 @@
 # Signed client updates
 
+The protected [scheduling and device execution workflow](client-update-jobs.md)
+reuses the verifier, installer and recovery described below.
+
 `sw-badge-client-updater` supports mutually exclusive verification and installation modes. Installation is restricted to signed packages, compiled-in component targets, new absolute staging and rollback directories, atomic file replacement and mandatory service health checks.
 
 An update ZIP contains exactly:
