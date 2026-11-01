@@ -26,6 +26,9 @@ func FromTLS(state *tls.ConnectionState, now time.Time) (Identity, error) {
 		return Identity{}, ErrInvalidCertificate
 	}
 	certificate := state.PeerCertificates[0]
+	if certificate == nil || state.VerifiedChains[0][0] == nil {
+		return Identity{}, ErrInvalidCertificate
+	}
 	if !certificate.Equal(state.VerifiedChains[0][0]) || now.Before(certificate.NotBefore) || now.After(certificate.NotAfter) || certificate.SerialNumber == nil || certificate.SerialNumber.Sign() <= 0 {
 		return Identity{}, ErrInvalidCertificate
 	}
@@ -35,7 +38,7 @@ func FromTLS(state *tls.ConnectionState, now time.Time) (Identity, error) {
 			clientAuth = true
 		}
 	}
-	if !clientAuth || len(certificate.URIs) != 1 || len(certificate.DNSNames) != 0 || len(certificate.EmailAddresses) != 0 || len(certificate.IPAddresses) != 0 {
+	if !clientAuth || len(certificate.URIs) != 1 || certificate.URIs[0] == nil || len(certificate.DNSNames) != 0 || len(certificate.EmailAddresses) != 0 || len(certificate.IPAddresses) != 0 {
 		return Identity{}, ErrInvalidCertificate
 	}
 	uri := certificate.URIs[0].String()

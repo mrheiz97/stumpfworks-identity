@@ -2,6 +2,10 @@
 
 ## 1.13.0-dev
 
+- Prepare framework certificate extraction with portable peer/issued-material
+  conformance suites, an explicit clock seam, defensive nil-input rejection and
+  a documented ownership/compatibility handoff. Framework dependency unchanged.
+
 - Add a read-only client certificate overview and minimal protected API showing
   authentication policy, activation state and UTC expiry, including required-mode
   warnings and pending-renewal precedence on SQLite and PostgreSQL.

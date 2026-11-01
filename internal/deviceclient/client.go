@@ -149,6 +149,15 @@ func requestCertificate(ctx context.Context, client *http.Client, endpoint strin
 }
 
 func validateMaterial(response certificateResponse, clientID string, key *ecdsa.PrivateKey, expectedCAPEM []byte) (Material, error) {
+	return validateMaterialAt(response, clientID, key, expectedCAPEM, time.Now())
+}
+
+// Explicit clock seam for the extraction contract. The production wrapper
+// retains the same wall clock and all existing Identity policy checks.
+func validateMaterialAt(response certificateResponse, clientID string, key *ecdsa.PrivateKey, expectedCAPEM []byte, now time.Time) (Material, error) {
+	if now.IsZero() || key == nil || key.Curve != elliptic.P256() || key.X == nil || key.Y == nil || key.D == nil {
+		return Material{}, errors.New("invalid device material validation context")
+	}
 	certificateBlock, certificateRest := pem.Decode([]byte(response.Certificate))
 	caBlock, caRest := pem.Decode([]byte(response.CA))
 	if certificateBlock == nil || certificateBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(certificateRest)) != 0 || caBlock == nil || caBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(caRest)) != 0 {
@@ -183,7 +192,7 @@ func validateMaterial(response certificateResponse, clientID string, key *ecdsa.
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
-	if _, err := certificate.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, CurrentTime: time.Now()}); err != nil {
+	if _, err := certificate.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, CurrentTime: now}); err != nil {
 		return Material{}, errors.New("device certificate verification failed")
 	}
 	expiresAt, err := time.Parse(time.RFC3339, response.ExpiresAt)

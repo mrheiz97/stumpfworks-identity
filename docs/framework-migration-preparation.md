@@ -1,5 +1,10 @@
 # Framework integration and PostgreSQL preparation
 
+For the current certificate investigation and portable verification contracts,
+see [certificate extraction preparation](framework-certificate-extraction.md).
+The older database/observability rollout gates below are historical; current
+production acceptance is tracked in the local operational handover.
+
 Local preparation only. No production cutover or database driver change.
 
 ## Directory boundary
