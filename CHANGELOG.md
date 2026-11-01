@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.13.0-dev
+## [1.13.0] - 2026-11-01
+
+Release and rollback boundaries: [v1.13.0](docs/releases/v1.13.0.md).
 
 - Adopt published Framework v1.2.0 peer/issued-certificate verification, keeping
   Identity device policy and lifecycle local. Require Go 1.26.10, compare frozen
