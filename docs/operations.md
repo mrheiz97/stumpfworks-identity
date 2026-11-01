@@ -13,6 +13,25 @@ and rollback, see [scheduled client updates](client-update-jobs.md).
 
 Install `deploy/systemd/swbadge-vnc.service` and `scripts/swbadge-vnc-set-password.sh` as root. Run `/usr/local/sbin/swbadge-vnc-set-password` interactively once; never pass the VNC password as a command argument or store it in Git. Configure `SWBADGE_VNC_LISTEN` in `/etc/default/swbadge-vnc` for the client's trusted management interface. The safe template default is loopback only. The service requires `/etc/stumpfworks-badge/vnc.passwd` with mode `0600`, restarts after display-manager changes and is enabled at boot.
 
+The listener template is IPv4-only (`-no6 -rfbportv6 -1`). x11vnc 0.9.17 and its
+LibVNCServer backend have separate IPv6 listener controls; `-listen` selects only
+the IPv4 interface. `-no6` or `-noipv6` alone left a library IPv6 socket on the
+observed installation. Disable the backend port too and verify the actual socket
+set. [LibVNCServer's listener code](https://github.com/LibVNC/libvncserver/blob/master/src/libvncserver/sockets.c)
+opens its IPv6 listener only for a positive configured port.
+Do not infer a second process solely from a `listen6: bind: Address
+already in use` message. Match the socket owner to the service cgroup and inspect
+the actual exit reason. `caught XIO error` means the X connection was lost;
+check LightDM/Xorg restart counters as well as the VNC counter. A momentary
+`active` state does not establish stability for either service.
+
+The VNC password helper preserves an existing configuration directory's ownership
+and mode. On managed clients that directory is shared with the greeter and uses
+`root:lightdm 0750`; resetting it to root-only would hide `client.conf`, terminate
+the greeter and cycle LightDM/Xorg/VNC. The VNC password, client token and private
+device bundles remain individually `root:root 0600`. A new standalone directory
+is created root-only; symlink/non-directory paths are rejected.
+
 ## Routine checks
 
 LOGIN01:

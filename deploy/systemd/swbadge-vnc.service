@@ -8,7 +8,7 @@ ConditionPathExists=/etc/stumpfworks-badge/vnc.passwd
 Type=simple
 Environment=SWBADGE_VNC_LISTEN=127.0.0.1
 EnvironmentFile=-/etc/default/swbadge-vnc
-ExecStart=/usr/bin/x11vnc -display :0 -auth guess -forever -shared -repeat -noxdamage -rfbauth /etc/stumpfworks-badge/vnc.passwd -rfbport 5900 -listen ${SWBADGE_VNC_LISTEN}
+ExecStart=/usr/bin/x11vnc -display :0 -auth guess -forever -shared -repeat -noxdamage -rfbauth /etc/stumpfworks-badge/vnc.passwd -rfbport 5900 -listen ${SWBADGE_VNC_LISTEN} -no6 -rfbportv6 -1
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
