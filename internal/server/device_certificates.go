@@ -99,6 +99,10 @@ func (s *Server) ConfigureDeviceCertificateIssuer(issuer *DeviceCertificateIssue
 
 func (s *Server) ClientAPIHandler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/client/updates/poll", s.pollClientUpdate)
+	mux.HandleFunc("POST /api/v1/client/updates/{id}/start", s.startClientUpdate)
+	mux.HandleFunc("POST /api/v1/client/updates/{id}/result", s.finishClientUpdate)
+	mux.HandleFunc("POST /api/v1/client/updates/{id}/package", s.downloadClientUpdate)
 	mux.HandleFunc("POST /api/v1/client/status", s.clientStatus)
 	mux.HandleFunc("POST /api/v1/client/renew", s.renewClientDeviceCertificate)
 	mux.HandleFunc("POST /api/v1/client/activate", s.activateClientDeviceCertificate)

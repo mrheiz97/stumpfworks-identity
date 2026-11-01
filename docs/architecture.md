@@ -68,4 +68,8 @@ Private CA keys remain on LOGIN01. Cleartext PINs and badge tokens are never per
 
 ## Availability
 
+Opt-in [scheduled client updates](client-update-jobs.md) use a verified stable
+catalog, transacted job/audit records and a separate mTLS device worker. Existing
+signed installation and recovery remain the target mutation path.
+
 Password fallback remains available if badge authentication fails and AD is reachable. LOGIN01 and Samba services start at boot. Daily timers check certificate expiry; LOGIN01 also creates a consistent online SQLite backup.

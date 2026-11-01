@@ -13,7 +13,8 @@ Passkey identifiers, IP addresses, client IDs, versions, group DNs, file paths,
 free-form audit details or error strings. Unknown routes collapse to
 `unmatched`; status codes collapse to six fixed outcomes.
 
-Identity reuses Framework v1.0.0 for HTTP route/status latency, Framework LDAP
+Identity reuses Framework (v1.2.0 on development; v1.0.0 at the original rollout)
+for HTTP route/status latency, Framework LDAP
 lookup outcomes and PostgreSQL pool statistics. Identity owns only its bounded
 application metrics:
 

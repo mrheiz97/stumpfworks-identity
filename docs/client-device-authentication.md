@@ -7,6 +7,51 @@ grant, PKINIT and Kerberos paths remain available throughout the migration.
 
 ## Implementation status
 
+### Read-only administration overview (development)
+
+The protected `/clients` page and `GET /api/v1/clients/certificates` expose a
+minimal operational projection: client ID, enabled state, software version,
+configured authentication mode, certificate state and UTC expiry. Administrators,
+client operators and auditors use `clients.read`; Identity/OIDC operators without
+that permission cannot access either route. The overview has no mutation forms.
+Authentication mode changes continue through the existing audited local command.
+
+The overview distinguishes no certificate, active/valid, expiry within 30 days,
+expired, not-yet-valid, pending activation, activation-window expiry, revoked and
+superseded. The exact certificate expiry is exclusive: at `expires_at` it is
+expired. The warning includes the exact 30-day boundary. Pending activation is
+valid only before the existing ten-minute activation deadline. Active credentials
+take precedence over pending renewal and history, so an unactivated replacement
+cannot hide the currently authoritative certificate or its expiry. A separate
+pending indicator identifies a fresh enrollment/renewal waiting for activation.
+
+Policy text distinguishes `token_only`, `certificate_preferred` with controlled
+bearer fallback, and `certificate_required` with bearer rejection. Disabled
+clients show that device API access is blocked without hiding certificate expiry.
+A required-mode client without a usable active certificate receives an explicit
+warning; preferred mode explains the remaining controlled fallback. These are
+configured policies and public database metadata, not a claim that the last
+status report actually used mTLS. Badge/PIN, AD password and PKINIT are separate.
+
+One bounded projection per registered client is loaded in a single metadata
+query on both backends. No credential ID, serial, fingerprint, issuer identifier,
+enrollment token, token hash, key or raw certificate reaches the page or new API.
+Responses use `Cache-Control: no-store`. Lookup failure returns HTTP 503 rather
+than presenting an unavailable database as an absent certificate. No schema
+migration, new credential, mode change or lifecycle/audit mutation is introduced.
+Existing full backup/import/reconciliation coverage is unchanged.
+
+Tests cover both backends, active/pending precedence, exact expiry/activation
+boundaries, UTC output, all role boundaries, metadata privacy, read-only access
+and failed lookups. Production activation is a separate binary rollout with
+the normal preflight, verified rollback and maintenance approval.
+
+### Historical v1.12.0 rollout baseline
+
+The dormant-foundation description below records the initial v1.12.0 rollout,
+not the current production acceptance gate. Subsequent activation and v1.12.2
+authentication-mode acceptance are recorded in the local operational handover.
+
 Identity v1.12.0 is published and runs in production on LOGIN01 with PostgreSQL.
 SQLite and PostgreSQL share the same client mode, enrollment-token and public
 credential records. Initial enrollment, renewal, revocation and mode changes
@@ -252,11 +297,12 @@ credential appears in logs, diagnostics, backups intended for support, or Git.
 
 ## Framework boundary
 
-The reusable certificate mechanics belong in StumpfWorks Framework after their
-contract is proven here: strict URI-SAN extraction, chain/EKU/time validation,
-canonical public metadata, constant-time fingerprint comparison, and safe TLS
-client construction. A generic enrollment-token primitive may move there only
-if another product needs the same replay and expiry contract.
+On development, Framework v1.2.0 supplies verified-peer evidence consumption
+and issued-leaf chain/EKU/time/public-key/pin verification. Identity retains
+strict URI namespace/client grammar and algorithm/CA policy. See the
+[migration and rollback record](framework-certificate-migration.md).
+TLS client construction and enrollment-token handling remain local; further
+extraction requires separate contracts and scope.
 
 Identity retains product policy: client records and modes, device-credential
 schema, transactional audit event names, admin workflows, endpoint selection,

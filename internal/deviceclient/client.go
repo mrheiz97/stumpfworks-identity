@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -20,6 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mrheiz97/stumpfworks-framework/security/certificates"
 )
 
 const clientURIPrefix = "urn:stumpfworks:identity:client:"
@@ -149,6 +150,15 @@ func requestCertificate(ctx context.Context, client *http.Client, endpoint strin
 }
 
 func validateMaterial(response certificateResponse, clientID string, key *ecdsa.PrivateKey, expectedCAPEM []byte) (Material, error) {
+	return validateMaterialAt(response, clientID, key, expectedCAPEM, time.Now())
+}
+
+// Explicit clock seam for the extraction contract. The production wrapper
+// retains the same wall clock and all existing Identity policy checks.
+func validateMaterialAt(response certificateResponse, clientID string, key *ecdsa.PrivateKey, expectedCAPEM []byte, now time.Time) (Material, error) {
+	if now.IsZero() || key == nil || key.Curve != elliptic.P256() || key.X == nil || key.Y == nil || key.D == nil {
+		return Material{}, errors.New("invalid device material validation context")
+	}
 	certificateBlock, certificateRest := pem.Decode([]byte(response.Certificate))
 	caBlock, caRest := pem.Decode([]byte(response.CA))
 	if certificateBlock == nil || certificateBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(certificateRest)) != 0 || caBlock == nil || caBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(caRest)) != 0 {
@@ -162,32 +172,39 @@ func validateMaterial(response certificateResponse, clientID string, key *ecdsa.
 	if err != nil || !ca.IsCA {
 		return Material{}, errors.New("device CA response is invalid")
 	}
+	var pinnedRoot *x509.Certificate
 	if len(expectedCAPEM) != 0 {
 		expectedBlock, rest := pem.Decode(expectedCAPEM)
-		if expectedBlock == nil || expectedBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 || subtle.ConstantTimeCompare(expectedBlock.Bytes, ca.Raw) != 1 {
+		if expectedBlock == nil || expectedBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 {
 			return Material{}, errors.New("renewal device CA does not match pinned CA")
+		}
+		pinnedRoot, err = x509.ParseCertificate(expectedBlock.Bytes)
+		if err != nil {
+			return Material{}, errors.New("renewal device CA is invalid")
 		}
 	}
 	issuedKey, ok := certificate.PublicKey.(*ecdsa.PublicKey)
-	if !ok || issuedKey.Curve != elliptic.P256() || issuedKey.X.Cmp(key.X) != 0 || issuedKey.Y.Cmp(key.Y) != 0 || len(certificate.URIs) != 1 || certificate.URIs[0].String() != clientURIPrefix+clientID || len(certificate.DNSNames) != 0 || len(certificate.EmailAddresses) != 0 || len(certificate.IPAddresses) != 0 {
+	if !ok || issuedKey.Curve != elliptic.P256() {
 		return Material{}, errors.New("device certificate identity or key does not match")
 	}
-	clientAuth := false
-	for _, usage := range certificate.ExtKeyUsage {
-		if usage == x509.ExtKeyUsageClientAuth {
-			clientAuth = true
-		}
-	}
-	if !clientAuth {
-		return Material{}, errors.New("device certificate is missing client authentication usage")
+	expectedPublicKeyDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return Material{}, errors.New("device public key is invalid")
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
-	if _, err := certificate.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, CurrentTime: time.Now()}); err != nil {
+	metadata, err := certificates.VerifyIssued(certificate, certificates.IssuedOptions{
+		PeerOptions: certificates.PeerOptions{Now: now, Usage: x509.ExtKeyUsageClientAuth},
+		Roots:       roots, ExpectedPublicKeyDER: expectedPublicKeyDER, PinnedRoot: pinnedRoot,
+	})
+	if err != nil {
 		return Material{}, errors.New("device certificate verification failed")
 	}
+	if len(metadata.URIs) != 1 || metadata.URIs[0] != clientURIPrefix+clientID || len(metadata.DNSNames) != 0 || len(metadata.EmailAddresses) != 0 || len(metadata.IPAddresses) != 0 {
+		return Material{}, errors.New("device certificate identity does not match")
+	}
 	expiresAt, err := time.Parse(time.RFC3339, response.ExpiresAt)
-	if err != nil || !expiresAt.Equal(certificate.NotAfter) {
+	if err != nil || !expiresAt.Equal(metadata.NotAfter) {
 		return Material{}, errors.New("device certificate expiry does not match")
 	}
 	keyDER, err := x509.MarshalPKCS8PrivateKey(key)

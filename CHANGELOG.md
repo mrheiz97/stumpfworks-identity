@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.13.0] - 2026-11-01
+
+Release and rollback boundaries: [v1.13.0](docs/releases/v1.13.0.md).
+
+- Adopt published Framework v1.2.0 peer/issued-certificate verification, keeping
+  Identity device policy and lifecycle local. Require Go 1.26.10, compare frozen
+  legacy contracts in tests, document defensive limits and a checked source/
+  binary rollback. No production deployment or schema change.
+
+- Prepare framework certificate extraction with portable peer/issued-material
+  conformance suites, an explicit clock seam, defensive nil-input rejection and
+  a documented ownership/compatibility handoff (pre-migration preparation).
+
+- Add a read-only client certificate overview and minimal protected API showing
+  authentication policy, activation state and UTC expiry, including required-mode
+  warnings and pending-renewal precedence on SQLite and PostgreSQL.
+
+- Add opt-in approved stable client releases and protected per-client update
+  scheduling/cancellation with explicit execution and LightDM maintenance windows.
+- Add transacted SQLite/PostgreSQL job/audit lifecycle, migration 7, idempotent
+  results and one-open-job enforcement; include jobs in import and reconciliation.
+- Add an mTLS-only device worker reusing signed installation and recovery, with
+  durable local execution evidence and shared OS locking across updater/recovery.
+- Add state, security, concurrency, lost-response and interrupted-worker tests
+  plus deployment/rollback documentation. Production activation remains separate.
+
 All notable changes to StumpfWorks Identity are documented here.
 
 ## [Unreleased]

@@ -35,6 +35,7 @@ func clientAPIServer(cfg config.Config, application http.Handler) (*http.Server,
 	restricted.Handle("POST /api/v1/client/status", application)
 	restricted.Handle("POST /api/v1/client/renew", application)
 	restricted.Handle("POST /api/v1/client/activate", application)
+	restricted.Handle("POST /api/v1/client/updates/", application)
 	return &http.Server{
 		Addr:              cfg.ClientAPIListen,
 		Handler:           restricted,

@@ -1,0 +1,22 @@
+[Unit]
+Description=StumpfWorks Identity scheduled client update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/stumpfworks-badge/client.conf
+ExecStart=/usr/local/sbin/sw-badge-client-update-worker
+User=root
+TimeoutStartSec=10min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/usr/local/bin /usr/local/libexec /usr/local/sbin /etc/systemd/system /var/lib/stumpfworks-badge -/var/backups/stumpfworks-badge
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true

@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/clientupdate"
 	"time"
 )
 
@@ -9,6 +10,11 @@ import (
 // Backend lifecycle, migrations and imports stay outside this interface so the
 // runtime user never gains schema privileges implicitly.
 type ApplicationStore interface {
+	ClientCertificateSummaries(context.Context, time.Time) ([]ClientCertificateSummary, error)
+	CreateClientUpdateJob(context.Context, ClientUpdateJob, string, string, time.Time) error
+	ChangeClientUpdateJob(context.Context, string, string, clientupdate.JobState, bool, string, string, time.Time) error
+	ClientUpdateJobs(context.Context, string) ([]ClientUpdateJob, error)
+	ClientUpdateJob(context.Context, string) (ClientUpdateJob, error)
 	CreateUser(context.Context, string, string, string) (User, error)
 	CreateUserWithAudit(context.Context, string, string, string, string, string) (User, error)
 	GetUser(context.Context, int64) (User, error)

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	adminauth "github.com/TheRealHZL/stumpfworks-identity/internal/auth"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/clientupdate"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/config"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/database"
 	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
@@ -169,6 +170,18 @@ func main() {
 		srv = app.New(st, log)
 	}
 	srv.ConfigureEmergencyAdmin(cfg.EmergencyAdminEnabled)
+	if cfg.UpdateCatalogDirectory != "" {
+		if !cfg.DirectoryEnabled || !cfg.ClientAPIEnabled {
+			slog.Error("client updates require protected administration and device API")
+			os.Exit(1)
+		}
+		catalog, err := clientupdate.LoadCatalog(cfg.UpdateCatalogDirectory, cfg.UpdatePublicKeyFile)
+		if err != nil {
+			slog.Error("client update catalog verification failed")
+			os.Exit(1)
+		}
+		srv.ConfigureUpdateCatalog(catalog)
+	}
 	srv.ConfigureObservability(identityMetrics)
 	if err := srv.ConfigureClientTargetVersion(cfg.ClientTargetVersion); err != nil {
 		slog.Error("client target version configuration failed", "error", err)

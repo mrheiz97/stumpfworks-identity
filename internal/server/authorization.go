@@ -50,6 +50,11 @@ func requiredAdministrativePermission(r *http.Request) adminauth.Permission {
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 
 	switch {
+	case path == "/client-updates" || strings.HasPrefix(path, "/client-updates/"):
+		if mutating {
+			return adminauth.PermissionClientUpdatesWrite
+		}
+		return adminauth.PermissionClientsRead
 	case path == "/audit":
 		return adminauth.PermissionAuditRead
 	case path == "/oidc-clients" || strings.HasPrefix(path, "/oidc-clients/"):
@@ -62,7 +67,7 @@ func requiredAdministrativePermission(r *http.Request) adminauth.Permission {
 			return adminauth.PermissionOIDCSessionsRevoke
 		}
 		return adminauth.PermissionOIDCSessionsRead
-	case path == "/api/v1/clients":
+	case path == "/api/v1/clients" || path == "/clients" || path == "/api/v1/clients/certificates":
 		return adminauth.PermissionClientsRead
 	case path == "/status":
 		return adminauth.PermissionSystemRead

@@ -39,7 +39,7 @@ func WriteUpdateTransaction(path string, transaction UpdateTransaction) error {
 		_ = os.Remove(temporary)
 		return err
 	}
-	return nil
+	return syncUpdateDirectory(filepath.Dir(path))
 }
 
 func ReadUpdateTransaction(path string) (*UpdateTransaction, error) {
@@ -69,6 +69,18 @@ func ReadUpdateTransaction(path string) (*UpdateTransaction, error) {
 }
 
 func RecoverPendingUpdate(ctx context.Context, root, transactionPath, statePath string, runner CommandRunner) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(transactionPath), 0755); err != nil {
+		return false, err
+	}
+	unlock, acquired, err := tryUpdateLock(transactionPath + ".lock")
+	if err != nil || !acquired {
+		return false, err
+	}
+	defer unlock()
+	return recoverPendingUpdate(ctx, root, transactionPath, statePath, runner)
+}
+
+func recoverPendingUpdate(ctx context.Context, root, transactionPath, statePath string, runner CommandRunner) (bool, error) {
 	transaction, err := ReadUpdateTransaction(transactionPath)
 	if err != nil || transaction == nil {
 		return false, err

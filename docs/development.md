@@ -2,6 +2,13 @@
 
 ## Local verification
 
+On Windows with PostgreSQL 17 and Git OpenSSL installed,
+`scripts/test-local-postgres.ps1` runs all Go tests and `go vet` against a newly
+created synthetic loopback cluster on port 55441 and stops it in `finally`.
+It prints the exact stopped temporary directory for inspection/cleanup.
+No production data or remote endpoints are used. Linux CI additionally runs
+the race detector, PostgreSQL 16, shell/Python syntax and Prometheus validation.
+
 ```bash
 gofmt -w ./cmd ./internal
 go test ./...

@@ -1,13 +1,13 @@
 package deviceauth
 
 import (
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/mrheiz97/stumpfworks-framework/security/certificates"
 )
 
 const clientURIPrefix = "urn:stumpfworks:identity:client:"
@@ -22,29 +22,28 @@ type Identity struct {
 }
 
 func FromTLS(state *tls.ConnectionState, now time.Time) (Identity, error) {
-	if state == nil || len(state.PeerCertificates) == 0 || len(state.VerifiedChains) == 0 || len(state.VerifiedChains[0]) == 0 || now.IsZero() {
-		return Identity{}, ErrInvalidCertificate
-	}
-	certificate := state.PeerCertificates[0]
-	if !certificate.Equal(state.VerifiedChains[0][0]) || now.Before(certificate.NotBefore) || now.After(certificate.NotAfter) || certificate.SerialNumber == nil || certificate.SerialNumber.Sign() <= 0 {
-		return Identity{}, ErrInvalidCertificate
-	}
-	clientAuth := false
-	for _, usage := range certificate.ExtKeyUsage {
-		if usage == x509.ExtKeyUsageClientAuth {
-			clientAuth = true
+	// Preserve defensive rejection of malformed parsed URI values. The framework
+	// derives public metadata from signed DER, not mutable parsed fields.
+	if state != nil && len(state.PeerCertificates) != 0 && state.PeerCertificates[0] != nil {
+		for _, uri := range state.PeerCertificates[0].URIs {
+			if uri == nil {
+				return Identity{}, ErrInvalidCertificate
+			}
 		}
 	}
-	if !clientAuth || len(certificate.URIs) != 1 || len(certificate.DNSNames) != 0 || len(certificate.EmailAddresses) != 0 || len(certificate.IPAddresses) != 0 {
+	metadata, err := certificates.VerifiedPeer(state, certificates.PeerOptions{Now: now, Usage: x509.ExtKeyUsageClientAuth})
+	if err != nil {
 		return Identity{}, ErrInvalidCertificate
 	}
-	uri := certificate.URIs[0].String()
+	if len(metadata.URIs) != 1 || len(metadata.DNSNames) != 0 || len(metadata.EmailAddresses) != 0 || len(metadata.IPAddresses) != 0 {
+		return Identity{}, ErrInvalidCertificate
+	}
+	uri := metadata.URIs[0]
 	clientID := strings.TrimPrefix(uri, clientURIPrefix)
 	if clientID == uri || !validClientID(clientID) || uri != clientURIPrefix+clientID {
 		return Identity{}, ErrInvalidCertificate
 	}
-	fingerprint := sha256.Sum256(certificate.Raw)
-	return Identity{ClientID: clientID, FingerprintSHA256: hex.EncodeToString(fingerprint[:]), Serial: strings.ToLower(certificate.SerialNumber.Text(16)), URISAN: uri}, nil
+	return Identity{ClientID: clientID, FingerprintSHA256: metadata.FingerprintSHA256, Serial: metadata.Serial, URISAN: uri}, nil
 }
 
 func validClientID(value string) bool {

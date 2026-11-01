@@ -27,6 +27,7 @@ const (
 	PermissionOIDCSessionsRead   Permission = "oidc.sessions.read"
 	PermissionOIDCSessionsRevoke Permission = "oidc.sessions.revoke"
 	PermissionClientsRead        Permission = "clients.read"
+	PermissionClientUpdatesWrite Permission = "clients.updates.write"
 	PermissionSystemRead         Permission = "system.read"
 )
 
@@ -42,6 +43,7 @@ var allPermissions = []Permission{
 	PermissionOIDCSessionsRead,
 	PermissionOIDCSessionsRevoke,
 	PermissionClientsRead,
+	PermissionClientUpdatesWrite,
 	PermissionSystemRead,
 }
 
@@ -66,6 +68,7 @@ var rolePermissions = map[Role][]Permission{
 	RoleClientOperator: {
 		PermissionDashboardRead,
 		PermissionClientsRead,
+		PermissionClientUpdatesWrite,
 		PermissionSystemRead,
 	},
 	RoleAuditor: {

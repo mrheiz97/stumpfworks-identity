@@ -26,7 +26,9 @@ const maxPackageSize = 256 << 20
 var allowedComponents = map[string]bool{
 	"sw-badge-native-greeter": true, "sw-badge-pam-helper": true,
 	"sw-badge-client-status": true, "sw-badge-client-diagnostics": true,
-	"sw-badge-client-updater":         true,
+	"sw-badge-client-updater":        true,
+	"sw-badge-client-update-worker":  true,
+	"swbadge-client-updates.service": true, "swbadge-client-updates.timer": true,
 	"sw-badge-native-greeter-wrapper": true, "sw-badge-pam-helper-wrapper": true,
 	"swbadge-client-status.service": true, "swbadge-client-status.timer": true,
 }
@@ -73,8 +75,25 @@ func VerifyPackage(path string, publicKey ed25519.PublicKey, expectedArchitectur
 		return Result{}, fmt.Errorf("open package: %w", err)
 	}
 	defer archive.Close()
+	return verifyPackageEntries(archive.File, publicKey, expectedArchitecture, currentVersion)
+}
+
+// VerifyPackageBytes validates an immutable bounded artifact, such as a local
+// approved catalog snapshot, through the same verifier as the guarded updater.
+func VerifyPackageBytes(data []byte, publicKey ed25519.PublicKey, expectedArchitecture, currentVersion string) (Result, error) {
+	if len(data) > maxPackageSize+(1<<20) {
+		return Result{}, errors.New("package exceeds size limit")
+	}
+	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return Result{}, err
+	}
+	return verifyPackageEntries(archive.File, publicKey, expectedArchitecture, currentVersion)
+}
+
+func verifyPackageEntries(files []*zip.File, publicKey ed25519.PublicKey, expectedArchitecture, currentVersion string) (Result, error) {
 	entries := map[string]*zip.File{}
-	for _, entry := range archive.File {
+	for _, entry := range files {
 		if len(entries) >= 32 {
 			return Result{}, errors.New("package contains too many entries")
 		}
