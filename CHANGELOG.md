@@ -2,6 +2,10 @@
 
 ## 1.13.0-dev
 
+- Add a read-only client certificate overview and minimal protected API showing
+  authentication policy, activation state and UTC expiry, including required-mode
+  warnings and pending-renewal precedence on SQLite and PostgreSQL.
+
 - Add opt-in approved stable client releases and protected per-client update
   scheduling/cancellation with explicit execution and LightDM maintenance windows.
 - Add transacted SQLite/PostgreSQL job/audit lifecycle, migration 7, idempotent

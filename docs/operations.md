@@ -1,5 +1,11 @@
 # Operations Runbook
 
+The read-only [client certificate overview](client-device-authentication.md)
+under `/clients` shows configured authentication policy, public certificate state,
+UTC expiry and pending renewal. It does not change modes or renew credentials.
+Investigate a required-mode expiry warning before the certificate expires;
+continue to use the existing audited enrollment/renewal/mode-management tools.
+
 For client update scheduling, migration 7, worker bootstrap, maintenance gates
 and rollback, see [scheduled client updates](client-update-jobs.md).
 

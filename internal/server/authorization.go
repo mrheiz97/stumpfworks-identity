@@ -67,7 +67,7 @@ func requiredAdministrativePermission(r *http.Request) adminauth.Permission {
 			return adminauth.PermissionOIDCSessionsRevoke
 		}
 		return adminauth.PermissionOIDCSessionsRead
-	case path == "/api/v1/clients":
+	case path == "/api/v1/clients" || path == "/clients" || path == "/api/v1/clients/certificates":
 		return adminauth.PermissionClientsRead
 	case path == "/status":
 		return adminauth.PermissionSystemRead

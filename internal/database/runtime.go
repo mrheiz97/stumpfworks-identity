@@ -10,6 +10,7 @@ import (
 // Backend lifecycle, migrations and imports stay outside this interface so the
 // runtime user never gains schema privileges implicitly.
 type ApplicationStore interface {
+	ClientCertificateSummaries(context.Context, time.Time) ([]ClientCertificateSummary, error)
 	CreateClientUpdateJob(context.Context, ClientUpdateJob, string, string, time.Time) error
 	ChangeClientUpdateJob(context.Context, string, string, clientupdate.JobState, bool, string, string, time.Time) error
 	ClientUpdateJobs(context.Context, string) ([]ClientUpdateJob, error)

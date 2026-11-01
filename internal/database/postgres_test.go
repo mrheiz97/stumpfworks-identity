@@ -389,6 +389,9 @@ CREATE TRIGGER corrupt_import_fixture BEFORE INSERT ON users FOR EACH ROW EXECUT
 	t.Run("client contract", func(t *testing.T) {
 		testClientContract(t, store)
 	})
+	t.Run("client certificate summary contract", func(t *testing.T) {
+		testClientCertificateSummaryContract(t, store, func(q string, a ...any) error { _, err := pool.Native().Exec(ctx, q, a...); return err })
+	})
 	t.Run("client update job contract", func(t *testing.T) {
 		testUpdateJobContract(t, store, func(id string) {
 			if _, e := pool.Native().Exec(ctx, `UPDATE clients SET auth_mode='certificate_preferred' WHERE client_id=$1`, id); e != nil {

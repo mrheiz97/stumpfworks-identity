@@ -137,6 +137,8 @@ func NewProtected(st database.ApplicationStore, l *slog.Logger, d directory.Dire
 func (s *Server) ConfigureEmergencyAdmin(enabled bool) { s.emergencyAdminEnabled = enabled }
 func (s *Server) Handler() http.Handler                { return s.security(s.adminGuard(s.mux)) }
 func (s *Server) routes() {
+	s.mux.HandleFunc("GET /clients", s.clientCertificatesPage)
+	s.mux.HandleFunc("GET /api/v1/clients/certificates", s.clientCertificatesAPI)
 	s.mux.HandleFunc("GET /client-updates", s.clientUpdatesPage)
 	s.mux.HandleFunc("POST /client-updates", s.scheduleClientUpdate)
 	s.mux.HandleFunc("POST /client-updates/{id}/cancel", s.cancelClientUpdate)
