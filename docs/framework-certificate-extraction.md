@@ -1,8 +1,11 @@
 # Certificate extraction preparation
 
-Status: Identity-local preparation on `development`. No framework source,
-dependency version, production listener, CA, credential or deployment is changed.
-This document is a proposed upstream scope, not an approved framework API.
+Historical preparation record. The separately approved implementation is now
+published as Framework v1.2.0 and adopted on Identity `development`; see
+[certificate verifier migration](framework-certificate-migration.md) for actual
+APIs, verification evidence, defensive compatibility decisions and rollback.
+The proposal and sequencing below describe the original preparation baseline.
+No production listener, CA, credential or deployment was changed.
 
 ## Evidence and existing capabilities
 

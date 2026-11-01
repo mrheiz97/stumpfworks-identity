@@ -1,7 +1,8 @@
 # Framework integration and PostgreSQL preparation
 
-For the current certificate investigation and portable verification contracts,
-see [certificate extraction preparation](framework-certificate-extraction.md).
+For the current certificate integration, tests and rollback, see
+[certificate verifier migration](framework-certificate-migration.md); the
+[extraction preparation](framework-certificate-extraction.md) is historical.
 The older database/observability rollout gates below are historical; current
 production acceptance is tracked in the local operational handover.
 

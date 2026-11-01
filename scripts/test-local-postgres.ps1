@@ -14,7 +14,9 @@ try {
     $env:IDENTITY_TEST_PG_DUMP = Join-Path $pgBin 'pg_dump.exe'
     $env:IDENTITY_TEST_PG_RESTORE = Join-Path $pgBin 'pg_restore.exe'
     $env:PATH = 'C:\Program Files\Git\usr\bin;' + $env:PATH
-    go test ./...
+    # Each cluster is new: do not reuse cached integration-test results from
+    # another disposable instance with the same connection URL.
+    go test -count=1 ./...
     if ($LASTEXITCODE -ne 0) { throw 'Verification failed' }
     go vet ./...
     if ($LASTEXITCODE -ne 0) { throw 'Go vet failed' }

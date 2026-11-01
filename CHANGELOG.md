@@ -2,9 +2,14 @@
 
 ## 1.13.0-dev
 
+- Adopt published Framework v1.2.0 peer/issued-certificate verification, keeping
+  Identity device policy and lifecycle local. Require Go 1.26.10, compare frozen
+  legacy contracts in tests, document defensive limits and a checked source/
+  binary rollback. No production deployment or schema change.
+
 - Prepare framework certificate extraction with portable peer/issued-material
   conformance suites, an explicit clock seam, defensive nil-input rejection and
-  a documented ownership/compatibility handoff. Framework dependency unchanged.
+  a documented ownership/compatibility handoff (pre-migration preparation).
 
 - Add a read-only client certificate overview and minimal protected API showing
   authentication policy, activation state and UTC expiry, including required-mode

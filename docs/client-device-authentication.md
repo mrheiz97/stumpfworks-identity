@@ -297,11 +297,12 @@ credential appears in logs, diagnostics, backups intended for support, or Git.
 
 ## Framework boundary
 
-The reusable certificate mechanics belong in StumpfWorks Framework after their
-contract is proven here: strict URI-SAN extraction, chain/EKU/time validation,
-canonical public metadata, constant-time fingerprint comparison, and safe TLS
-client construction. A generic enrollment-token primitive may move there only
-if another product needs the same replay and expiry contract.
+On development, Framework v1.2.0 supplies verified-peer evidence consumption
+and issued-leaf chain/EKU/time/public-key/pin verification. Identity retains
+strict URI namespace/client grammar and algorithm/CA policy. See the
+[migration and rollback record](framework-certificate-migration.md).
+TLS client construction and enrollment-token handling remain local; further
+extraction requires separate contracts and scope.
 
 Identity retains product policy: client records and modes, device-credential
 schema, transactional audit event names, admin workflows, endpoint selection,
