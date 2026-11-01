@@ -4,6 +4,9 @@ Explicitly authorized VNC repair only. No client update/package/job, enrollment,
 client-mode change, LOGIN01 change or MOBILE01 access/change was performed.
 This record supersedes the VNC entry gate in the v1.13.0 client preparation;
 it does not authorize that later client rollout.
+That client rollout was subsequently approved and completed separately; see
+the [status/updater acceptance](v1.13.0-wyse01-acceptance.md). This record
+describes only the earlier VNC maintenance boundary.
 
 ## Two separate faults
 
