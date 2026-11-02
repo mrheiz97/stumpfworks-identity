@@ -108,6 +108,7 @@ docs/                Architecture, API, security and operations guides
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)
 - [Security model](docs/security.md)
+- [AD write security design and validation gates](docs/ad-write-security-design.md)
 - [Administrative roles and permissions](docs/roles-and-permissions.md)
 - [Administrative role rollout and rollback](docs/roles-rollout.md)
 - [Time-limited emergency administration](docs/emergency-admin.md)

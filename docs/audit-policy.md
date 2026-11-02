@@ -10,11 +10,17 @@ errors.
 |---|---|
 | Rejected authentication or authorization | Keep the request rejected, emit a bounded operational error, and never reveal the audit failure to the caller. |
 | Successful credential or token issuance | Do not report success unless the required audit record is durable. New flows must implement this before production use. |
-| Security-sensitive state mutation | Commit the mutation and success audit in one database transaction, or commit neither. |
+| Security-sensitive state mutation within Identity's database | Commit the mutation and success audit in one database transaction, or commit neither. |
 | Informational or availability event | Best effort is allowed, but a bounded operational error must make loss visible. |
 
 Retries must not duplicate a successful mutation or make a one-use credential
 reusable. Database errors are sensitive and are not logged verbatim.
+
+Future external AD writes cannot share this database transaction. The
+[AD write security design](ad-write-security-design.md) requires a durable,
+atomically audited claim before the external call, prohibits automatic replay
+after uncertain results, and distinguishes reconciliation from confirmed success.
+Its test-only prototype does not enable AD writes or change runtime enforcement.
 
 ## Current enforcement
 
