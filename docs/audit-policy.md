@@ -20,7 +20,11 @@ Future external AD writes cannot share this database transaction. The
 [AD write security design](ad-write-security-design.md) requires a durable,
 atomically audited claim before the external call, prohibits automatic replay
 after uncertain results, and distinguishes reconciliation from confirmed success.
-Its test-only prototype does not enable AD writes or change runtime enforcement.
+The stage-1 implementation now uses a separate, encrypted executor journal with
+atomic intent/claim/result audit. Existing Identity schema and audit sources are
+unchanged. [Implementation and evidence](ad-profile-stage1.md) describe this
+boundary: defaults remain off, unsupported CAS blocks writes, and an unchanged
+read cannot close an uncertain operation as no-effect.
 
 ## Current enforcement
 

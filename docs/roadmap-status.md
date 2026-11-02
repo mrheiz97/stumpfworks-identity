@@ -11,7 +11,7 @@ historische Versionsüberschriften in AGENTS.md sind keine neuen offenen Aufgabe
 | Geplante Clientupdates über Adminoberfläche | Für WYSE01 abgeschlossen: Erstauftrag Status1.13.1, Abbruchprobe, Audit, gebundener Rückweg, fünfminütige Stabilität und interaktive Benutzerabnahme bestanden |
 | Zertifikatsstatus/Ablauf/Authentifizierungsmodus in Clientverwaltung | In v1.13.0 veröffentlicht und auf LOGIN01 abgenommen |
 | Wiederverwendbare Zertifikatsprüfer im Framework | Framework v1.2.0 veröffentlicht, Identity umgestellt und als v1.13.0 ausgerollt |
-| AD-Schreibfunktionen | Least-Privilege-/Schutzkonzept, Auditprotokoll und Rückweg mit Offline-/DB-Vertragstests erarbeitet; Runtime-Implementierung und isolierte Samba-Laborabnahme noch offen |
+| AD-Schreibfunktionen | Stufe 1 standardmäßig deaktiviert implementiert; Schutz-, Journal- und isolierte Samba-Tests vorhanden. Positive Runtime-CAS-Abnahme bleibt wegen fehlendem Assertion-Control im Samba-Labor gesperrt; keine Produktivfreigabe |
 | Greeter-Redesign | Noch offen: zuerst lokaler klickbarer HTML-Entwurf, nach visueller Freigabe Python/GTK |
 | Abschließender Webinterface-/UX-Feinschliff | Noch offen, nach den fachlichen Funktionen |
 
@@ -24,9 +24,12 @@ sind einschließlich interaktiver Desktop/VNC-Bestätigung bestanden.
 Die [Aktivierungsabnahme](releases/wyse01-scheduled-updates-acceptance.md) trennt
 den leeren Timerbetrieb ausdrücklich vom ersten echten Update. Danach folgt als
 nächster fachlicher Entwicklungsblock die AD-Administration. Ihr
-[Schutzkonzept](ad-write-security-design.md) ist jetzt erarbeitet. Als Nächstes
-folgen die standardmäßig deaktivierte Stufe-1-Implementierung und isolierte
-Samba-Labortests; keine Produktionsdelegation oder AD-Schreibfreigabe ist erfolgt.
+[Schutzkonzept](ad-write-security-design.md) ist erarbeitet. Auch die
+[Stufe-1-Implementierung mit isoliertem Labor](ad-profile-stage1.md) ist
+vorhanden. Der offene technische Freigabepunkt ist ein nachgewiesenes atomares
+CAS-Schreibverfahren am Backend; Schutztests und Fixture-Rückweg ersetzen diese
+positive Runtime-Abnahme nicht. Keine Produktionsdelegation oder Schreibfreigabe
+ist erfolgt.
 
 Eine Gesamtprozentzahl wäre ohne gewichtete Restumfänge irreführend. Der
 stabile Identity-Kern, die Zertifikatsarbeit und der WYSE01-Updatebetrieb sind

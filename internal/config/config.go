@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	ADProfileSocket                                                                              string
 	UpdateCatalogDirectory, UpdatePublicKeyFile                                                  string
 	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile string
 	ClientAPIListen, ClientAPIEnrollmentListen, ClientAPICAFile, ClientAPICAKeyFile              string
@@ -68,6 +69,8 @@ func Load(path string) (Config, error) {
 			}
 			key, val := section+"."+strings.TrimSpace(p[0]), strings.Trim(strings.TrimSpace(p[1]), `"'`)
 			switch key {
+			case "ad_profiles.executor_socket":
+				c.ADProfileSocket = val
 			case "updates.catalog_directory":
 				c.UpdateCatalogDirectory = val
 			case "updates.public_key_file":
@@ -194,6 +197,7 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_DIRECTORY_BIND_PASSWORD", &c.BindPassword)
 	set("SWBADGE_DIRECTORY_DOMAIN", &c.DirectoryDomain)
 	set("SWBADGE_DIRECTORY_ADMIN_GROUP_DN", &c.DirectoryAdminGroup)
+	set("SWBADGE_AD_PROFILE_SOCKET", &c.ADProfileSocket)
 	set("SWBADGE_DIRECTORY_IDENTITY_OPERATOR_GROUP_DN", &c.DirectoryIdentityOperatorGroup)
 	set("SWBADGE_DIRECTORY_OIDC_OPERATOR_GROUP_DN", &c.DirectoryOIDCOperatorGroup)
 	set("SWBADGE_DIRECTORY_CLIENT_OPERATOR_GROUP_DN", &c.DirectoryClientOperatorGroup)

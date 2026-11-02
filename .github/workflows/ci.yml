@@ -10,6 +10,28 @@ permissions:
   contents: read
 
 jobs:
+  ad-profile-samba:
+    name: Samba guards and fixture rollback (CAS gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build isolated test binary
+        run: |
+          mkdir -p /tmp/ad-profile-tests
+          CGO_ENABLED=0 go test -c -o /tmp/ad-profile-tests/adprofile.test ./internal/adprofile
+          CGO_ENABLED=0 go build -o /tmp/ad-profile-tests/executor ./cmd/ad-profile-executor
+      - name: Build disposable Samba image
+        run: docker build -t identity-ad-profile-lab:ci scripts/ad-profile-lab
+      - name: Test without network or host ports
+        run: |
+          docker run --rm --network none --hostname dc1 \
+            --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+            --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+            --entrypoint sh identity-ad-profile-lab:ci /workspace/scripts/ad-profile-lab/run.sh
   test:
     runs-on: ubuntu-latest
     services:

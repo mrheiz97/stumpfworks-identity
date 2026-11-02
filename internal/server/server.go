@@ -33,6 +33,7 @@ import (
 )
 
 type Server struct {
+	profileSocket         string
 	updateCatalog         clientupdate.Catalog
 	store                 database.ApplicationStore
 	log                   *slog.Logger
@@ -137,6 +138,8 @@ func NewProtected(st database.ApplicationStore, l *slog.Logger, d directory.Dire
 func (s *Server) ConfigureEmergencyAdmin(enabled bool) { s.emergencyAdminEnabled = enabled }
 func (s *Server) Handler() http.Handler                { return s.security(s.adminGuard(s.mux)) }
 func (s *Server) routes() {
+	s.mux.HandleFunc("GET /ad-profiles", s.adProfiles)
+	s.mux.HandleFunc("POST /ad-profiles", s.adProfiles)
 	s.mux.HandleFunc("GET /clients", s.clientCertificatesPage)
 	s.mux.HandleFunc("GET /api/v1/clients/certificates", s.clientCertificatesAPI)
 	s.mux.HandleFunc("GET /client-updates", s.clientUpdatesPage)
@@ -193,6 +196,9 @@ func (s *Server) routes() {
 }
 func (s *Server) adminGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ad-profiles" {
+			r.Body = http.MaxBytesReader(w, r.Body, 8192)
+		}
 		if strings.HasPrefix(r.URL.Path, "/client-updates") {
 			r.Body = http.MaxBytesReader(w, r.Body, 4096)
 		}

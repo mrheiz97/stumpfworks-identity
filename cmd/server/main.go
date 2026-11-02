@@ -43,6 +43,10 @@ func main() {
 		slog.Error("configuration failed", "error", e)
 		os.Exit(1)
 	}
+	if cfg.ADProfileSocket != "" && (!cfg.DirectoryEnabled || cfg.Demo || cfg.DirectoryCertSHA256 != "" || cfg.TLSCertFile == "" || cfg.TLSKeyFile == "") {
+		slog.Error("AD profile editing requires protected verified directory and HTTPS")
+		os.Exit(1)
+	}
 	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, IdentityOperatorGroupDN: cfg.DirectoryIdentityOperatorGroup, OIDCOperatorGroupDN: cfg.DirectoryOIDCOperatorGroup, ClientOperatorGroupDN: cfg.DirectoryClientOperatorGroup, AuditorGroupDN: cfg.DirectoryAuditorGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
 	metricsRegistry := frameworkmetrics.New()
 	var directoryObserver frameworkldap.Observer
@@ -168,6 +172,10 @@ func main() {
 			os.Exit(1)
 		}
 		srv = app.New(st, log)
+	}
+	if e = srv.ConfigureADProfiles(cfg.ADProfileSocket); e != nil {
+		log.Error("AD profile endpoint configuration failed")
+		os.Exit(1)
 	}
 	srv.ConfigureEmergencyAdmin(cfg.EmergencyAdminEnabled)
 	if cfg.UpdateCatalogDirectory != "" {

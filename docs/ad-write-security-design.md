@@ -1,5 +1,10 @@
 # AD-Schreibfunktionen: Least Privilege und Schutzkonzept
 
+Fortschreibung: Die standardmäßig deaktivierte Stufe-1-Implementierung ist auf
+development vorhanden. [Implementierung, Sicherheitsreview und Nachweise](ad-profile-stage1.md)
+trennen bestandene Schutz-/Journaltests von der weiterhin gesperrten positiven
+Samba-CAS-Abnahme. Der folgende Text bleibt die ursprüngliche Designgrundlage.
+
 Stand: 2. November 2026. Entwicklungsentscheidung und testbarer Protokollentwurf,
 **keine implementierte AD-Schreibfunktion oder Betriebsfreigabe**. Nur development;
 keine Verbindung zu Produktivsystemen, keine Delegation, Konten, Migrationen oder

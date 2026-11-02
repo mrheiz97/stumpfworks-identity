@@ -109,6 +109,7 @@ docs/                Architecture, API, security and operations guides
 - [Installation](docs/installation.md)
 - [Security model](docs/security.md)
 - [AD write security design and validation gates](docs/ad-write-security-design.md)
+- [Stage-1 AD profile implementation, CAS gate and rollback evidence](docs/ad-profile-stage1.md)
 - [Administrative roles and permissions](docs/roles-and-permissions.md)
 - [Administrative role rollout and rollback](docs/roles-rollout.md)
 - [Time-limited emergency administration](docs/emergency-admin.md)
