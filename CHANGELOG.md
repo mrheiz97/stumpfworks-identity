@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.1] - 2026-11-02
+
+Release and rollout boundaries: [v1.13.1](docs/releases/v1.13.1.md).
+
+- Preserve safe shared configuration-directory permissions in the VNC password
+  helper; reject unsafe/symlink targets and disable both VNC IPv6 listeners.
+- Add actual Unix permission regression contracts and a root-controlled Stable
+  catalog deployment profile, plus checked worker/timer operational records.
+- Prepare and rehearse a status-only scheduled update with the original v1.13.0
+  worker, actual signed bytes, cancellation, health failure and exact rollback.
+- No new schema, authentication mode, Framework dependency or automatic rollout.
+
 ## [1.13.0] - 2026-11-01
 
 Release and rollback boundaries: [v1.13.0](docs/releases/v1.13.0.md).

@@ -62,6 +62,19 @@ jobs:
         run: |
           python3 -m py_compile cmd/native-greeter/sw-badge-native-greeter.py
           python3 -m py_compile scripts/swbadge-sqlite-backup.py scripts/swbadge-postgres-backup.py
+          python3 -m py_compile scripts/prepare-wyse01-update-worker.py
+      - name: VNC password helper permission contract
+        run: sudo python3 scripts/test-vnc-password-helper.py
+      - name: Update catalog permission contract
+        run: sudo python3 scripts/test-update-catalog-permissions.py
+      - name: Scheduled update unit validation
+        run: |
+          mkdir -p /tmp/identity-unit-check
+          cp deploy/systemd/swbadge-client-updates.service deploy/systemd/swbadge-client-updates.timer /tmp/identity-unit-check/
+          # The release binary is not installed in CI. Ignore only the missing
+          # executable; retain all real unit directives and dependency checks.
+          sed -i 's|^ExecStart=/usr/local/sbin/sw-badge-client-update-worker$|ExecStart=/usr/bin/true|' /tmp/identity-unit-check/swbadge-client-updates.service
+          systemd-analyze verify /tmp/identity-unit-check/swbadge-client-updates.service /tmp/identity-unit-check/swbadge-client-updates.timer
       - name: Shell syntax
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 sh -n
       - name: Whitespace

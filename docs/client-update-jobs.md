@@ -1,5 +1,11 @@
 # Scheduled client updates
 
+WYSE01 deployment preparation (worker, empty Stable catalog, timer and recovery):
+[local preparation and maintenance plan](releases/wyse01-scheduled-updates-preparation.md).
+The already installed v1.13.0 is not a valid new scheduled update on that client.
+[Production activation acceptance](releases/wyse01-scheduled-updates-acceptance.md)
+records the separately approved empty-catalog worker/timer deployment.
+
 The opt-in control plane adds the protected **Client updates** page and a
 separate oneshot worker. Installation uses the existing signed verifier,
 fixed targets, staging, health checks, automatic rollback and recovery.
@@ -30,9 +36,15 @@ approval by removing the entry and restarting through the approved deployment
 workflow. Existing jobs keep their pinned hashes; already-started jobs can still
 report results after withdrawal.
 
+Keep the catalog and every ancestor directory root-controlled. A root-owned
+catalog below a service-writable parent can still be renamed/replaced by that
+service. On LOGIN01 use `/var/lib/stumpfworks-badge-releases`, root:swbadge0750,
+with root:swbadge0640 approval/package/key files; grant only the actual service's
+read access. Set final modes explicitly after mkdir when using umask077.
+
 ```yaml
 updates:
-  catalog_directory: /var/lib/stumpfworks-badge/releases
+  catalog_directory: /var/lib/stumpfworks-badge-releases
   public_key_file: /etc/stumpfworks-badge/update-stable.pub
 ```
 

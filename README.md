@@ -100,6 +100,9 @@ docs/                Architecture, API, security and operations guides
 
 ## Documentation
 
+- [Current roadmap status](docs/roadmap-status.md)
+- [Scheduled client updates](docs/client-update-jobs.md)
+
 - [StumpfWorks Access OIDC integration](docs/oidc-access.md)
 
 - [Architecture](docs/architecture.md)
