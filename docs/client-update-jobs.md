@@ -1,5 +1,9 @@
 # Scheduled client updates
 
+WYSE01 deployment preparation (worker, empty Stable catalog, timer and recovery):
+[local preparation and maintenance plan](releases/wyse01-scheduled-updates-preparation.md).
+The already installed v1.13.0 is not a valid new scheduled update on that client.
+
 The opt-in control plane adds the protected **Client updates** page and a
 separate oneshot worker. Installation uses the existing signed verifier,
 fixed targets, staging, health checks, automatic rollback and recovery.
