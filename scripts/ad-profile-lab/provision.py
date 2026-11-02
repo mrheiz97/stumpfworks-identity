@@ -23,7 +23,7 @@ base = str(sam.domain_dn())
 ou = "OU=Managed," + base
 sam.create_ou(ou)
 sam.create_ou("OU=Outside," + base)
-for name in ("writer", "operator", "ordinary", "privileged", "outside", "nested"):
+for name in ("writer", "operator", "ordinary", "privileged", "outside", "nested", "casprobe"):
     sam.newuser(name, password, userou="OU=Outside" if name in ("writer", "operator", "outside") else "OU=Managed")
 sam.newgroup("Profile Operators")
 sam.add_remove_group_members("Profile Operators", ["operator"], add_members_operation=True)
@@ -38,10 +38,10 @@ def entry(name):
 writer = entry("writer")
 writer_sid = str(ndr_unpack(security.dom_sid, writer["objectSid"][0]))
 targets = {}
-for name in ("ordinary", "privileged", "outside", "nested"):
+for name in ("ordinary", "privileged", "outside", "nested", "casprobe"):
     user = entry(name)
     targets[name] = bytes(user["objectGUID"][0]).hex()
-    if name != "ordinary":
+    if name not in ("ordinary", "casprobe"):
         continue
     sd = sam.search(base=user.dn, scope=ldb.SCOPE_BASE, attrs=["nTSecurityDescriptor"])[0]
     desc = ndr_unpack(security.descriptor, sd["nTSecurityDescriptor"][0])

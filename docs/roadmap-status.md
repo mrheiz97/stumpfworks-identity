@@ -31,6 +31,11 @@ CAS-Schreibverfahren am Backend; Schutztests und Fixture-Rückweg ersetzen diese
 positive Runtime-Abnahme nicht. Keine Produktionsdelegation oder Schreibfreigabe
 ist erfolgt.
 
+Die [Samba-CAS-Untersuchung](samba-cas-research.md) hat begrenztes atomares
+Wert-CAS demonstriert, aber ABA-/Objektversionslücken und ein Criticality-
+Kodierungsproblem nachgewiesen. Damit ist noch kein sicherer Ersatz für den
+geforderten Runtime-Vertrag freigegeben; die CAS-Sperre bleibt unverändert.
+
 Eine Gesamtprozentzahl wäre ohne gewichtete Restumfänge irreführend. Der
 stabile Identity-Kern, die Zertifikatsarbeit und der WYSE01-Updatebetrieb sind
 fertig; offen sind drei größere Funktions-/Gestaltungsblöcke.
