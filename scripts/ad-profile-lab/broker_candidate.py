@@ -18,7 +18,6 @@ from samba.param import LoadParm
 from samba.samdb import SamDB
 
 DB = "/tmp/profile-domain/private/sam.ldb"
-JOURNAL = "/tmp/profile-broker-research/journal.db"
 FIELDS = ("displayName", "givenName", "sn", "mail")
 FLAGS = auth.AUTH_SESSION_INFO_DEFAULT_GROUPS | auth.AUTH_SESSION_INFO_AUTHENTICATED | auth.AUTH_SESSION_INFO_SIMPLE_PRIVILEGES
 
@@ -72,16 +71,23 @@ def modify(db, dn, values):
     db.modify(msg)
 
 
+def journal_path():
+    case = os.environ.get("IDENTITY_BROKER_CASE", "")
+    if not re.fullmatch(r"[0-9a-f]{32}", case):
+        raise Denied("isolated test case required")
+    return "/tmp/profile-broker-research/" + case + "/journal.db"
+
+
 def journal_open():
-    db = sqlite3.connect(JOURNAL, timeout=3)
+    db = sqlite3.connect(journal_path(), timeout=3)
     db.execute("PRAGMA synchronous=FULL")
     return db
 
 
 def initialize_journal():
-    os.umask(0o077); os.mkdir(os.path.dirname(JOURNAL), 0o700)
+    os.umask(0o077); os.makedirs(os.path.dirname(journal_path()), mode=0o700)
     with journal_open() as db:
-        db.executescript("CREATE TABLE operations(id TEXT PRIMARY KEY,digest TEXT,state TEXT); CREATE TABLE audit(id TEXT,event TEXT,actor TEXT,target TEXT,attributes TEXT);")
+        db.executescript("CREATE TABLE operations(id TEXT PRIMARY KEY,digest TEXT,state TEXT,target TEXT); CREATE UNIQUE INDEX one_uncertain_target ON operations(target) WHERE state='applying'; CREATE TABLE audit(id TEXT,event TEXT,actor TEXT,target TEXT,attributes TEXT);")
 
 
 def record(request, actor, state, initial=False):
@@ -95,7 +101,9 @@ def record(request, actor, state, initial=False):
                 if previous[0] != digest:
                     raise Denied("idempotency conflict")
                 return previous[1]
-            db.execute("INSERT INTO operations VALUES(?,?,'applying')", (request["id"], digest))
+            if db.execute("SELECT 1 FROM operations WHERE target=? AND state='applying'", (request["target"],)).fetchone():
+                raise Denied("target has an uncertain operation")
+            db.execute("INSERT INTO operations VALUES(?,?,'applying',?)", (request["id"], digest, request["target"]))
         else:
             changed = db.execute("UPDATE operations SET state=? WHERE id=? AND digest=? AND state='applying'", (state, request["id"], digest)).rowcount
             if changed != 1:

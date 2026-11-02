@@ -111,12 +111,12 @@ im bestehenden Labor. Die 18 Brokerverträge sind echte DSDB-/LDAP-/Prozessprobe
 | --- | --- |
 | 01: Profiländerung, neuer Gegenauftrag und Wiederholung | Erfolg; erledigte ID ändert weder Werte noch USN erneut |
 | 02: ABA und fremde Attributänderung | Erwartete Objektversion wird abgewiesen; fremder Wert bleibt erhalten |
-| 03: Zwei unabhängige Brokerprozesse | Eine Version, genau ein Erfolg und ein Versionskonflikt |
+| 03: Zwei unabhängige Brokerprozesse | Genau ein Erfolg; zweiter Aufruf durch offenen Zielclaim oder Versionskonflikt abgewiesen. Nach Abschluss wird die alte Version mit neuer ID ausdrücklich als Konflikt abgewiesen |
 | 04: Verbotene Attribute und fremde OU | Echte DSDB-ACL liefert 50; vorangehende Profiländerung wird durch Transaktionsabbruch verworfen |
 | 05: Request-/Identitätsmanipulation | Zusätzliche Felder, falsche GUID/SID/Domain/DC und fremdes Attribut abgewiesen |
 | 06: Passwort und Operatorrolle | Falsches Passwort beziehungsweise gültiger Nichtoperator nicht zugelassen |
 | 07: Rollenentzug | Vorbereiteter Aufruf nach Entfernen der Operator-Mitgliedschaft abgewiesen; Mitgliedschaft wiederhergestellt |
-| 08: Echter Prozessabbruch vor/nach Commit | Vor Commit bleiben Zielwerte und Version unverändert; nach Commit bleibt die Wirkung erhalten. In beiden Fällen keine Wiederholung des Claims |
+| 08: Echter Prozessabbruch vor/nach Commit | Vor Commit bleiben Zielwerte und Version unverändert; nach Commit bleibt die Wirkung erhalten. In beiden Fällen weder Wiederholung des Claims noch neuer Auftrag auf dem unklaren Ziel |
 | 09: Idempotenz und Auditinhalt | Gleiche ID mit anderem Inhalt oder Actor abgewiesen; Audit ohne Passwort und Profilwerte |
 | 10: Externer LDAP-Schreiber | Bereits angemeldeter unabhängiger Prozess wird während der lokalen Transaktion blockiert und schließt erst danach ab |
 | 11: Entzug der konkreten Write-Property-ACEs | Auch bei neu gelesenem Versionsstand LDAP 50; Descriptor bytegenau zurückgesetzt und Rechte wieder wirksam |
@@ -151,6 +151,11 @@ Die Probe behauptet keine gemeinsame ACID-Transaktion über beide Systeme.
 Ein Verlust nach Claim, ein Fehler beim Commit beziehungsweise seiner Bestätigung
 oder ein Prozessabbruch nach Commit dürfen keinen automatischen zweiten
 Schreibaufruf auslösen. Ein hinterlassenes `applying` bleibt in der Probe unklar.
+Ein eindeutiger Index und die Claim-Transaktion sperren auch andere Operations-IDs
+für dasselbe unklare Ziel. Die Tests verwenden getrennte private Journal-
+Namespaces pro Fall; alte unklare Claims bleiben unverändert erhalten. Diese
+Testisolation ist keine Entsperrung oder Reconciliation. Ein produktiver Client
+dürfte weder Journalpfad noch Namespace wählen.
 Nur ein bestätigter Abbruch vor Commit wird als `failed_no_effect` abgeschlossen.
 Ein unveränderter späterer Lesestand allein entsperrt keinen alten Claim.
 Die vorhandenen Identity-Regeln für externe Schreibvorgänge bleiben maßgeblich.

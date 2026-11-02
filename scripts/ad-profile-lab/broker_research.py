@@ -14,7 +14,7 @@ from samba.dcerpc import security
 from samba.ndr import ndr_pack, ndr_unpack
 import re
 
-from broker_candidate import Candidate, Conflict, Denied, DB, FIELDS, JOURNAL, fixture, initialize_journal, loadparm, modify, one, text
+from broker_candidate import Candidate, Conflict, Denied, DB, FIELDS, fixture, initialize_journal, journal_path, loadparm, modify, one, text
 
 
 def worker(request, result, start=None, fault=None):
@@ -27,6 +27,8 @@ def worker(request, result, start=None, fault=None):
             result.put(value)
     except Conflict:
         result.put("conflict")
+    except Denied:
+        result.put("blocked")
     except Exception:
         if result is not None:
             result.put("unexpected-error")
@@ -45,7 +47,7 @@ def ldap_writer(ready, start, entered, done, result):
 class BrokerResearch(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.data = fixture(); initialize_journal()
+        cls.data = fixture()
         cls.root = SamDB(url=DB, lp=loadparm(), session_info=auth.system_session(loadparm()))
         cls.target = one(cls.root, cls.data["Config"]["ManagedOU"], "(sAMAccountName=casprobe)", None, ldb.SCOPE_ONELEVEL)
         cls.original = {a: list(cls.target.get(a, [])) for a in FIELDS}
@@ -59,8 +61,15 @@ class BrokerResearch(unittest.TestCase):
         print("Broker research: original four profile values restored; object versions/history retained", flush=True)
 
     def setUp(self):
+        self.new_case()
         modify(self.root, self.target.dn, {"displayName": ["Broker-Baseline"], "givenName": []})
         self.candidate = Candidate()
+
+    def new_case(self):
+        # Separate namespaces are test isolation, never reconciliation. Old
+        # journals (including applying claims) remain unchanged until container removal.
+        os.environ["IDENTITY_BROKER_CASE"]=uuid.uuid4().hex
+        initialize_journal()
 
     def request(self, value="Broker-After"):
         return dict(self.candidate.snapshot(), id=uuid.uuid4().hex, changes={"displayName": [value]})
@@ -95,8 +104,10 @@ class BrokerResearch(unittest.TestCase):
             for p in processes: p.start()
             start.set()
             values = [result.get(timeout=15), result.get(timeout=15)]
-            self.assertCountEqual(values, ["succeeded", "conflict"])
+            self.assertEqual(values.count("succeeded"),1)
+            self.assertEqual(sum(v in ("conflict","blocked") for v in values),1)
             for p in processes: p.join(10); self.assertEqual(p.exitcode, 0)
+            with self.assertRaises(Conflict):self.call(dict(first,id=uuid.uuid4().hex))
         finally:
             for p in processes:
                 if p.is_alive(): p.kill(); p.join(5)
@@ -143,6 +154,7 @@ class BrokerResearch(unittest.TestCase):
 
     def test_08_crash_before_commit_and_lost_result_after_commit(self):
         for fault, code, value in (("before_commit", 73, "Broker-Baseline"), ("after_commit", 74, "Crash-After")):
+            self.new_case()
             request = self.request("Crash-After")
             process = self.mp.Process(target=worker, args=(request, None), kwargs={"fault": fault})
             try:
@@ -156,14 +168,15 @@ class BrokerResearch(unittest.TestCase):
             version = text(self.row(), "uSNChanged")
             self.assertEqual(self.call(request), "applying")
             self.assertEqual(text(self.row(), "uSNChanged"), version)
-            with sqlite3.connect(JOURNAL) as journal:
+            with self.assertRaises(Denied):self.call(self.request())
+            with sqlite3.connect(journal_path()) as journal:
                 self.assertEqual(journal.execute("SELECT state FROM operations WHERE id=?", (request["id"],)).fetchone()[0], "applying")
 
     def test_09_idempotency_conflict_and_audit_no_values(self):
         request = self.request("Profile-value-not-in-audit"); self.call(request)
         with self.assertRaises(Denied): self.call(dict(request, changes={"displayName": ["Different"]}))
         with self.assertRaises(Denied): self.candidate.execute(request,"ordinary",self.data["Password"])
-        with sqlite3.connect(JOURNAL) as journal:
+        with sqlite3.connect(journal_path()) as journal:
             audit = repr(journal.execute("SELECT * FROM audit WHERE id=?", (request["id"],)).fetchall())
             self.assertNotIn("Profile-value-not-in-audit", audit)
             self.assertNotIn(self.data["Password"], audit)
@@ -236,6 +249,7 @@ class BrokerResearch(unittest.TestCase):
         self.assertEqual(text(self.row(),"displayName"),"Commit-ack-lost")
         version=text(self.row(),"uSNChanged")
         self.assertEqual(self.call(request),"applying")
+        with self.assertRaises(Denied):self.call(self.request())
         self.assertEqual(text(self.row(),"uSNChanged"),version)
 
     def test_16_disabled_writer_and_pinned_identity(self):
