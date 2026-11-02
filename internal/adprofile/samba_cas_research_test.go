@@ -18,31 +18,18 @@ import (
 	ldap "github.com/go-ldap/ldap/v3"
 )
 
-// Test-only wire probe. Generic BER Boolean TRUE=01 is not LDAP TRUE=FF.
-type ldapCriticalProbe struct{ *ldap.ControlString }
-
 func TestCASResearchCriticalityWireFormat(t *testing.T) {
 	generic := ldap.NewControlString(assertionOID, true, "synthetic-filter")
 	if !reflect.DeepEqual(generic.Encode().Children[1].Bytes(), []byte{1, 1, 1}) {
 		t.Fatal("pinned generic encoder changed: review CAS research")
 	}
-	strict := ldapCriticalProbe{generic}
+	strict := newCriticalControl(generic.ControlType, generic.ControlValue)
 	if !reflect.DeepEqual(strict.Encode().Children[1].Bytes(), []byte{1, 1, 255}) {
 		t.Fatal("test LDAP TRUE must be FF")
 	}
-	if strict.GetControlType() != assertionOID || strict.ControlValue != generic.ControlValue {
+	if strict.GetControlType() != assertionOID || string(strict.Encode().Children[2].Data.Bytes()) != generic.ControlValue {
 		t.Fatal("wire probe changed OID/filter")
 	}
-}
-
-func (c ldapCriticalProbe) Encode() *ber.Packet {
-	p := ber.Encode(ber.ClassUniversal, ber.TypeConstructed, ber.TagSequence, nil, "Control")
-	p.AppendChild(ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, c.ControlType, "OID"))
-	p.AppendChild(ber.NewLDAPBoolean(ber.ClassUniversal, ber.TypePrimitive, ber.TagBoolean, true, "Criticality"))
-	if c.ControlValue != "" {
-		p.AppendChild(ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, c.ControlValue, "Value"))
-	}
-	return p
 }
 
 // Raw, bounded lab-only exchange distinguishes Samba's ExtendedResponse from
@@ -227,7 +214,7 @@ func TestSambaCASResearch(t *testing.T) {
 			t.Fatal("generic 01 observation changed: review required")
 		}
 		beforeStrict := read(t)
-		strict := ldapCriticalProbe{control}
+		strict := newCriticalControl(control.ControlType, control.ControlValue)
 		if !reflect.DeepEqual(strict.Encode().Children[1].Bytes(), []byte{1, 1, 255}) {
 			t.Fatal("LDAP true encoding incorrect")
 		}
@@ -382,7 +369,7 @@ func TestSambaCASResearch(t *testing.T) {
 	})
 	t.Run("permissive_modify_destroys_guard", func(t *testing.T) {
 		reset(t)
-		controls := []ldap.Control{ldapCriticalProbe{ldap.NewControlString("1.2.840.113556.1.4.1413", true, "")}}
+		controls := []ldap.Control{newCriticalControl("1.2.840.113556.1.4.1413", "")}
 		req := ldap.NewModifyRequest(original.DN, controls)
 		req.Delete("displayName", []string{"wrong-old"})
 		req.Replace("displayName", []string{"unsafe-overwrite"})

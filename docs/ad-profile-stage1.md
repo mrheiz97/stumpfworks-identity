@@ -1,9 +1,9 @@
 # AD-Profilbearbeitung Stufe 1: Entwicklungsstand und Betriebsgrenzen
 
-Fortschreibung: Die [Samba-CAS-Untersuchung](samba-cas-research.md) weist die
-Grenzen des Wert-CAS und ein Criticality-Drahtformatproblem der gepinnten
-Clientkodierung nach. Die Runtime bleibt unverändert gesperrt; insbesondere
-bedeutet ein Go-`Criticality=true` noch keinen nachgewiesenen LDAP-FF-Vertrag.
+Fortschreibung: Nach der [Samba-CAS-Untersuchung](samba-cas-research.md) wurde die
+[Criticality-Kodierung in Identity auf FF korrigiert](ldap-criticality-fix.md).
+Die Runtime bleibt gesperrt: Ein korrekter Clientencoder ersetzt den weiterhin
+fehlenden positiven Nachweis der serverseitigen CAS-Semantik nicht.
 
 Stand: 2. November 2026. Implementierung auf development, standardmäßig aus.
 Keine Veröffentlichung, Installation, Produktionsverbindung oder Delegation;
@@ -60,8 +60,8 @@ einem verifiziertem LDAPS-Endpunkt, ohne Referral-Following oder DC-Failover.
 Die kritische Domain-Scope-Suchkontrolle verhindert das Ausweichen auf andere
 Naming Contexts. Vor jedem Schreiben werden Zielschutz und Snapshot erneut
 geprüft; die Modifikation bereitet eine als kritisch markierte Assertion auf GUID
-und uSNChanged vor. Ihre korrekte LDAP-Drahtkodierung und Backendsemantik sind
-nach dem genannten Laborbefund ausdrücklich noch nicht freigegeben.
+und uSNChanged vor. Die LDAP-FF-Drahtkodierung ist jetzt geprüft; die positive
+Backendsemantik bleibt nach dem genannten Laborbefund ausdrücklich gesperrt.
 
 Eine Zielassertion serialisiert keine externe Privilegierungsänderung im
 gesamten Gruppengraphen. Enge effektive ACLs, ein isoliertes Verwaltungssegment

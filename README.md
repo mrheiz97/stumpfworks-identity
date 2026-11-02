@@ -111,6 +111,7 @@ docs/                Architecture, API, security and operations guides
 - [AD write security design and validation gates](docs/ad-write-security-design.md)
 - [Stage-1 AD profile implementation, CAS gate and rollback evidence](docs/ad-profile-stage1.md)
 - [Samba atomic CAS investigation and measured limitations](docs/samba-cas-research.md)
+- [LDAP FF-criticality correction and unchanged CAS gate](docs/ldap-criticality-fix.md)
 - [Administrative roles and permissions](docs/roles-and-permissions.md)
 - [Administrative role rollout and rollback](docs/roles-rollout.md)
 - [Time-limited emergency administration](docs/emergency-admin.md)

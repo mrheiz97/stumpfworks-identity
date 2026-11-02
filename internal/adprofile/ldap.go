@@ -73,7 +73,7 @@ func (d *LDAP) connect(ctx context.Context) (*ldap.Conn, error) {
 func search(c *ldap.Conn, base string, scope int, filter string, attrs []string) ([]*ldap.Entry, error) {
 	var controls []ldap.Control
 	if scope == ldap.ScopeWholeSubtree {
-		controls = []ldap.Control{ldap.NewControlString("1.2.840.113556.1.4.1339", true, "")}
+		controls = []ldap.Control{newCriticalControl("1.2.840.113556.1.4.1339", "")}
 	}
 	r, e := c.Search(ldap.NewSearchRequest(base, scope, ldap.NeverDerefAliases, 128, 5, false, filter, attrs, controls))
 	if e != nil || len(r.Referrals) > 0 || len(r.Entries) > 100 {
@@ -231,7 +231,7 @@ func (d *LDAP) Modify(ctx context.Context, actor string, before Snapshot, change
 	if e != nil {
 		return ErrDenied
 	}
-	req := ldap.NewModifyRequest(before.DN, []ldap.Control{ldap.NewControlString(assertionOID, true, string(encoded.Bytes()))})
+	req := ldap.NewModifyRequest(before.DN, []ldap.Control{newCriticalControl(assertionOID, string(encoded.Bytes()))})
 	for a, v := range changes {
 		req.Replace(a, v)
 	}

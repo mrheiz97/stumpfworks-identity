@@ -36,6 +36,10 @@ Wert-CAS demonstriert, aber ABA-/Objektversionslücken und ein Criticality-
 Kodierungsproblem nachgewiesen. Damit ist noch kein sicherer Ersatz für den
 geforderten Runtime-Vertrag freigegeben; die CAS-Sperre bleibt unverändert.
 
+Die [Identity-Criticality-Kodierung ist inzwischen auf FF korrigiert](ldap-criticality-fix.md)
+und wird am Draht sowie im Samba-Labor geprüft. Offen bleibt die positive
+serverseitige CAS-Abnahme; dadurch entsteht keine Schreib- oder Produktivfreigabe.
+
 Eine Gesamtprozentzahl wäre ohne gewichtete Restumfänge irreführend. Der
 stabile Identity-Kern, die Zertifikatsarbeit und der WYSE01-Updatebetrieb sind
 fertig; offen sind drei größere Funktions-/Gestaltungsblöcke.

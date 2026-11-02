@@ -1,5 +1,10 @@
 # Samba-CAS: Laboruntersuchung und Entscheidung
 
+Fortschreibung: Die [Criticality-Korrektur](ldap-criticality-fix.md) verwendet nun
+einen lokalen FF-Encoder an beiden betroffenen Identity-Runtime-Aufrufstellen.
+Die FF-Laborproben nutzen denselben Adapter; der folgende Untersuchungsstand
+beschreibt den vorherigen Befund. Die CAS-Sperre bleibt unverändert bestehen.
+
 Stand: 2. November 2026. Ausschließlich development, synthetisches isoliertes
 Labor. Keine Produktivverbindung, keine Produktivmutation, MOBILE01 ausgeschlossen.
 **Die Runtime und ihre CAS-Sperre bleiben unverändert.** Änderungen beschränken
