@@ -30,8 +30,10 @@ func (r *releaseRehearsalHealth) Run(_ context.Context, name string, args ...str
 	if name != "systemctl" {
 		r.t.Fatalf("unexpected command: %s", name)
 	}
-	if strings.Contains(strings.Join(args, " "), "lightdm") && len(args) > 0 && args[0] != "is-active" {
-		r.t.Fatal("display mutation requested")
+	switch strings.Join(args, " ") {
+	case "start swbadge-client-status.service", "is-active swbadge-client-status.timer", "is-active lightdm.service":
+	default:
+		r.t.Fatalf("unexpected service action: %v", args)
 	}
 	if strings.Join(args, " ") == "start swbadge-client-status.service" {
 		r.statusStarts++
@@ -83,6 +85,14 @@ func TestPreparedWYSE01ReleaseThroughScheduledWorker(t *testing.T) {
 	}
 	if verified.Manifest.ReleaseVersion != "1.13.1" || verified.Manifest.Channel != "stable" || verified.Manifest.MinimumVersion != "1.13.0" || len(verified.Files) != 1 || verified.Files[0] != "sw-badge-client-status" {
 		t.Fatal("unexpected signed package scope")
+	}
+	catalog, err := clientupdate.LoadCatalog(filepath.Join(dir, "catalog"), keyFile)
+	if err != nil || len(catalog) != 1 {
+		t.Fatal("actual catalog proposal rejected", err)
+	}
+	approved := catalog["wyse01-status-1_13_1"]
+	if !bytes.Equal(approved.Package, raw) || approved.RequiresMaintenance {
+		t.Fatal("catalog bytes/scope do not match prepared package")
 	}
 	for _, tc := range []struct{ arch, current string }{{"linux-amd64", "1.13.1"}, {"linux-amd64", "1.14.0"}, {"linux-amd64", "1.12.2"}, {"linux-arm64", "1.13.0"}} {
 		if _, e := clientupdate.VerifyPackageBytes(raw, key, tc.arch, tc.current); e == nil {
@@ -152,6 +162,13 @@ func TestPreparedWYSE01ReleaseThroughScheduledWorker(t *testing.T) {
 			}
 			if !found || !cancelled {
 				t.Fatal("job lifecycle mismatch", jobs)
+			}
+			wantStarts := 1
+			if failure {
+				wantStarts = 2
+			}
+			if runner.statusStarts != wantStarts {
+				t.Fatal("health/recovery invocation mismatch", runner.statusStarts)
 			}
 			rollback := filepath.Join(root, "var/backups/stumpfworks-badge/job-rehearsal-executed-0001")
 			if _, err := clientupdate.VerifyRollback(root, rollback); err != nil {
