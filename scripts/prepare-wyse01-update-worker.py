@@ -42,7 +42,7 @@ def prepare():
             "id": "wyse01-v1130-status-updater",
             "sha256": sources["verification-catalog/wyse01-v1130-status-updater.zip"][1],
         }], indent=2) + "\n").encode(),
-        "server/updates.yaml.fragment": b"updates:\n  catalog_directory: /var/lib/stumpfworks-badge/releases\n  public_key_file: /etc/stumpfworks-badge/update-stable.pub\n",
+        "server/updates.yaml.fragment": b"updates:\n  catalog_directory: /var/lib/stumpfworks-badge-releases\n  public_key_file: /etc/stumpfworks-badge/update-stable.pub\n",
     })
     # Create-only output prevents silently overwriting a previously reviewed kit.
     OUTPUT.mkdir(parents=True, exist_ok=False)

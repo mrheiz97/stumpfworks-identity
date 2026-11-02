@@ -65,6 +65,8 @@ jobs:
           python3 -m py_compile scripts/prepare-wyse01-update-worker.py
       - name: VNC password helper permission contract
         run: sudo python3 scripts/test-vnc-password-helper.py
+      - name: Update catalog permission contract
+        run: sudo python3 scripts/test-update-catalog-permissions.py
       - name: Scheduled update unit validation
         run: |
           mkdir -p /tmp/identity-unit-check

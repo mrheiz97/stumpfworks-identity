@@ -8,7 +8,7 @@ historische Versionsüberschriften in AGENTS.md sind keine neuen offenen Aufgabe
 | Linux-Anmeldung, Self-Service, OIDC/Access, Rollen, Passkeys, Notfallzugang | Implementiert, veröffentlicht und im vereinbarten Umfang abgenommen |
 | PostgreSQL, Audit, Observability | Produktiv abgeschlossen |
 | Geräteauthentifizierung WYSE01 | Enrollment/Renewal/mTLS und Pflichtmodus abgenommen; MOBILE01 ausgeschlossen |
-| Geplante Clientupdates über Adminoberfläche | Software, Migration7 und Tests in v1.13.0 veröffentlicht; Server produktiv. Status/Updater auf WYSE01 abgenommen. Worker/Katalog/Timer lokal vorbereitet; Produktivaktivierung und erster geplanter neuer Releaseauftrag offen |
+| Geplante Clientupdates über Adminoberfläche | Software/Migration7 in v1.13.0 veröffentlicht; Server und WYSE01-Status/Updater produktiv. Worker, leerer Stable-Katalog und Timer im freigegebenen Fenster aktiviert; erster geplanter neuer Releaseauftrag noch offen |
 | Zertifikatsstatus/Ablauf/Authentifizierungsmodus in Clientverwaltung | In v1.13.0 veröffentlicht und auf LOGIN01 abgenommen |
 | Wiederverwendbare Zertifikatsprüfer im Framework | Framework v1.2.0 veröffentlicht, Identity umgestellt und als v1.13.0 ausgerollt |
 | AD-Schreibfunktionen | Noch offen: zuerst Least-Privilege-Konzept, Schutz privilegierter Konten, Audit und Rückweg; keine AD-Schreibfreigabe aus diesem Auftrag |
@@ -17,12 +17,12 @@ historische Versionsüberschriften in AGENTS.md sind keine neuen offenen Aufgabe
 
 Wir stehen am **Betriebsabschluss der geplanten Clientupdates**. Die beiden danach
 genannten Zertifikatsschritte sind bereits erledigt. Nächster Betriebsschritt ist
-die gesondert freizugebende Worker-/Katalog-/Timeraktivierung auf WYSE01 und
-LOGIN01, anschließend ein erster echter Auftrag mit einem neueren freigegebenen
+ein erster echter Auftrag mit einem neueren freigegebenen
 Stable-Release. Die installierte v1.13.0 wird nicht als Test erneut installiert.
-Die [Vorbereitung](releases/wyse01-scheduled-updates-preparation.md) trennt diese
-Abnahmen ausdrücklich. Danach folgt als nächster fachlicher Entwicklungsblock
-die AD-Administration; diese wird hier nicht begonnen.
+Die [Aktivierungsabnahme](releases/wyse01-scheduled-updates-acceptance.md) trennt
+den leeren Timerbetrieb ausdrücklich vom ersten echten Update. Danach folgt als
+nächster fachlicher Entwicklungsblock die AD-Administration; diese wird hier
+nicht begonnen.
 
 Eine Gesamtprozentzahl wäre ohne gewichtete Restumfänge irreführend. Der
 stabile Identity-Kern und die Zertifikatsarbeit sind fertig; offen sind der

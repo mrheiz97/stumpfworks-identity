@@ -1,7 +1,10 @@
 # WYSE01: Worker, Stable-Katalog und Timer vorbereiten
 
-Stand: 2. November 2026. **Lokale Vorbereitung, keine Produktivaktivierung.**
-In dieser Phase wurden weder LOGIN01 noch WYSE01 oder MOBILE01 kontaktiert.
+Historische Vorbereitung vom 2. November 2026; die anschließend separat
+freigegebene [Aktivierung und Abnahme](wyse01-scheduled-updates-acceptance.md)
+ist gesondert dokumentiert. In der Vorbereitungsphase wurden weder LOGIN01 noch
+WYSE01 oder MOBILE01 kontaktiert. Die folgenden Zielrechte und der Katalogpfad
+berücksichtigen die bei der echten Wartung geprüfte Dienstidentität.
 MOBILE01 bleibt ausgeschlossen. Grundlage ist die
 [abgeschlossene Status-/Updater-Abnahme](v1.13.0-wyse01-acceptance.md).
 Diese historische Abnahme ersetzt keine frische Vorprüfung im nächsten Fenster.
@@ -19,8 +22,8 @@ das create-only Verzeichnis `dist/wyse01-scheduled-updates-v1.13.0/`:
 | `client/sw-badge-client-update-worker` | WYSE01 `/usr/local/sbin/sw-badge-client-update-worker`, root:root 0755 |
 | `client/client-update.pub` | WYSE01 `/etc/stumpfworks-badge/client-update.pub`, root:root 0644 |
 | `client/swbadge-client-updates.service` und `.timer` | WYSE01 `/etc/systemd/system/`, root:root 0644 |
-| `server/update-stable.pub` | LOGIN01 `/etc/stumpfworks-badge/update-stable.pub`, root:root 0644 |
-| `server/releases/approved.json` | LOGIN01 `/var/lib/stumpfworks-badge/releases/approved.json`, root:root 0600; Verzeichnis 0700 |
+| `server/update-stable.pub` | LOGIN01 `/etc/stumpfworks-badge/update-stable.pub`, root:swbadge 0640 |
+| `server/releases/approved.json` | LOGIN01 `/var/lib/stumpfworks-badge-releases/approved.json`, root:swbadge 0640; Verzeichnis root:swbadge 0750 und Eltern rootkontrolliert |
 | `server/updates.yaml.fragment` | Nur die zwei `updates`-Werte kontrolliert in bestehende LOGIN01-Konfiguration integrieren; keine komplette Konfiguration ersetzen |
 
 Worker-SHA256:
@@ -29,6 +32,11 @@ Stable-Key-Fingerprint (SHA256 der dekodierten 32 Bytes):
 `d94bd2573b017898d771913f358bff5386af5b300392bcc75ec02d8e42fec069`.
 Der private Schlüssel wird nicht gelesen oder kopiert. Der installierte
 Development-Key und die bestehende Clientkonfiguration bleiben erhalten.
+Das zuerst erzeugte unveränderte Kit enthielt noch den ursprünglichen
+`/var/lib/stumpfworks-badge/releases`-Fragmentpfad. Bei Aktivierung durch den
+endgültigen rootkontrollierten Pfad ersetzt; der Generator ist entsprechend
+korrigiert. Verzeichnismodi nach mkdir bei umask077 explizit setzen und tatsächlichen
+Dienstlesezugriff prüfen; keine Schreibrechte für das Dienstkonto einführen.
 `SHA256SUMS` und `PREPARATION.json` binden alle erzeugten Dateien; das Hashmanifest
 ist ein lokaler Integritätsnachweis, keine zusätzliche digitale Signatur.
 
@@ -81,11 +89,12 @@ die aktuelle Vorbereitung erteilt dafür keine Produktionsfreigabe.
    Servicezustände und Update-/Workerjournal. Keine offenen oder dispatched Jobs,
    keine Pending-Transaction. WYSE01 Status/Updater müssen die abgenommenen
    1.13.0-Hashes besitzen; VNC/LightDM stabil. Kein Zugang zu MOBILE01.
-2. Clientkonfiguration auf die benötigten vier vorhandenen Werte prüfen:
+2. Clientkonfiguration und vorhandene Dienstzusätze auf die benötigten Werte prüfen:
    `SWBADGE_DEVICE_SERVER` (DNS-HTTPS-Origin auf 8444), `SWBADGE_CLIENT_ID`
    (`wyse01-greeter`), `SWBADGE_CA_FILE`, `SWBADGE_DEVICE_BUNDLE_FILE`.
    Nur Vorhandensein/Verwendbarkeit bestätigen, keine Inhalte ausgeben.
-   Fehlende Werte bedeuten vor Installation eine neu zu prüfende Konfigänderung.
+   Auf WYSE01 stammen Origin und Bundle aus einem Dienstzusatz; der Worker
+   erhält dafür seinen eigenen Zusatz, wie in der Abnahme dokumentiert.
 3. Frischen root-only Clientrollback erstellen: Binaries, neue Zielpfade samt
    Abwesenheitsbelegen, Units/Drop-ins/Enablement, komplette Konfiguration,
    Schlüsselmaterial nur auf dem Client, Verzeichnis-UID/GID/Modi, Update-State,
@@ -160,9 +169,10 @@ Jobs/Audit/Clientjournal müssen zuerst abgeglichen werden. DB-Restore benötigt
 eine ausdrückliche Datenverlust-/Reconciliationentscheidung. Keine Schema-
 Downmigration. Alle alten und neuen Rollbacks geschützt erhalten.
 
-## Ergebnisgrenze
+## Ergebnisgrenze der damaligen Vorbereitung
 
 Kandidat, lokaler Katalogprüfstand, Tests und Wartungs-/Rollbackplan sind
 vorbereitet. Produktiver Worker/Timer, Stable-Katalogaktivierung, natürlicher
 204-Poll und erster neuer Updateauftrag sind **noch nicht abgenommen**.
-Sie werden durch diese Dokumentation weder ausgeführt noch freigegeben.
+Die spätere tatsächliche Freigabe und Ausführung sind ausschließlich in der
+[Aktivierungsabnahme](wyse01-scheduled-updates-acceptance.md) festgehalten.
