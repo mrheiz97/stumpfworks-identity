@@ -19,9 +19,11 @@ Wir stehen am **Betriebsabschluss der geplanten Clientupdates**. Die beiden dana
 genannten Zertifikatsschritte sind bereits erledigt. Nächster Betriebsschritt ist
 ein erster echter Auftrag mit einem neueren freigegebenen
 Stable-Release. Die installierte v1.13.0 wird nicht als Test erneut installiert.
-Ein [signierter v1.13.1-Statuskandidat](releases/v1.13.1-wyse01-planned-job.md)
-mit tatsächlicher1.13.0-Worker-/Rollbackprobe ist lokal vorbereitet; geschützt
-veröffentlichtes Release und produktives Wartungsfenster bleiben offen.
+v1.13.1 ist [geschützt veröffentlicht und das Statuspaket aus dem exakten
+Releasecommit neu signiert/geprüft](releases/v1.13.1-release-acceptance.md),
+einschließlich tatsächlicher1.13.0-Worker-/Rollbackprobe. Offen bleibt das
+ausdrücklich freizugebende produktive Wartungsfenster mit frischen Rückwegen
+und dem ersten echten Auftrag; kein erneuter Releaseblock davor erforderlich.
 Die [Aktivierungsabnahme](releases/wyse01-scheduled-updates-acceptance.md) trennt
 den leeren Timerbetrieb ausdrücklich vom ersten echten Update. Danach folgt als
 nächster fachlicher Entwicklungsblock die AD-Administration; diese wird hier
