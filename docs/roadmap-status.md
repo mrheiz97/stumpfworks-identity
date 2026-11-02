@@ -8,7 +8,7 @@ historische Versionsüberschriften in AGENTS.md sind keine neuen offenen Aufgabe
 | Linux-Anmeldung, Self-Service, OIDC/Access, Rollen, Passkeys, Notfallzugang | Implementiert, veröffentlicht und im vereinbarten Umfang abgenommen |
 | PostgreSQL, Audit, Observability | Produktiv abgeschlossen |
 | Geräteauthentifizierung WYSE01 | Enrollment/Renewal/mTLS und Pflichtmodus abgenommen; MOBILE01 ausgeschlossen |
-| Geplante Clientupdates über Adminoberfläche | Erstauftrag Status1.13.1 auf WYSE01 nach neuer Freigabe erfolgreich, Abbruchprobe/Audit/gebundener Rückweg und fünfminütige Stabilität bestanden; neue interaktive Desktop/VNC-Bestätigung noch angefragt |
+| Geplante Clientupdates über Adminoberfläche | Für WYSE01 abgeschlossen: Erstauftrag Status1.13.1, Abbruchprobe, Audit, gebundener Rückweg, fünfminütige Stabilität und interaktive Benutzerabnahme bestanden |
 | Zertifikatsstatus/Ablauf/Authentifizierungsmodus in Clientverwaltung | In v1.13.0 veröffentlicht und auf LOGIN01 abgenommen |
 | Wiederverwendbare Zertifikatsprüfer im Framework | Framework v1.2.0 veröffentlicht, Identity umgestellt und als v1.13.0 ausgerollt |
 | AD-Schreibfunktionen | Noch offen: zuerst Least-Privilege-Konzept, Schutz privilegierter Konten, Audit und Rückweg; keine AD-Schreibfreigabe aus diesem Auftrag |
@@ -20,15 +20,15 @@ genannten Zertifikatsschritte sind bereits erledigt. v1.13.1 ist geschützt
 veröffentlicht, aus dem exakten Releasecommit gebaut/signiert und im separat
 freigegebenen Fenster über den echten Worker auf WYSE01 ausgeführt.
 [Erstauftrag, Abbruchprobe und technische Abnahme](releases/v1.13.1-wyse01-job-acceptance.md)
-sind bestanden; noch angefragt ist die neue interaktive Desktop/VNC-Bestätigung.
+sind einschließlich interaktiver Desktop/VNC-Bestätigung bestanden.
 Die [Aktivierungsabnahme](releases/wyse01-scheduled-updates-acceptance.md) trennt
 den leeren Timerbetrieb ausdrücklich vom ersten echten Update. Danach folgt als
 nächster fachlicher Entwicklungsblock die AD-Administration; diese wird hier
 nicht begonnen.
 
 Eine Gesamtprozentzahl wäre ohne gewichtete Restumfänge irreführend. Der
-stabile Identity-Kern und die Zertifikatsarbeit sind fertig; offen sind die
-genannte interaktive Rückmeldung und drei größere Funktions-/Gestaltungsblöcke.
+stabile Identity-Kern, die Zertifikatsarbeit und der WYSE01-Updatebetrieb sind
+fertig; offen sind drei größere Funktions-/Gestaltungsblöcke.
 
 Nachgelagerte ältere Ideen (Captive Portal, Windows Credential Provider,
 Biometrieforschung) sind keine stillschweigend gestarteten Aufgaben dieser Phase.
