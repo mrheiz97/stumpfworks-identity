@@ -64,7 +64,7 @@ config = dict(Enabled=True, URL="ldaps://dc1.profile.test:636", BaseDN=base,
               OperatorGroupDN=str(entry("Profile Operators").dn), OperatorGroupGUID=bytes(entry("Profile Operators")["objectGUID"][0]).hex(), Revision="lab-stage1-v1",
               Targets=list(targets.values()), ProtectedGUIDs=[])
 with open("/tmp/lab-password", "w") as f: f.write(password)
-with open("/tmp/lab-config.json", "w") as f: json.dump(dict(Config=config, Targets=targets, Password=password), f)
+with open("/tmp/lab-config.json", "w") as f: json.dump(dict(Config=config, Targets=targets, Password=password, BrokerWriterGUID=bytes(writer["objectGUID"][0]).hex(), BrokerWriterSID=writer_sid), f)
 with open("/etc/hosts", "a") as f: f.write("\n127.0.0.1 dc1.profile.test dc1\n")
 subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/tmp/ca.key", "-out", "/tmp/ca.pem", "-days", "2", "-subj", "/CN=Disposable Profile Lab CA", "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,cRLSign"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 subprocess.run(["openssl", "req", "-newkey", "rsa:2048", "-nodes", "-keyout", "/tmp/dc.key", "-out", "/tmp/dc.csr", "-subj", "/CN=dc1.profile.test"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

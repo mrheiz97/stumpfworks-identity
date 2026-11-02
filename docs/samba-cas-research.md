@@ -1,5 +1,10 @@
 # Samba-CAS: Laboruntersuchung und Entscheidung
 
+Weitere Fortschreibung: Die [serverseitige DSDB-Broker-Mechanismusprobe](samba-cas-broker-research.md)
+hat lokale atomare Versionsprüfung mit normalen Writer-ACLs nachgewiesen.
+Sie benötigt eine andere Host-Vertrauensgrenze und ist kein freigegebener
+LDAP-Ersatz oder installierbarer Dienst. Die Identity-CAS-Sperre bleibt bestehen.
+
 Fortschreibung: Die [Criticality-Korrektur](ldap-criticality-fix.md) verwendet nun
 einen lokalen FF-Encoder an beiden betroffenen Identity-Runtime-Aufrufstellen.
 Die FF-Laborproben nutzen denselben Adapter; der folgende Untersuchungsstand

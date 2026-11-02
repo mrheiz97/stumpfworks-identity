@@ -1,5 +1,9 @@
 # AD-Profilbearbeitung Stufe 1: Entwicklungsstand und Betriebsgrenzen
 
+Die [serverseitige Broker-Laboruntersuchung](samba-cas-broker-research.md) beschreibt
+einen positiven lokalen DSDB-Mechanismusnachweis und dessen offene Host-/Betriebs-
+grenzen. Identity nutzt diesen Kandidaten nicht; die CAS-Sperre bleibt bestehen.
+
 Fortschreibung: Nach der [Samba-CAS-Untersuchung](samba-cas-research.md) wurde die
 [Criticality-Kodierung in Identity auf FF korrigiert](ldap-criticality-fix.md).
 Die Runtime bleibt gesperrt: Ein korrekter Clientencoder ersetzt den weiterhin

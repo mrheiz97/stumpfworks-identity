@@ -85,6 +85,7 @@ jobs:
           python3 -m py_compile cmd/native-greeter/sw-badge-native-greeter.py
           python3 -m py_compile scripts/swbadge-sqlite-backup.py scripts/swbadge-postgres-backup.py
           python3 -m py_compile scripts/prepare-wyse01-update-worker.py
+          python3 -m py_compile scripts/ad-profile-lab/provision.py scripts/ad-profile-lab/broker_candidate.py scripts/ad-profile-lab/broker_research.py
       - name: VNC password helper permission contract
         run: sudo python3 scripts/test-vnc-password-helper.py
       - name: Update catalog permission contract

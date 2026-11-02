@@ -40,6 +40,12 @@ Die [Identity-Criticality-Kodierung ist inzwischen auf FF korrigiert](ldap-criti
 und wird am Draht sowie im Samba-Labor geprüft. Offen bleibt die positive
 serverseitige CAS-Abnahme; dadurch entsteht keine Schreib- oder Produktivfreigabe.
 
+Die [serverseitige Broker-Untersuchung](samba-cas-broker-research.md) weist nun
+lokale DSDB-Transaktionen mit Versionsprüfung und normaler Attribut-ACL-Auswertung
+im Labor nach. Ein installierbarer Broker ist wegen der DC-Hostvertrauensgrenze
+und offener Betriebs-/Protokollnachweise weiterhin nicht freigegeben.
+Identity-CAS-Sperre und Default-off bleiben bestehen.
+
 Eine Gesamtprozentzahl wäre ohne gewichtete Restumfänge irreführend. Der
 stabile Identity-Kern, die Zertifikatsarbeit und der WYSE01-Updatebetrieb sind
 fertig; offen sind drei größere Funktions-/Gestaltungsblöcke.
