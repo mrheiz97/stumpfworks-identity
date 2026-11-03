@@ -122,6 +122,7 @@ docs/                Architecture, API, security and operations guides
 - [Passkey and WebAuthn plan](docs/passkeys.md)
 - [Operations and recovery](docs/operations.md)
 - [Development](docs/development.md)
+- [Minimal CI triggers, manual security laboratories and cost controls](docs/ci-cost-control.md)
 - [API](docs/api.md)
 - [Changelog](CHANGELOG.md)
 

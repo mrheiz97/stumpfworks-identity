@@ -5,6 +5,11 @@ Wegwerfcontainer. Keine Produktivverbindung oder -änderung; MOBILE01 ausgeschlo
 Identity-Runtime, CAS-Sperre, Default-off, Framework und Go-Abhängigkeiten bleiben
 unverändert. Kein Release, keine Installation auf einem echten DC.
 
+CI-Fortschreibung: Das vollständige Labor läuft inzwischen nur noch gezielt mit
+`full_lab=true`; normale Development-Pushes starten keine Runner. Vor einer
+CAS-/AD-Freigabe bleibt der vollständige Nachweis erforderlich. Details und der
+Übergang zur manuellen Auslösung stehen in [CI-Kostenkontrolle](ci-cost-control.md).
+
 ## Ergebnis und genaue Einordnung
 
 `native_cas.c` ist ein kompiliertes natives **LDB-Modul im tatsächlichen Samba-

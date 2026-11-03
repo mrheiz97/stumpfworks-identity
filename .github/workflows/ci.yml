@@ -1,10 +1,18 @@
 name: CI
 
 on:
-  push:
-    branches: [main, development]
   pull_request:
-    branches: [main, development]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full_lab:
+        description: Run the isolated Samba/native CAS and crash laboratories
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -12,7 +20,9 @@ permissions:
 jobs:
   ad-profile-samba:
     name: Samba guards and fixture rollback (CAS gate)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_lab }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -44,6 +54,7 @@ jobs:
           done
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16
