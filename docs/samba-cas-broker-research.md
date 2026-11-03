@@ -21,6 +21,11 @@ Laborskript ist kein Installationskandidat und kein begründet privilegienarmer
 separater Dienst. Es gibt keinen Listener, keine Unit und keine Identity-Anbindung.
 Die bestehende CAS-Sperre bleibt bestehen.
 
+Die anschließende [Ausführungsgrenze und Auftragsabsicherung](samba-cas-broker-boundary.md)
+konkretisiert den DC-nativen Zielentwurf und ergänzt neun Laborverträge für
+signierte Aufträge und die unprivilegierte Dateizugriffsgrenze. Auch diese
+Erweiterung liefert noch keinen installierbaren Brokerdienst.
+
 Die frühere [LDAP-CAS-Untersuchung](samba-cas-research.md) gilt weiterhin für den
 delegierten LDAP-Schreibweg. Der neue positive Befund verwendet die lokale
 DSDB-Schnittstelle und damit eine andere Vertrauens- und Betriebssystemgrenze.

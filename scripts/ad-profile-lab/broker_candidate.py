@@ -155,7 +155,7 @@ class Candidate:
         return {"target": bytes(row["objectGUID"][0]).hex(), "sid": sid(row), "version": text(row,"uSNChanged"),
                 "domain": self.config["DomainGUID"], "dc": self.config["DCIdentity"]}
 
-    def execute(self, request, username, password, fault=None, hold=None):
+    def execute(self, request, username, password, fault=None, hold=None, authorize=None):
         if not isinstance(request,dict) or set(request) != {"id", "target", "sid", "version", "domain", "dc", "changes"} or not isinstance(request["id"],str) or not re.fullmatch(r"[0-9a-f]{32}", request["id"]):
             raise Denied("untyped request")
         if request["domain"]!=self.config["DomainGUID"] or request["dc"]!=self.config["DCIdentity"] or not isinstance(request["version"],str) or not request["version"].isdigit() or len(request["version"])>20:
@@ -202,6 +202,8 @@ class Candidate:
                 raise Conflict("stale object version")
             if hold is not None:
                 hold()
+            if authorize is not None:
+                authorize()  # trusted local policy callback, never a request field
             modify(self.db, row.dn, changes)
             result = one(self.db, row.dn, attrs=["uSNChanged"])
             if fault == "before_commit":

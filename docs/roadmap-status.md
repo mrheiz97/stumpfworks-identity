@@ -1,7 +1,12 @@
 # Roadmap-Stand
 
-Stand: 2. November 2026. Aktuelle Reihenfolge aus dem Projektauftrag;
+Stand: 3. November 2026. Aktuelle Reihenfolge aus dem Projektauftrag;
 historische Versionsüberschriften in AGENTS.md sind keine neuen offenen Aufgaben.
+
+Neu: [Broker-Ausführungsgrenze und signierte Aufträge](samba-cas-broker-boundary.md)
+im isolierten Labor ausgearbeitet. Neun zusätzliche Schutzverträge ergänzen die
+18 Brokerverträge. DC-native Integration und sichere Betriebsgrenze bleiben
+offen; CAS-Sperre, Default-off und Produktionsausschluss gelten weiter.
 
 | Bereich | Stand |
 | --- | --- |

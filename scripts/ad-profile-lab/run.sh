@@ -15,3 +15,4 @@ if [ "$ready" != 1 ]; then tail -n 20 /tmp/samba.log; exit 1; fi
 export IDENTITY_AD_PROFILE_LAB=/tmp/lab-config.json
 /workspace/dist/ad-profile-tests/adprofile.test -test.v -test.run Samba
 python3 -B /workspace/scripts/ad-profile-lab/broker_research.py
+python3 -B /workspace/scripts/ad-profile-lab/broker_boundary_research.py
