@@ -1,5 +1,9 @@
 # DC-native CAS-Operation im isolierten Samba-Labor
 
+Fortschreibung: [Identity-Plan-/Audit-/Rückwegvertrag](identity-native-cas-contract.md)
+ergänzt einen ausschließlich testseitigen Serviceadapter und die im nativen
+Journal bestätigte Commit-USN. Der Runtime-CAS-Weg bleibt unverändert gesperrt.
+
 Stand: 3. November 2026, development. Nur synthetische Daten im netzlosen
 Wegwerfcontainer. Keine Produktivverbindung oder -änderung; MOBILE01 ausgeschlossen.
 Identity-Runtime, CAS-Sperre, Default-off, Framework und Go-Abhängigkeiten bleiben

@@ -115,6 +115,7 @@ docs/                Architecture, API, security and operations guides
 - [Server-side Samba CAS broker laboratory findings and privilege boundaries](docs/samba-cas-broker-research.md)
 - [Broker execution boundary and signed laboratory requests](docs/samba-cas-broker-boundary.md)
 - [Native Samba CAS operation: isolated DC implementation and tests](docs/samba-native-cas-lab.md)
+- [Prepared Identity/native CAS plan, audit and inverse-operation contract](docs/identity-native-cas-contract.md)
 - [Administrative roles and permissions](docs/roles-and-permissions.md)
 - [Administrative role rollout and rollback](docs/roles-rollout.md)
 - [Time-limited emergency administration](docs/emergency-admin.md)

@@ -52,6 +52,16 @@ jobs:
               --entrypoint sh identity-ad-profile-lab:ci -c \
               'python3 -B /workspace/scripts/ad-profile-lab/provision.py >/tmp/provision.log 2>&1 && sh /workspace/scripts/ad-profile-lab/native_run.sh'
           done
+      - name: Identity/native contract in fresh synthetic DCs
+        run: |
+          for scenario in success lost_reply uncertain; do
+            docker run --rm --network none --hostname dc1 \
+              -e IDENTITY_NATIVE_IDENTITY_LAB=1 -e IDENTITY_NATIVE_IDENTITY_CASE="$scenario" \
+              --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+              --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+              --entrypoint sh identity-ad-profile-lab:ci -c \
+              'python3 -B /workspace/scripts/ad-profile-lab/provision.py >/tmp/provision.log 2>&1 && sh /workspace/scripts/ad-profile-lab/native_run.sh'
+          done
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -106,7 +116,7 @@ jobs:
           python3 -m py_compile cmd/native-greeter/sw-badge-native-greeter.py
           python3 -m py_compile scripts/swbadge-sqlite-backup.py scripts/swbadge-postgres-backup.py
           python3 -m py_compile scripts/prepare-wyse01-update-worker.py
-          python3 -m py_compile scripts/ad-profile-lab/provision.py scripts/ad-profile-lab/broker_candidate.py scripts/ad-profile-lab/broker_research.py scripts/ad-profile-lab/broker_envelope.py scripts/ad-profile-lab/broker_boundary_research.py scripts/ad-profile-lab/native_setup.py scripts/ad-profile-lab/native_research.py
+          python3 -m py_compile scripts/ad-profile-lab/provision.py scripts/ad-profile-lab/broker_candidate.py scripts/ad-profile-lab/broker_research.py scripts/ad-profile-lab/broker_envelope.py scripts/ad-profile-lab/broker_boundary_research.py scripts/ad-profile-lab/native_setup.py scripts/ad-profile-lab/native_research.py scripts/ad-profile-lab/native_receipt.py
       - name: VNC password helper permission contract
         run: sudo python3 scripts/test-vnc-password-helper.py
       - name: Update catalog permission contract

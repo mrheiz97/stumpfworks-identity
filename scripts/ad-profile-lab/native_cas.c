@@ -46,6 +46,7 @@ struct packet {
 struct state {
     bool tx, pending, applied;
     uint8_t id[16], digest[32], mask;
+    uint64_t committed_version;
 };
 struct callback_context {struct ldb_request *parent;struct ldb_module *module;};
 
@@ -226,6 +227,12 @@ static int finish(struct state *s,uint8_t state) {
     old.dptr[32]=state;
     if(tdb_store(db,k,old,TDB_MODIFY)||tdb_delete(db,td("target",6))) goto cancel;
     key[0]='F';if(tdb_store(db,td(key,17),td(&state,1),TDB_INSERT)) goto cancel;
+    if(state==2) {
+        uint8_t version[8];uint64_t n=s->committed_version;
+        if(!n) goto cancel;
+        for(unsigned i=0;i<8;i++) {version[7-i]=n&255;n>>=8;}
+        key[0]='V';if(tdb_store(db,td(key,17),td(version,8),TDB_INSERT)) goto cancel;
+    }
     if(tdb_transaction_commit(db)) goto done;
     rc=LDB_SUCCESS;goto done;
 cancel: tdb_transaction_cancel(db);
@@ -244,7 +251,7 @@ static bool fault(const char *value) {
 }
 static int start(struct ldb_module *m) {
     struct state *s=ldb_module_get_private(m);int rc=ldb_next_start_trans(m);
-    if(rc==LDB_SUCCESS) {s->tx=true;s->pending=false;s->applied=false;}return rc;
+    if(rc==LDB_SUCCESS) {s->tx=true;s->pending=false;s->applied=false;s->committed_version=0;}return rc;
 }
 static int prepare(struct ldb_module *m) {
     struct state *s=ldb_module_get_private(m);
@@ -273,6 +280,14 @@ static int modified(struct ldb_request *req,struct ldb_reply *reply) {
         return ldb_module_done(parent,NULL,NULL,LDB_ERR_OPERATIONS_ERROR);
     }
     s->applied=reply->error==LDB_SUCCESS;
+    if(s->applied) {
+        const char *wanted[]={"uSNChanged",NULL};
+        struct ldb_context *ldb=ldb_module_get_ctx(context->module);
+        struct ldb_message *row=read_one(ldb,req,ldb_dn_get_linearized(req->op.mod.message->dn),
+            LDB_SCOPE_BASE,"(objectClass=user)",wanted);
+        if(!row||!number(row,"uSNChanged",&s->committed_version)||!s->committed_version)
+            return ldb_module_done(parent,NULL,NULL,LDB_ERR_OPERATIONS_ERROR);
+    }
     return ldb_module_done(parent,reply->controls,reply->response,reply->error);
 }
 static int modify_request(struct ldb_module *m,struct ldb_request *req) {

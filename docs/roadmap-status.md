@@ -9,6 +9,11 @@ normale ACLs, Journal-/Replay-/Crashschutz getestet. Das ergänzt die vorherigen
 27 Brokerverträge. Sichere Betriebsfreigabe und Identity-Anbindung bleiben offen;
 CAS-Sperre, Default-off und Produktionsausschluss gelten weiter.
 
+Die [Identity-Anbindung ist jetzt vertraglich und testseitig vorbereitet](identity-native-cas-contract.md):
+echter Service mit verschlüsseltem Journal, Plan-/Dispatchbindung, native Commit-
+Version für Gegenaufträge und fail-closed Ergebnisverlust. Ein versioniertes
+vollständiges Auftrags-/Receiptprotokoll sowie die Runtime-Anbindung bleiben offen.
+
 | Bereich | Stand |
 | --- | --- |
 | Linux-Anmeldung, Self-Service, OIDC/Access, Rollen, Passkeys, Notfallzugang | Implementiert, veröffentlicht und im vereinbarten Umfang abgenommen |

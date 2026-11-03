@@ -1,5 +1,9 @@
 # AD-Profilbearbeitung Stufe 1: Entwicklungsstand und Betriebsgrenzen
 
+Die [Vorbereitung der nativen Identity-Anbindung](identity-native-cas-contract.md)
+prüft Planbindung, Audit und Rückweg im Labor. Sie stellt keine Runtime-Anbindung
+dar und ändert die nachfolgend beschriebene CAS-Sperre nicht.
+
 Die [serverseitige Broker-Laboruntersuchung](samba-cas-broker-research.md) beschreibt
 einen positiven lokalen DSDB-Mechanismusnachweis und dessen offene Host-/Betriebs-
 grenzen. Die folgende [native DC-Laboroperation](samba-native-cas-lab.md) weist

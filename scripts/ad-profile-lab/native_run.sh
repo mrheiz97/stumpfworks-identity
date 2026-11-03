@@ -25,7 +25,13 @@ start_dc() {
 }
 start_dc
 case "${IDENTITY_NATIVE_CRASH_CASE:-}" in
- '') python3 -B /workspace/scripts/ad-profile-lab/native_research.py ;;
+ '')
+  if [ "${IDENTITY_NATIVE_IDENTITY_LAB:-}" = 1 ]; then
+   /workspace/dist/ad-profile-tests/adprofile.test -test.v -test.run '^TestNativeIdentityLab$'
+  else
+   python3 -B /workspace/scripts/ad-profile-lab/native_research.py
+  fi
+  ;;
  before_commit|after_commit)
   python3 -B /workspace/scripts/ad-profile-lab/native_research.py crash-trigger "$IDENTITY_NATIVE_CRASH_CASE"
   stop_dc
