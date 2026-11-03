@@ -2,14 +2,16 @@
 
 Die [serverseitige Broker-Laboruntersuchung](samba-cas-broker-research.md) beschreibt
 einen positiven lokalen DSDB-Mechanismusnachweis und dessen offene Host-/Betriebs-
-grenzen. Identity nutzt diesen Kandidaten nicht; die CAS-Sperre bleibt bestehen.
+grenzen. Die folgende [native DC-Laboroperation](samba-native-cas-lab.md) weist
+CAS inzwischen auch im echten Samba-Serverpfad nach. Identity nutzt keinen
+dieser Laborwege; die CAS-Sperre bleibt bestehen.
 
 Fortschreibung: Nach der [Samba-CAS-Untersuchung](samba-cas-research.md) wurde die
 [Criticality-Kodierung in Identity auf FF korrigiert](ldap-criticality-fix.md).
-Die Runtime bleibt gesperrt: Ein korrekter Clientencoder ersetzt den weiterhin
-fehlenden positiven Nachweis der serverseitigen CAS-Semantik nicht.
+Die Runtime bleibt gesperrt: Das benötigte Assertion-Control fehlt weiterhin;
+der positive native Labormechanismus ist nicht an den Identity-Executor angebunden.
 
-Stand: 2. November 2026. Implementierung auf development, standardmäßig aus.
+Stand: 3. November 2026. Implementierung auf development, standardmäßig aus.
 Keine Veröffentlichung, Installation, Produktionsverbindung oder Delegation;
 MOBILE01 vollständig ausgeschlossen. Framework und bestehende Identity-
 Datenbankschemata bleiben unverändert.

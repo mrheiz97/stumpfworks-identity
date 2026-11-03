@@ -1,5 +1,9 @@
 # Serverseitiger Samba-CAS-Broker: Laborbefund und Sicherheitsgrenzen
 
+Folgeimplementierung: [Native Samba-CAS-Operation im isolierten DC](samba-native-cas-lab.md).
+Der nachfolgende Befund zum Python-Mechanismuskandidaten bleibt als Vorgeschichte
+erhalten; die native Laborergänzung ist ebenfalls keine Betriebsfreigabe.
+
 Stand: 2. November 2026, development. Keine Produktionsverbindung oder -änderung,
 MOBILE01 vollständig ausgeschlossen. Identity-Runtime, FF-Kodierung, CAS-Sperre,
 Framework, Abhängigkeiten und Produktivkonfiguration bleiben unverändert.

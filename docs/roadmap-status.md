@@ -3,10 +3,11 @@
 Stand: 3. November 2026. Aktuelle Reihenfolge aus dem Projektauftrag;
 historische Versionsüberschriften in AGENTS.md sind keine neuen offenen Aufgaben.
 
-Neu: [Broker-Ausführungsgrenze und signierte Aufträge](samba-cas-broker-boundary.md)
-im isolierten Labor ausgearbeitet. Neun zusätzliche Schutzverträge ergänzen die
-18 Brokerverträge. DC-native Integration und sichere Betriebsgrenze bleiben
-offen; CAS-Sperre, Default-off und Produktionsausschluss gelten weiter.
+Neu: [Native Samba-CAS-Laboroperation](samba-native-cas-lab.md) als C-LDB-Modul
+im echten synthetischen DC umgesetzt; echte LDAPS-Aufträge, atomare Versionierung,
+normale ACLs, Journal-/Replay-/Crashschutz getestet. Das ergänzt die vorherigen
+27 Brokerverträge. Sichere Betriebsfreigabe und Identity-Anbindung bleiben offen;
+CAS-Sperre, Default-off und Produktionsausschluss gelten weiter.
 
 | Bereich | Stand |
 | --- | --- |
@@ -43,7 +44,8 @@ geforderten Runtime-Vertrag freigegeben; die CAS-Sperre bleibt unverändert.
 
 Die [Identity-Criticality-Kodierung ist inzwischen auf FF korrigiert](ldap-criticality-fix.md)
 und wird am Draht sowie im Samba-Labor geprüft. Offen bleibt die positive
-serverseitige CAS-Abnahme; dadurch entsteht keine Schreib- oder Produktivfreigabe.
+CAS-Abnahme des Identity-Runtimewegs; der zusätzliche native Labornachweis
+erteilt keine Schreib- oder Produktivfreigabe.
 
 Die [serverseitige Broker-Untersuchung](samba-cas-broker-research.md) weist nun
 lokale DSDB-Transaktionen mit Versionsprüfung und normaler Attribut-ACL-Auswertung

@@ -1,5 +1,10 @@
 # Samba-CAS-Broker: Ausführungsgrenze und Auftragsabsicherung
 
+Folgestand: Die [native DC-Laboroperation](samba-native-cas-lab.md) implementiert
+inzwischen den hier entworfenen begrenzten Samba-Einstieg mit eigenen Tests.
+Die folgenden Aussagen über noch nicht gebauten nativen Code beschreiben den
+früheren Entwurfsstand; eine Betriebsfreigabe folgt auch aus dem Folgestand nicht.
+
 Stand: 3. November 2026, development. Ausschließlich synthetisches, netzloses
 Labor; keine Produktionsverbindung, MOBILE01 ausgeschlossen. CAS-Sperre und
 Default-off bleiben bestehen. Keine Identity-Anbindung oder Frameworkänderung.

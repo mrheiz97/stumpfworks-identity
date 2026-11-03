@@ -16,3 +16,7 @@ export IDENTITY_AD_PROFILE_LAB=/tmp/lab-config.json
 /workspace/dist/ad-profile-tests/adprofile.test -test.v -test.run Samba
 python3 -B /workspace/scripts/ad-profile-lab/broker_research.py
 python3 -B /workspace/scripts/ad-profile-lab/broker_boundary_research.py
+kill "$dc_pid"
+wait "$dc_pid" || true
+dc_pid=
+sh /workspace/scripts/ad-profile-lab/native_run.sh
