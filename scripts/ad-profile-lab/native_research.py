@@ -1,9 +1,11 @@
 """Real LDAP requests executed by the compiled module inside the synthetic DC."""
 import json
+import errno
 import multiprocessing
 import os
 import pathlib
 import re
+import signal
 import socket
 import ssl
 import struct
@@ -419,7 +421,41 @@ def crash_verify():
     print("Native "+saved["case"]+": real DC restart, exact effect classification, no old/new-ID replay; fixture values restored, unclear claim retained",flush=True)
 
 
+def stop_group(group):
+    """Stop only the runner's private Samba generation before probing a new one."""
+    fixture()  # refuses non-synthetic or networked environments
+    group=int(group)
+    if group<=1 or group==os.getpgrp():raise RuntimeError("unsafe laboratory process group")
+    def live_members():
+        members=[]
+        for path in pathlib.Path("/proc").glob("[0-9]*/stat"):
+            try:
+                fields=path.read_text().rsplit(")",1)[1].split()
+                if int(fields[2])==group and fields[0]!="Z":members.append(path.parent)
+            except FileNotFoundError:pass
+        return members
+    for member in live_members():
+        try:command=(member/"cmdline").read_bytes()
+        except FileNotFoundError:continue
+        if b"samba" not in command:raise RuntimeError("unexpected process in laboratory Samba group")
+    for sig in (signal.SIGTERM,signal.SIGKILL):
+        try:os.killpg(group,sig)
+        except ProcessLookupError:pass
+        deadline=time.monotonic()+3
+        while live_members() and time.monotonic()<deadline:time.sleep(0.05)
+        if not live_members():break
+    if live_members():raise RuntimeError("old laboratory Samba generation still running")
+    deadline=time.monotonic()+3
+    while True:
+        with socket.socket() as probe:
+            probe.settimeout(0.2);closed=probe.connect_ex(("127.0.0.1",636))==errno.ECONNREFUSED
+        if closed:break
+        if time.monotonic()>=deadline:raise RuntimeError("old laboratory LDAP listener remains open")
+        time.sleep(0.05)
+
+
 if __name__=="__main__":
     if len(sys.argv)==3 and sys.argv[1]=="crash-trigger":crash_trigger(sys.argv[2])
     elif sys.argv[1:]==["crash-verify"]:crash_verify()
+    elif len(sys.argv)==3 and sys.argv[1]=="stop-group":stop_group(sys.argv[2])
     else:unittest.main(verbosity=2)

@@ -172,6 +172,15 @@ und Claim-/Commit-/Cancel-Übergänge. Ergänzend bleiben die privaten Serverlog
 scheitern, auch wenn ein negativer LDAP-Test ansonsten eine Fehlermeldung erwartet.
 Ein unabhängiger Review oder eine sichere Betriebsfreigabe wird damit nicht behauptet.
 
+Die erste CI 41656699508 bestand die allgemeine und native Matrix, zeigte aber
+im zweiten Crashcontainer ein Rennen der Neustart-Bereitschaftsprüfung: Ein
+alter Samba-Worker konnte noch kurz auf die Probe antworten. Der Laborrunner
+verwendet deshalb pro DC-Generation eine eigene Prozessgruppe, beendet nur
+diese verifizierte Samba-Gruppe und wartet auf deren lebende Prozesse sowie
+den geschlossenen 636-Listener, bevor die neue Generation starten darf. Die
+Bereitschaftsprüfung verlangt zusätzlich den lebenden neuen Hauptprozess.
+Das ist eine lesende Startbarriere, kein Retry eines unklaren Schreibauftrags.
+
 Die native Matrix enthält 17 Verträge: Erfolg/Gegenauftrag/Replay, signierte
 Identitäten und Manipulation, Parser und Controls, Rollen-/Writer-/Zielschutz,
 ABA/Fremdänderung, Backend-ACL, Zwei-Verbindungs-Rennen, Fristen/Audit,
