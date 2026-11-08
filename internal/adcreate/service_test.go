@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -20,7 +21,7 @@ type fixtureDirectory struct {
 	deny           bool
 	after          func() error
 	mu             sync.Mutex
-	authorizations int
+	authorizations atomic.Int32
 	authorizeHook  func(int) error
 	receipts       int
 }
@@ -39,9 +40,9 @@ func (d *fixtureDirectory) Authenticate(_ context.Context, user, password string
 }
 func (d *fixtureDirectory) Available(context.Context, Scope, Input) error { return nil }
 func (d *fixtureDirectory) Authorize(context.Context, string, Scope) error {
-	d.authorizations++
+	call := int(d.authorizations.Add(1))
 	if d.authorizeHook != nil {
-		if e := d.authorizeHook(d.authorizations); e != nil {
+		if e := d.authorizeHook(call); e != nil {
 			return e
 		}
 	}
