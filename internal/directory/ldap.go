@@ -29,6 +29,7 @@ type LDAP struct {
 	URL, BaseDN, BindDN, BindPassword, Domain, AdminGroupDN, CAFile, CertSHA256 string
 	IdentityOperatorGroupDN, OIDCOperatorGroupDN                                string
 	ClientOperatorGroupDN, AuditorGroupDN                                       string
+	UserCreatorGroupDN, UserCreatorGroupGUID                                    string
 }
 
 type ldapSearcher interface {
@@ -232,7 +233,7 @@ func (d LDAP) AuthenticateAdministrative(ctx context.Context, username, password
 	return u, roles, nil
 }
 
-func (d LDAP) rolesForDN(searcher ldapSearcher, userDN string) ([]adminauth.Role, error) {
+func (d LDAP) legacyRolesForDN(searcher ldapSearcher, userDN string) ([]adminauth.Role, error) {
 	groups := []struct {
 		role adminauth.Role
 		dn   string

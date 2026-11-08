@@ -10,25 +10,27 @@ const (
 	RoleOIDCOperator   Role = "oidc-operator"
 	RoleClientOperator Role = "client-operator"
 	RoleAuditor        Role = "identity-auditor"
+	RoleUserCreator    Role = "directory-user-creator"
 )
 
 // Permission identifies one server-side administrative capability.
 type Permission string
 
 const (
-	PermissionDashboardRead      Permission = "dashboard.read"
-	PermissionIdentityRead       Permission = "identity.read"
-	PermissionIdentityWrite      Permission = "identity.write"
-	PermissionCredentialsRead    Permission = "credentials.read"
-	PermissionCredentialsWrite   Permission = "credentials.write"
-	PermissionAuditRead          Permission = "audit.read"
-	PermissionOIDCRead           Permission = "oidc.read"
-	PermissionOIDCWrite          Permission = "oidc.write"
-	PermissionOIDCSessionsRead   Permission = "oidc.sessions.read"
-	PermissionOIDCSessionsRevoke Permission = "oidc.sessions.revoke"
-	PermissionClientsRead        Permission = "clients.read"
-	PermissionClientUpdatesWrite Permission = "clients.updates.write"
-	PermissionSystemRead         Permission = "system.read"
+	PermissionDashboardRead        Permission = "dashboard.read"
+	PermissionIdentityRead         Permission = "identity.read"
+	PermissionIdentityWrite        Permission = "identity.write"
+	PermissionCredentialsRead      Permission = "credentials.read"
+	PermissionCredentialsWrite     Permission = "credentials.write"
+	PermissionAuditRead            Permission = "audit.read"
+	PermissionOIDCRead             Permission = "oidc.read"
+	PermissionOIDCWrite            Permission = "oidc.write"
+	PermissionOIDCSessionsRead     Permission = "oidc.sessions.read"
+	PermissionOIDCSessionsRevoke   Permission = "oidc.sessions.revoke"
+	PermissionClientsRead          Permission = "clients.read"
+	PermissionClientUpdatesWrite   Permission = "clients.updates.write"
+	PermissionSystemRead           Permission = "system.read"
+	PermissionDirectoryUsersCreate Permission = "directory.users.create"
 )
 
 var allPermissions = []Permission{
@@ -48,7 +50,9 @@ var allPermissions = []Permission{
 }
 
 var rolePermissions = map[Role][]Permission{
-	RoleAdmin: allPermissions,
+	// Deliberately excluded from allPermissions/RoleAdmin: explicit opt-in only.
+	RoleUserCreator: {PermissionDirectoryUsersCreate, PermissionDashboardRead},
+	RoleAdmin:       allPermissions,
 	RoleOperator: {
 		PermissionDashboardRead,
 		PermissionIdentityRead,

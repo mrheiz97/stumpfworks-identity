@@ -1,17 +1,92 @@
 name: CI
 
 on:
-  push:
-    branches: [main, development]
   pull_request:
-    branches: [main, development]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full_lab:
+        description: Run the isolated Samba/native CAS and crash laboratories
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  ad-profile-samba:
+    name: Samba guards and fixture rollback (CAS gate)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_lab }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build isolated test binary
+        run: |
+          mkdir -p /tmp/ad-profile-tests
+          CGO_ENABLED=0 go test -c -o /tmp/ad-profile-tests/adprofile.test ./internal/adprofile
+          CGO_ENABLED=0 go build -o /tmp/ad-profile-tests/executor ./cmd/ad-profile-executor
+      - name: Build disposable Samba image
+        run: docker build -t identity-ad-profile-lab:ci scripts/ad-profile-lab
+      - name: Test without network or host ports
+        run: |
+          docker run --rm --network none --hostname dc1 \
+            --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+            --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+            --entrypoint sh identity-ad-profile-lab:ci /workspace/scripts/ad-profile-lab/run.sh
+      - name: Native CAS crashes with fresh synthetic DCs
+        run: |
+          for phase in before_commit after_commit; do
+            docker run --rm --network none --hostname dc1 \
+              -e IDENTITY_NATIVE_CRASH_CASE="$phase" \
+              --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+              --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+              --entrypoint sh identity-ad-profile-lab:ci -c \
+              'python3 -B /workspace/scripts/ad-profile-lab/provision.py >/tmp/provision.log 2>&1 && sh /workspace/scripts/ad-profile-lab/native_run.sh'
+          done
+      - name: Identity/native contract in fresh synthetic DCs
+        run: |
+          for scenario in success lost_reply uncertain; do
+            docker run --rm --network none --hostname dc1 \
+              -e IDENTITY_NATIVE_IDENTITY_LAB=1 -e IDENTITY_NATIVE_IDENTITY_CASE="$scenario" \
+              --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+              --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+              --entrypoint sh identity-ad-profile-lab:ci -c \
+              'python3 -B /workspace/scripts/ad-profile-lab/provision.py >/tmp/provision.log 2>&1 && sh /workspace/scripts/ad-profile-lab/native_run.sh'
+          done
+      - name: Versioned signed commands and authenticated receipts
+        run: |
+          docker run --rm --network none --hostname dc1 -e IDENTITY_NATIVE_PROTOCOL=2 \
+            --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+            --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+            --entrypoint sh identity-ad-profile-lab:ci -c \
+            'python3 -B /workspace/scripts/ad-profile-lab/provision.py >/tmp/provision.log 2>&1 && sh /workspace/scripts/ad-profile-lab/native_run.sh'
+          for scenario in success lost_reply uncertain; do
+            docker run --rm --network none --hostname dc1 \
+              -e IDENTITY_NATIVE_PROTOCOL=2 -e IDENTITY_NATIVE_IDENTITY_LAB=1 -e IDENTITY_NATIVE_IDENTITY_CASE="$scenario" \
+              --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+              --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+              --entrypoint sh identity-ad-profile-lab:ci -c \
+              'python3 -B /workspace/scripts/ad-profile-lab/provision.py >/tmp/provision.log 2>&1 && sh /workspace/scripts/ad-profile-lab/native_run.sh'
+          done
+          for phase in before_commit after_commit; do
+            docker run --rm --network none --hostname dc1 -e IDENTITY_NATIVE_PROTOCOL=2 -e IDENTITY_NATIVE_CRASH_CASE="$phase" \
+              --mount type=bind,source="$PWD/scripts/ad-profile-lab",target=/workspace/scripts/ad-profile-lab,readonly \
+              --mount type=bind,source=/tmp/ad-profile-tests,target=/workspace/dist/ad-profile-tests,readonly \
+              --entrypoint sh identity-ad-profile-lab:ci -c \
+              'python3 -B /workspace/scripts/ad-profile-lab/provision.py >/tmp/provision.log 2>&1 && sh /workspace/scripts/ad-profile-lab/native_run.sh'
+          done
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16
@@ -63,6 +138,8 @@ jobs:
           python3 -m py_compile cmd/native-greeter/sw-badge-native-greeter.py
           python3 -m py_compile scripts/swbadge-sqlite-backup.py scripts/swbadge-postgres-backup.py
           python3 -m py_compile scripts/prepare-wyse01-update-worker.py
+          python3 -m py_compile scripts/ad-profile-lab/provision.py scripts/ad-profile-lab/broker_candidate.py scripts/ad-profile-lab/broker_research.py scripts/ad-profile-lab/broker_envelope.py scripts/ad-profile-lab/broker_boundary_research.py scripts/ad-profile-lab/native_setup.py scripts/ad-profile-lab/native_research.py scripts/ad-profile-lab/native_receipt.py
+          python3 -m py_compile scripts/ad-profile-lab/native_protocol_research.py
       - name: VNC password helper permission contract
         run: sudo python3 scripts/test-vnc-password-helper.py
       - name: Update catalog permission contract

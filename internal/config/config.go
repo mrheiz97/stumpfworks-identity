@@ -4,34 +4,39 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/TheRealHZL/stumpfworks-identity/internal/directory"
 	"io"
 	"os"
 	"strings"
 )
 
 type Config struct {
-	UpdateCatalogDirectory, UpdatePublicKeyFile                                                  string
-	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile string
-	ClientAPIListen, ClientAPIEnrollmentListen, ClientAPICAFile, ClientAPICAKeyFile              string
-	DirectoryURL, BaseDN, BindDN, BindPassword                                                   string
-	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                        string
-	DirectoryIdentityOperatorGroup, DirectoryOIDCOperatorGroup                                   string
-	DirectoryClientOperatorGroup, DirectoryAuditorGroup                                          string
-	DirectoryBindPasswordFile, DirectoryCertSHA256                                               string
-	SessionSecret                                                                                string
-	SessionSecretFile                                                                            string
-	MetricsToken, MetricsTokenFile                                                               string
-	MetricsBackupPath, MetricsMaintenanceFile                                                    string
-	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                               string
-	ClientTargetVersion                                                                          string
-	OIDCIssuer, OIDCSigningKeyFiles                                                              string
-	PasskeyRPID, PasskeyOrigin                                                                   string
-	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled  bool
-	PasskeysEnabled                                                                              bool
-	ClientAPIEnabled                                                                             bool
-	ClientAPIEnrollmentEnabled                                                                   bool
-	EmergencyAdminEnabled                                                                        bool
-	DatabaseAllowInsecure, Demo                                                                  bool
+	ADUserCreationEnabled                                                                               bool
+	ADUserCreationSocket, ADUserCreationExecutorUID, ADUserCreationExecutorGID, ADUserCreationSocketGID string
+	DirectoryUserCreatorGroup, DirectoryUserCreatorGroupGUID                                            string
+	ADProfileSocket                                                                                     string
+	UpdateCatalogDirectory, UpdatePublicKeyFile                                                         string
+	Listen, TLSCertFile, TLSKeyFile, DatabaseBackend, DatabasePath, DatabaseURL, DatabaseURLFile        string
+	ClientAPIListen, ClientAPIEnrollmentListen, ClientAPICAFile, ClientAPICAKeyFile                     string
+	DirectoryURL, BaseDN, BindDN, BindPassword                                                          string
+	DirectoryDomain, DirectoryAdminGroup, DirectoryCAFile                                               string
+	DirectoryIdentityOperatorGroup, DirectoryOIDCOperatorGroup                                          string
+	DirectoryClientOperatorGroup, DirectoryAuditorGroup                                                 string
+	DirectoryBindPasswordFile, DirectoryCertSHA256                                                      string
+	SessionSecret                                                                                       string
+	SessionSecretFile                                                                                   string
+	MetricsToken, MetricsTokenFile                                                                      string
+	MetricsBackupPath, MetricsMaintenanceFile                                                           string
+	PKINITCACertFile, PKINITCAKeyFile, PKINITRealm                                                      string
+	ClientTargetVersion                                                                                 string
+	OIDCIssuer, OIDCSigningKeyFiles                                                                     string
+	PasskeyRPID, PasskeyOrigin                                                                          string
+	DirectoryEnabled, DirectoryFrameworkReadEnabled, MetricsEnabled, PKINITEnabled, OIDCEnabled         bool
+	PasskeysEnabled                                                                                     bool
+	ClientAPIEnabled                                                                                    bool
+	ClientAPIEnrollmentEnabled                                                                          bool
+	EmergencyAdminEnabled                                                                               bool
+	DatabaseAllowInsecure, Demo                                                                         bool
 }
 
 func Default() Config {
@@ -68,6 +73,8 @@ func Load(path string) (Config, error) {
 			}
 			key, val := section+"."+strings.TrimSpace(p[0]), strings.Trim(strings.TrimSpace(p[1]), `"'`)
 			switch key {
+			case "ad_profiles.executor_socket":
+				c.ADProfileSocket = val
 			case "updates.catalog_directory":
 				c.UpdateCatalogDirectory = val
 			case "updates.public_key_file":
@@ -114,6 +121,23 @@ func Load(path string) (Config, error) {
 				c.DirectoryDomain = val
 			case "directory.admin_group_dn":
 				c.DirectoryAdminGroup = val
+			case "ad_user_creation.enabled":
+				if val != "true" && val != "false" {
+					return c, errors.New("invalid user creation transport enable flag")
+				}
+				c.ADUserCreationEnabled = val == "true"
+			case "ad_user_creation.socket":
+				c.ADUserCreationSocket = val
+			case "ad_user_creation.executor_uid":
+				c.ADUserCreationExecutorUID = val
+			case "ad_user_creation.executor_gid":
+				c.ADUserCreationExecutorGID = val
+			case "ad_user_creation.socket_gid":
+				c.ADUserCreationSocketGID = val
+			case "directory.user_creator_group_dn":
+				c.DirectoryUserCreatorGroup = val
+			case "directory.user_creator_group_guid":
+				c.DirectoryUserCreatorGroupGUID = val
 			case "directory.identity_operator_group_dn":
 				c.DirectoryIdentityOperatorGroup = val
 			case "directory.oidc_operator_group_dn":
@@ -194,6 +218,19 @@ func Load(path string) (Config, error) {
 	set("SWBADGE_DIRECTORY_BIND_PASSWORD", &c.BindPassword)
 	set("SWBADGE_DIRECTORY_DOMAIN", &c.DirectoryDomain)
 	set("SWBADGE_DIRECTORY_ADMIN_GROUP_DN", &c.DirectoryAdminGroup)
+	set("SWBADGE_DIRECTORY_USER_CREATOR_GROUP_DN", &c.DirectoryUserCreatorGroup)
+	set("SWBADGE_DIRECTORY_USER_CREATOR_GROUP_GUID", &c.DirectoryUserCreatorGroupGUID)
+	set("SWBADGE_AD_PROFILE_SOCKET", &c.ADProfileSocket)
+	set("SWBADGE_AD_USER_CREATION_SOCKET", &c.ADUserCreationSocket)
+	set("SWBADGE_AD_USER_CREATION_EXECUTOR_UID", &c.ADUserCreationExecutorUID)
+	set("SWBADGE_AD_USER_CREATION_EXECUTOR_GID", &c.ADUserCreationExecutorGID)
+	set("SWBADGE_AD_USER_CREATION_SOCKET_GID", &c.ADUserCreationSocketGID)
+	if v, ok := os.LookupEnv("SWBADGE_AD_USER_CREATION_ENABLED"); ok {
+		if v != "true" && v != "false" {
+			return c, errors.New("invalid user creation transport enable flag")
+		}
+		c.ADUserCreationEnabled = v == "true"
+	}
 	set("SWBADGE_DIRECTORY_IDENTITY_OPERATOR_GROUP_DN", &c.DirectoryIdentityOperatorGroup)
 	set("SWBADGE_DIRECTORY_OIDC_OPERATOR_GROUP_DN", &c.DirectoryOIDCOperatorGroup)
 	set("SWBADGE_DIRECTORY_CLIENT_OPERATOR_GROUP_DN", &c.DirectoryClientOperatorGroup)
@@ -285,10 +322,19 @@ func Load(path string) (Config, error) {
 	if err := validateRoleGroups(c); err != nil {
 		return c, err
 	}
+	if _, err := c.UserCreationTransport(); err != nil {
+		return c, err
+	}
 	return c, nil
 }
 
 func validateRoleGroups(c Config) error {
+	if c.DirectoryUserCreatorGroup != "" || c.DirectoryUserCreatorGroupGUID != "" {
+		d := directory.LDAP{URL: c.DirectoryURL, BaseDN: c.BaseDN, CAFile: c.DirectoryCAFile, CertSHA256: c.DirectoryCertSHA256, UserCreatorGroupDN: c.DirectoryUserCreatorGroup, UserCreatorGroupGUID: c.DirectoryUserCreatorGroupGUID, AdminGroupDN: c.DirectoryAdminGroup, IdentityOperatorGroupDN: c.DirectoryIdentityOperatorGroup, OIDCOperatorGroupDN: c.DirectoryOIDCOperatorGroup, ClientOperatorGroupDN: c.DirectoryClientOperatorGroup, AuditorGroupDN: c.DirectoryAuditorGroup}
+		if !d.UserCreationSessionsAllowed() {
+			return errors.New("user creation role requires distinct in-domain DN/GUID, LDAPS and CA/name verification without legacy pin bypass")
+		}
+	}
 	groups := map[string]string{
 		"admin_group_dn":             c.DirectoryAdminGroup,
 		"identity_operator_group_dn": c.DirectoryIdentityOperatorGroup,

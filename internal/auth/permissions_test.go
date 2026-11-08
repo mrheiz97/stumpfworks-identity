@@ -2,6 +2,21 @@ package auth
 
 import "testing"
 
+func TestCreationPermissionRequiresExplicitRole(t *testing.T) {
+	legacy := []Role{RoleAdmin, RoleOperator, RoleOIDCOperator, RoleClientOperator, RoleAuditor}
+	if Allowed(PermissionDirectoryUsersCreate, legacy...) {
+		t.Fatal("legacy roles inherited create")
+	}
+	if !Allowed(PermissionDirectoryUsersCreate, RoleUserCreator) {
+		t.Fatal("creator missing permission")
+	}
+	for _, p := range allPermissions {
+		if p != PermissionDashboardRead && Allowed(p, RoleUserCreator) {
+			t.Fatal("creator gained unrelated capability", p)
+		}
+	}
+}
+
 func TestAdministratorHasEveryPermission(t *testing.T) {
 	permissions := Permissions(RoleAdmin)
 	for _, permission := range allPermissions {
