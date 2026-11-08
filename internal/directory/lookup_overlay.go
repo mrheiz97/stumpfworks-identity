@@ -16,6 +16,11 @@ type lookupOverlay struct {
 	lookup UserLookup
 }
 
+func (d *lookupOverlay) UserCreationSessionsAllowed() bool {
+	strict, ok := d.Directory.(UserCreationSessionDirectory)
+	return ok && strict.UserCreationSessionsAllowed()
+}
+
 func (d *lookupOverlay) AdministrativeRoles(ctx context.Context, username string) ([]adminauth.Role, error) {
 	administrative, ok := d.Directory.(AdministrativeDirectory)
 	if !ok {

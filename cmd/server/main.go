@@ -43,7 +43,11 @@ func main() {
 		slog.Error("configuration failed", "error", e)
 		os.Exit(1)
 	}
-	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, IdentityOperatorGroupDN: cfg.DirectoryIdentityOperatorGroup, OIDCOperatorGroupDN: cfg.DirectoryOIDCOperatorGroup, ClientOperatorGroupDN: cfg.DirectoryClientOperatorGroup, AuditorGroupDN: cfg.DirectoryAuditorGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
+	if cfg.ADProfileSocket != "" && (!cfg.DirectoryEnabled || cfg.Demo || cfg.DirectoryCertSHA256 != "" || cfg.TLSCertFile == "" || cfg.TLSKeyFile == "") {
+		slog.Error("AD profile editing requires protected verified directory and HTTPS")
+		os.Exit(1)
+	}
+	configuredDirectory := directory.LDAP{URL: cfg.DirectoryURL, BaseDN: cfg.BaseDN, BindDN: cfg.BindDN, BindPassword: cfg.BindPassword, Domain: cfg.DirectoryDomain, AdminGroupDN: cfg.DirectoryAdminGroup, UserCreatorGroupDN: cfg.DirectoryUserCreatorGroup, UserCreatorGroupGUID: cfg.DirectoryUserCreatorGroupGUID, IdentityOperatorGroupDN: cfg.DirectoryIdentityOperatorGroup, OIDCOperatorGroupDN: cfg.DirectoryOIDCOperatorGroup, ClientOperatorGroupDN: cfg.DirectoryClientOperatorGroup, AuditorGroupDN: cfg.DirectoryAuditorGroup, CAFile: cfg.DirectoryCAFile, CertSHA256: cfg.DirectoryCertSHA256}
 	metricsRegistry := frameworkmetrics.New()
 	var directoryObserver frameworkldap.Observer
 	if cfg.MetricsEnabled {
@@ -168,6 +172,15 @@ func main() {
 			os.Exit(1)
 		}
 		srv = app.New(st, log)
+	}
+	if e = srv.ConfigureADProfiles(cfg.ADProfileSocket); e != nil {
+		log.Error("AD profile endpoint configuration failed")
+		os.Exit(1)
+	}
+	creationTransport, e := cfg.UserCreationTransport()
+	if e != nil || srv.ConfigureADUserCreationTransport(creationTransport) != nil {
+		log.Error("AD user creation transport configuration failed")
+		os.Exit(1)
 	}
 	srv.ConfigureEmergencyAdmin(cfg.EmergencyAdminEnabled)
 	if cfg.UpdateCatalogDirectory != "" {

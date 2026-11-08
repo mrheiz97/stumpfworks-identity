@@ -1,5 +1,10 @@
 # Security Policy and Model
 
+The [AD write security design](ad-write-security-design.md) defines staged
+least-privilege delegation, protected targets, durable intent/audit, uncertainty
+handling and per-action compensation. It is a development design with offline
+tests; AD writes remain unimplemented and require separate laboratory acceptance.
+
 SWBA combines a physical badge with a personal PIN and converts successful verification into short-lived credentials. It never stores or reconstructs the user's AD password.
 
 ## Credential handling

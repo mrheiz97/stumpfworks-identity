@@ -45,6 +45,12 @@ func (s *Server) renderCompactAdminPage(w http.ResponseWriter, r *http.Request, 
 func (s *Server) compactAdminSidebar(r *http.Request, activePath string) string {
 	var navigation strings.Builder
 	navigation.WriteString(compactAdminLink("/", "◈", "Dashboard", activePath == "/"))
+	if s.protect && s.creationOps != nil && s.creationOps.IsEnabled() && requestCan(r, adminauth.PermissionDirectoryUsersCreate) {
+		navigation.WriteString(compactAdminLink("/ad-users/create", "+", "AD user creation", activePath == "/ad-users/create"))
+	}
+	if s.profileSocket != "" && s.protect {
+		navigation.WriteString(compactAdminLink("/ad-profiles", "✎", "AD profiles", activePath == "/ad-profiles"))
+	}
 	for _, item := range compactAdminNavigation {
 		if s.unprotectedOrCan(r, item.permission) {
 			navigation.WriteString(compactAdminLink(item.path, item.icon, item.label, activePath == item.path))

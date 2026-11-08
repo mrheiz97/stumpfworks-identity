@@ -50,6 +50,8 @@ func requiredAdministrativePermission(r *http.Request) adminauth.Permission {
 	mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
 
 	switch {
+	case path == "/ad-users/create":
+		return adminauth.PermissionDirectoryUsersCreate
 	case path == "/client-updates" || strings.HasPrefix(path, "/client-updates/"):
 		if mutating {
 			return adminauth.PermissionClientUpdatesWrite

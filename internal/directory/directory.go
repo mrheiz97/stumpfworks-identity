@@ -22,6 +22,13 @@ type AdministrativeDirectory interface {
 	AdministrativeRoles(context.Context, string) ([]adminauth.Role, error)
 	AuthenticateAdministrative(context.Context, string, string) (*User, []adminauth.Role, error)
 }
+
+// UserCreationSessionDirectory explicitly attests the stricter AD/TLS/group-pin
+// prerequisites. Legacy/local adapters never receive a compatibility fallback.
+type UserCreationSessionDirectory interface {
+	AdministrativeDirectory
+	UserCreationSessionsAllowed() bool
+}
 type Local struct{}
 
 func (Local) UserExists(context.Context, string) (bool, error) { return true, nil }

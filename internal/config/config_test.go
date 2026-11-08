@@ -23,6 +23,25 @@ func TestClientTargetVersionConfigAndEnvironment(t *testing.T) {
 	}
 }
 
+func TestADProfileSocketIsOptIn(t *testing.T) {
+	if Default().ADProfileSocket != "" {
+		t.Fatal("AD editing enabled by default")
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if e := os.WriteFile(path, []byte("ad_profiles:\n  executor_socket: /private/lab.sock\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	cfg, e := Load(path)
+	if e != nil || cfg.ADProfileSocket != "/private/lab.sock" {
+		t.Fatal("socket configuration missing")
+	}
+	t.Setenv("SWBADGE_AD_PROFILE_SOCKET", "/private/override.sock")
+	cfg, e = Load(path)
+	if e != nil || cfg.ADProfileSocket != "/private/override.sock" {
+		t.Fatal("socket environment override missing")
+	}
+}
+
 func TestClientAPIIsSeparatelyOptInAndEnvironmentOverrides(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	contents := "client_api:\n  enabled: false\n  listen: 127.0.0.1:8444\n  enrollment_enabled: false\n  enrollment_listen: 127.0.0.1:8445\n  ca_file: /secure/device-ca.pem\n  ca_key_file: /secure/device-ca.key\n"
